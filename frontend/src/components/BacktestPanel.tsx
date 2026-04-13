@@ -62,7 +62,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <Metric label="총 수익률" value={`${m.total_return >= 0 ? "+" : ""}${m.total_return.toFixed(1)}%`} positive={m.total_return > 0} />
         <Metric label="연간 수익률" value={`${m.annualized_return >= 0 ? "+" : ""}${m.annualized_return.toFixed(1)}%`} positive={m.annualized_return > 0} />
-        <Metric label="초과수익 α" value={`${m.alpha >= 0 ? "+" : ""}${m.alpha.toFixed(1)}%`} positive={m.alpha > 0} />
+        <Metric label="초과수익 α" value={`${m.alpha >= 0 ? "+" : ""}${m.alpha.toFixed(1)}%`} positive={m.alpha > 0} sub="vs 벤치마크" />
         <Metric label="샤프 비율" value={m.sharpe_ratio.toFixed(2)} positive={m.sharpe_ratio > 1 ? true : m.sharpe_ratio < 0 ? false : null} sub="1.0↑ 우수" />
         <Metric label="최대 낙폭" value={`${m.max_drawdown.toFixed(1)}%`} positive={m.max_drawdown > -10} sub="낮을수록 좋음" />
         <Metric label="승률" value={`${m.win_rate.toFixed(1)}%`} positive={m.win_rate > 55 ? true : m.win_rate < 45 ? false : null} />
@@ -70,6 +70,27 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
         <Metric label="손익비" value={m.profit_factor.toFixed(2)} positive={m.profit_factor > 1.5 ? true : m.profit_factor < 1 ? false : null} />
         <Metric label="총 거래" value={`${m.total_trades}회`} positive={null} />
       </div>
+
+      {/* Benchmark vs AI row */}
+      {m.benchmark_return !== undefined && (
+        <div style={{
+          display: "flex", gap: 10, alignItems: "center",
+          padding: "10px 14px", background: "var(--bg-elevated)",
+          borderRadius: "var(--radius-lg)", border: "1px solid var(--border-subtle)",
+        }}>
+          <span style={{ fontSize: 11, color: "var(--text-tertiary)", flex: 1 }}>벤치마크 수익률</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
+            {m.benchmark_return >= 0 ? "+" : ""}{m.benchmark_return.toFixed(1)}%
+          </span>
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+            background: m.alpha > 0 ? "var(--success-subtle)" : "var(--error-subtle)",
+            color: m.alpha > 0 ? "var(--success)" : "var(--error)",
+          }}>
+            AI {m.alpha > 0 ? "+" : ""}{m.alpha.toFixed(1)}% 초과
+          </span>
+        </div>
+      )}
 
       {/* Equity curve */}
       {result.equity_curve?.length > 0 && (

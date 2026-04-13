@@ -36,30 +36,37 @@ interface AgentCardProps {
   role: AgentRole;
   thought?: AgentThought;
   isActive: boolean;
+  index?: number;
 }
 
 const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.4 };
 
-export function AgentCard({ role, thought, isActive }: AgentCardProps) {
+export function AgentCard({ role, thought, isActive, index = 0 }: AgentCardProps) {
   const meta = AGENT_META[role];
   const status: AgentStatus = thought?.status ?? "idle";
   const isPulse = ["thinking", "analyzing", "debating", "deciding"].includes(status);
+  const isIdle = !thought || status === "idle";
+  const isDone = status === "done";
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={SPRING}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{
+        opacity: isActive ? 1 : isDone ? 0.88 : isIdle ? 0.48 : 1,
+        y: 0,
+        scale: isActive ? 1 : 1,
+      }}
+      transition={{ ...SPRING, delay: index * 0.055 }}
       style={{
-        background: isActive ? "var(--bg-elevated)" : "var(--bg-surface)",
-        border: `1px solid ${isActive ? "var(--border-focus)" : "var(--border-default)"}`,
-        boxShadow: isActive ? "0 0 0 1px var(--border-focus), var(--shadow-md)" : "var(--shadow-sm)",
+        background: isActive ? "var(--bg-elevated)" : isDone ? "var(--bg-surface)" : "var(--bg-base)",
+        border: `1px solid ${isActive ? "var(--border-focus)" : isDone ? "rgba(47,202,115,0.2)" : "var(--border-subtle)"}`,
+        boxShadow: isActive ? "0 0 0 1px var(--border-focus), var(--shadow-md)" : isDone ? "0 0 0 1px rgba(47,202,115,0.15)" : "none",
         borderRadius: "var(--radius-xl)",
-        padding: "12px",
+        padding: isIdle ? "10px" : "12px",
         position: "relative",
         overflow: "hidden",
-        transition: "all 200ms var(--ease-out-expo)",
+        transition: "all 250ms var(--ease-out-expo)",
       }}
     >
       {/* glow when active */}
@@ -142,6 +149,16 @@ export function AgentCard({ role, thought, isActive }: AgentCardProps) {
   );
 }
 
+// ── Semantic badge detector ──────────────────────────────────────────
+function getSemanticBadge(content: string): { label: string; color: string } | null {
+  const lc = content.toLowerCase();
+  if (/매수|bull|강세|상승 신호|buy/.test(lc)) return { label: "BULL", color: "var(--bull)" };
+  if (/매도|bear|약세|하락 신호|sell/.test(lc)) return { label: "BEAR", color: "var(--bear)" };
+  if (/리스크|위험|경고|risk|주의|drawdown/.test(lc)) return { label: "RISK", color: "var(--warning)" };
+  if (/합의|결론|결정|최종|완료|done|complete/.test(lc)) return { label: "완료", color: "var(--success)" };
+  return null;
+}
+
 // ── Activity Feed (Linear-style) ────────────────────────────────────
 interface ActivityFeedProps {
   logs: AgentThought[];
@@ -151,7 +168,7 @@ interface ActivityFeedProps {
 export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
   const recent = logs.slice(-30);
   return (
-    <div style={{ height: 200, overflowY: "auto", padding: "4px 0" }}>
+    <div style={{ height: 320, overflowY: "auto", padding: "4px 0" }}>
       {recent.length === 0 ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-tertiary)", fontSize: 12 }}>
           분석 시작 시 로그가 표시됩니다
@@ -180,16 +197,25 @@ export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
                   border: "1.5px solid var(--bg-surface)", flexShrink: 0,
                 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 2 }}>
                     <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
                       {new Date(log.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                     </span>
                     <span style={{ fontSize: 10, fontWeight: 600, color: meta?.dotColor ?? "var(--text-secondary)" }}>
                       {meta?.name ?? log.role}
                     </span>
+                    {(() => {
+                      const badge = getSemanticBadge(log.content);
+                      return badge ? (
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 99,
+                          background: `${badge.color}22`, color: badge.color, letterSpacing: "0.05em",
+                        }}>{badge.label}</span>
+                      ) : null;
+                    })()}
                   </div>
-                  <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5, marginTop: 1 }}
-                    className="line-clamp-2">
+                  <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.55, marginTop: 0 }}
+                    className="line-clamp-3">
                     {log.content}
                   </p>
                 </div>
@@ -217,28 +243,50 @@ const LAYERS: { label: string; roles: AgentRole[] }[] = [
 
 export function AgentOffice({ thoughts, activeAgents }: AgentOfficeProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {LAYERS.map((layer) => (
-        <div key={layer.label}>
-          <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-            {layer.label}
-          </p>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${layer.roles.length}, 1fr)`,
-            gap: 8,
-          }}>
-            {layer.roles.map((role) => (
-              <AgentCard
-                key={role}
-                role={role}
-                thought={thoughts.get(role)}
-                isActive={activeAgents.has(role)}
-              />
-            ))}
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {LAYERS.map((layer) => {
+        const doneCount = layer.roles.filter(r => thoughts.get(r)?.status === "done").length;
+        const allDone = doneCount === layer.roles.length;
+        const hasStarted = thoughts.size > 0;
+        return (
+          <div key={layer.label}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                {layer.label}
+              </p>
+              {hasStarted && (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  style={{
+                    fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                    background: allDone ? "var(--success-subtle)" : "var(--bg-elevated)",
+                    color: allDone ? "var(--success)" : "var(--text-tertiary)",
+                    border: allDone ? "1px solid rgba(47,202,115,0.3)" : "1px solid var(--border-subtle)",
+                  }}
+                >
+                  {allDone ? "✓ 완료" : `${doneCount} / ${layer.roles.length}`}
+                </motion.span>
+              )}
+            </div>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${layer.roles.length}, 1fr)`,
+              gap: 8,
+            }}>
+              {layer.roles.map((role, i) => (
+                <AgentCard
+                  key={role}
+                  role={role}
+                  thought={thoughts.get(role)}
+                  isActive={activeAgents.has(role)}
+                  index={i}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

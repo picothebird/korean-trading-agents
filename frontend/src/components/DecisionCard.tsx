@@ -55,7 +55,7 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
                   initial={{ scale: 0.8 }}
                   animate={{ scale: 1 }}
                   transition={{ ...SPRING, delay: 0.1 }}
-                  style={{ fontSize: 36, fontWeight: 800, color: cfg.color, lineHeight: 1 }}
+                  style={{ fontSize: 52, fontWeight: 800, color: cfg.color, lineHeight: 1 }}
                 >
                   {cfg.label}
                 </motion.span>
@@ -120,23 +120,58 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
             </motion.div>
           )}
 
-          {/* Agent vote summary */}
-          {decision.agents_summary?.analyst_signals && (
-            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-              {Object.entries(decision.agents_summary.analyst_signals).map(([action, count]) => {
-                const c = ACTION_CFG[action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
-                return (
-                  <div key={action} style={{
-                    flex: 1, borderRadius: "var(--radius-md)", padding: "8px 6px",
-                    background: c.bg, border: `1px solid ${c.hex}22`, textAlign: "center",
-                  }}>
-                    <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{c.label}</p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: c.color, lineHeight: 1.2 }}>{String(count)}</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {/* Agent vote consensus bar */}
+          {decision.agents_summary?.analyst_signals && (() => {
+            const signals = decision.agents_summary.analyst_signals;
+            const total = (signals.BUY ?? 0) + (signals.SELL ?? 0) + (signals.HOLD ?? 0);
+            if (total === 0) return null;
+            return (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 600 }}>에이전트 투표</span>
+                  <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{total}개 기준</span>
+                </div>
+                {/* Segmented bar */}
+                <div style={{ display: "flex", height: 5, borderRadius: 99, overflow: "hidden", gap: 1, marginBottom: 8 }}>
+                  {(signals.BUY ?? 0) > 0 && (
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${((signals.BUY ?? 0) / total) * 100}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+                      style={{ background: "var(--bull)", borderRadius: "99px 0 0 99px" }}
+                    />
+                  )}
+                  {(signals.HOLD ?? 0) > 0 && (
+                    <div style={{ width: `${((signals.HOLD ?? 0) / total) * 100}%`, background: "var(--hold)" }} />
+                  )}
+                  {(signals.SELL ?? 0) > 0 && (
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${((signals.SELL ?? 0) / total) * 100}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+                      style={{ background: "var(--bear)", borderRadius: "0 99px 99px 0" }}
+                    />
+                  )}
+                </div>
+                {/* Count chips */}
+                <div style={{ display: "flex", gap: 6 }}>
+                  {Object.entries(signals).map(([action, count]) => {
+                    const c = ACTION_CFG[action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
+                    if (!count) return null;
+                    return (
+                      <div key={action} style={{
+                        flex: 1, borderRadius: "var(--radius-md)", padding: "7px 6px",
+                        background: c.bg, border: `1px solid ${c.hex}22`, textAlign: "center",
+                      }}>
+                        <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>{c.label}</p>
+                        <p style={{ fontSize: 18, fontWeight: 800, color: c.color, lineHeight: 1 }}>{String(count)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Reasoning */}
           <div style={{

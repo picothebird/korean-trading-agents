@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { AgentThought, AgentRole, TradeDecision, BacktestResult } from "@/types";
+import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators } from "@/types";
 import { AgentOffice, ActivityFeed } from "@/components/AgentOffice";
 import { DecisionCard } from "@/components/DecisionCard";
 import { BacktestPanel } from "@/components/BacktestPanel";
-import { startAnalysis, streamAnalysis, getMarketIndices, runBacktest } from "@/lib/api";
+import { startAnalysis, streamAnalysis, getMarketIndices, runBacktest, getStock } from "@/lib/api";
 
 const POPULAR_TICKERS = [
   { code: "005930", name: "삼성전자" },
@@ -19,6 +19,230 @@ const POPULAR_TICKERS = [
 
 type Tab = "analysis" | "backtest";
 const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.4 };
+
+// ── Utility: KRX market session check ────────────────────────────
+function isKRXOpen(): boolean {
+  try {
+    const now = new Date();
+    const kst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    const h = kst.getHours(), m = kst.getMinutes();
+    const total = h * 60 + m;
+    const day = kst.getDay();
+    return day >= 1 && day <= 5 && total >= 9 * 60 && total <= 15 * 60 + 30;
+  } catch { return false; }
+}
+
+// ── Stock Context Bar ─────────────────────────────────────────────
+function StockContextBar({ info, ticker }: { info: StockIndicators | null; ticker: string }) {
+  const open = isKRXOpen();
+  const isUp = (info?.change_pct ?? 0) >= 0;
+  const priceColor = isUp ? "var(--bull)" : "var(--bear)";
+
+  const rangeProgress = info && info.high_52w > info.low_52w
+    ? ((info.current_price - info.low_52w) / (info.high_52w - info.low_52w)) * 100
+    : 50;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={SPRING}
+      style={{
+        background: "var(--bg-surface)", border: "1px solid var(--border-subtle)",
+        borderRadius: "var(--radius-xl)", padding: "11px 18px", marginBottom: 16,
+        display: "flex", alignItems: "center", gap: 0, overflowX: "auto",
+      }}
+    >
+      {/* Market session */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 16, flexShrink: 0 }}>
+        <motion.div
+          animate={open ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+          transition={{ duration: 2, repeat: open ? Infinity : 0 }}
+          style={{ width: 7, height: 7, borderRadius: "50%", background: open ? "var(--success)" : "var(--text-tertiary)", flexShrink: 0 }}
+        />
+        <span style={{ fontSize: 10, color: open ? "var(--success)" : "var(--text-tertiary)", fontWeight: 700, whiteSpace: "nowrap" }}>
+          {open ? "장 개장" : "장 마감"}
+        </span>
+      </div>
+
+      <div style={{ width: 1, height: 22, background: "var(--border-subtle)", flexShrink: 0, marginRight: 16 }} />
+
+      {/* Price */}
+      {info ? (
+        <>
+          <div style={{ paddingRight: 16, flexShrink: 0 }}>
+            <p style={{ fontSize: 22, fontWeight: 800, color: priceColor, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+              {info.current_price.toLocaleString("ko-KR")}
+            </p>
+            <p style={{ fontSize: 10, color: priceColor, fontVariantNumeric: "tabular-nums", marginTop: 2, fontWeight: 600 }}>
+              {isUp ? "▲" : "▼"} {Math.abs(info.change_pct).toFixed(2)}%
+            </p>
+          </div>
+
+          <div style={{ width: 1, height: 22, background: "var(--border-subtle)", flexShrink: 0, marginRight: 16 }} />
+
+          {/* RSI-14 */}
+          {info.rsi_14 != null && (
+            <>
+              <div style={{ paddingRight: 16, flexShrink: 0 }}>
+                <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 4 }}>RSI-14</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 44, height: 3, background: "var(--bg-overlay)", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{
+                      width: `${Math.min(100, info.rsi_14)}%`, height: "100%", borderRadius: 99,
+                      background: info.rsi_14 >= 70 ? "var(--bull)" : info.rsi_14 <= 30 ? "var(--bear)" : "var(--brand)",
+                    }} />
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: "tabular-nums",
+                    color: info.rsi_14 >= 70 ? "var(--bull)" : info.rsi_14 <= 30 ? "var(--bear)" : "var(--text-primary)" }}>
+                    {info.rsi_14.toFixed(0)}
+                  </span>
+                  {info.rsi_14 >= 70 && <span style={{ fontSize: 8, color: "var(--bull)", fontWeight: 700 }}>과매수</span>}
+                  {info.rsi_14 <= 30 && <span style={{ fontSize: 8, color: "var(--bear)", fontWeight: 700 }}>과매도</span>}
+                </div>
+              </div>
+              <div style={{ width: 1, height: 22, background: "var(--border-subtle)", flexShrink: 0, marginRight: 16 }} />
+            </>
+          )}
+
+          {/* 52W Range bar */}
+          <div style={{ flex: 1, minWidth: 100, paddingRight: 16 }}>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 4 }}>52주 범위</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                {(info.low_52w / 1000).toFixed(0)}K
+              </span>
+              <div style={{ flex: 1, height: 3, background: "var(--bg-overlay)", borderRadius: 99, position: "relative" }}>
+                <div style={{
+                  width: `${Math.min(100, Math.max(0, rangeProgress))}%`, height: "100%",
+                  background: "var(--brand)", borderRadius: 99, position: "absolute",
+                }} />
+                <div style={{
+                  position: "absolute", left: `${Math.min(96, Math.max(2, rangeProgress))}%`,
+                  top: -4, width: 11, height: 11, borderRadius: "50%",
+                  background: priceColor, border: "2px solid var(--bg-surface)", transform: "translateX(-50%)",
+                }} />
+              </div>
+              <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                {(info.high_52w / 1000).toFixed(0)}K
+              </span>
+            </div>
+          </div>
+
+          {/* Volume */}
+          {info.volume > 0 && (
+            <>
+              <div style={{ width: 1, height: 22, background: "var(--border-subtle)", flexShrink: 0, marginRight: 16 }} />
+              <div style={{ flexShrink: 0 }}>
+                <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 2 }}>거래량</p>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
+                  {info.volume >= 1_000_000 ? `${(info.volume / 1_000_000).toFixed(1)}M`
+                    : info.volume >= 1_000 ? `${(info.volume / 1_000).toFixed(0)}K`
+                    : String(info.volume)}
+                </p>
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{ticker} · 시세 데이터 로딩 중...</span>
+      )}
+    </motion.div>
+  );
+}
+
+// ── Pipeline Progress ─────────────────────────────────────────────
+const PIPELINE_LAYERS = [
+  { name: "L1 · 데이터", roles: ["technical_analyst", "fundamental_analyst", "sentiment_analyst", "macro_analyst"] as AgentRole[], total: 4 },
+  { name: "L2 · 토론", roles: ["bull_researcher", "bear_researcher"] as AgentRole[], total: 2 },
+  { name: "L3 · 결정", roles: ["risk_manager", "portfolio_manager"] as AgentRole[], total: 2 },
+] as const;
+
+function PipelineProgress({ thoughts, isRunning, isDone }: {
+  thoughts: Map<AgentRole, AgentThought>;
+  isRunning: boolean;
+  isDone: boolean;
+}) {
+  if (!isRunning && thoughts.size === 0) return null;
+
+  const layerStates = PIPELINE_LAYERS.map((l) => {
+    const done = l.roles.filter(r => thoughts.get(r)?.status === "done").length;
+    const active = l.roles.filter(r => ["thinking", "analyzing", "debating", "deciding"].includes(thoughts.get(r)?.status ?? "")).length;
+    return { ...l, done, active, complete: done === l.total };
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={SPRING}
+      style={{ overflow: "hidden", marginBottom: 14 }}
+    >
+      <div style={{
+        background: "var(--bg-surface)", border: "1px solid var(--border-subtle)",
+        borderRadius: "var(--radius-xl)", padding: "12px 20px",
+        display: "flex", alignItems: "center",
+      }}>
+        {layerStates.map((layer, i) => {
+          const isActive = !layer.complete && layer.active > 0;
+          const dotColor = layer.complete ? "var(--success)" : isActive ? "var(--brand)" : "var(--text-tertiary)";
+          return (
+            <div key={layer.name} style={{ display: "flex", alignItems: "center", flex: i < 2 ? 1 : 0 }}>
+              {/* Step circle */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <motion.div
+                  animate={isActive ? { scale: [1, 1.14, 1] } : { scale: 1 }}
+                  transition={{ duration: 1.4, repeat: isActive ? Infinity : 0 }}
+                  style={{
+                    width: 28, height: 28, borderRadius: "50%",
+                    background: layer.complete ? "var(--success-subtle)" : isActive ? "var(--brand-subtle)" : "var(--bg-elevated)",
+                    border: `2px solid ${dotColor}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 800, color: dotColor, flexShrink: 0,
+                  }}
+                >
+                  {layer.complete ? "✓" : `${layer.done}`}
+                </motion.div>
+                <div style={{ flexShrink: 0 }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+                    color: layer.complete ? "var(--success)" : isActive ? "var(--brand)" : "var(--text-tertiary)" }}>
+                    {layer.name}
+                  </p>
+                  <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>
+                    {layer.complete ? "완료" : isActive ? `${layer.active}개 진행` : `0/${layer.total}`}
+                  </p>
+                </div>
+              </div>
+              {/* Connector line */}
+              {i < 2 && (
+                <div style={{ flex: 1, height: 2, margin: "0 10px", background: "var(--bg-overlay)", position: "relative", overflow: "hidden" }}>
+                  <motion.div
+                    initial={{ width: "0%" }}
+                    animate={{ width: layer.complete ? "100%" : "0%" }}
+                    transition={{ duration: 0.7, ease: "easeOut" }}
+                    style={{ position: "absolute", inset: 0, background: "var(--success)" }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {isDone && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 400, damping: 20 }}
+            style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 12, flexShrink: 0 }}
+          >
+            <span style={{ fontSize: 14 }}>✅</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--success)", whiteSpace: "nowrap" }}>분석 완료</span>
+          </motion.div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
 
 // ── Human Approval Modal ──────────────────────────────────────────
 function HumanApprovalModal({
@@ -123,11 +347,38 @@ export default function Home() {
   const [btResult, setBtResult] = useState<BacktestResult | null>(null);
   const [btLoading, setBtLoading] = useState(false);
   const [approvalModal, setApprovalModal] = useState(false);
+  const [stockInfo, setStockInfo] = useState<StockIndicators | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getMarketIndices().then(setMarketData).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!ticker) return;
+    setStockInfo(null);
+    const timer = setTimeout(() => {
+      getStock(ticker).then(res => {
+        setStockInfo(res.indicators ?? null);
+      }).catch(() => setStockInfo(null));
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [ticker]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tgt.tagName)) return;
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        if (tab === "analysis") handleAnalyze();
+        else handleBacktest();
+      }
+      if (e.key === "Escape") setApprovalModal(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [tab, handleAnalyze, handleBacktest]);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -325,8 +576,14 @@ export default function Home() {
             {tab === "analysis"
               ? isRunning ? "분석 중..." : "분석 시작"
               : btLoading ? "실행 중..." : "백테스트 실행"}
+            {!isRunning && !btLoading && (
+              <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}>Space</span>
+            )}
           </motion.button>
         </div>
+
+        {/* ── Stock Context Bar ──────────────────────────────── */}
+        <StockContextBar info={stockInfo} ticker={ticker} />
 
         <AnimatePresence mode="wait">
           {tab === "analysis" ? (
@@ -336,8 +593,13 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={SPRING}
-              style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 18, alignItems: "start" }}
+              style={{ display: "flex", flexDirection: "column", gap: 0 }}
             >
+              {/* Pipeline progress */}
+              <PipelineProgress thoughts={thoughts} isRunning={isRunning} isDone={!isRunning && !!decision} />
+
+              {/* Main 2-column grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 18, alignItems: "start" }}>
               {/* Left: Agent grid + activity feed */}
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {/* Agent office */}
@@ -420,6 +682,7 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+              </div>
               </div>
             </motion.div>
           ) : (
