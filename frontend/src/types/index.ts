@@ -32,12 +32,16 @@ export interface TradeDecision {
   ticker: string;
   confidence: number;
   reasoning: string;
+  entry_strategy?: string;
+  exit_strategy?: string;
   agents_summary: {
     analyst_signals: { BUY: number; SELL: number; HOLD: number };
     risk_level: string;
     position_size_pct: number;
-    entry_strategy: string;
-    exit_strategy: string;
+    kelly_position_pct?: number;
+    requires_human_approval?: boolean;
+    entry_strategy?: string;
+    exit_strategy?: string;
   };
   timestamp: string;
 }

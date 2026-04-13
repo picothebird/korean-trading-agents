@@ -1,165 +1,184 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { clsx } from "clsx";
 import type { TradeDecision } from "@/types";
 
-const ACTION_STYLE: Record<
-  string,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  BUY: {
-    bg: "bg-red-50",
-    text: "text-red-600",
-    border: "border-red-200",
-    label: "매수",
-  },
-  SELL: {
-    bg: "bg-blue-50",
-    text: "text-blue-600",
-    border: "border-blue-200",
-    label: "매도",
-  },
-  HOLD: {
-    bg: "bg-gray-50",
-    text: "text-gray-600",
-    border: "border-gray-200",
-    label: "관망",
-  },
-};
+// Korean market: RED = UP/BUY, BLUE = DOWN/SELL
+const ACTION_CFG = {
+  BUY:  { label: "매수",   color: "var(--bull)",   bg: "var(--bull-subtle)",   glow: "var(--bull-glow)",   hex: "#F04452" },
+  SELL: { label: "매도",   color: "var(--bear)",   bg: "var(--bear-subtle)",   glow: "var(--bear-glow)",   hex: "#2B7EF5" },
+  HOLD: { label: "관망",   color: "var(--hold)",   bg: "var(--hold-subtle)",   glow: "rgba(139,149,161,0.15)", hex: "#8B95A1" },
+} as const;
+
+const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.5 };
 
 interface DecisionCardProps {
   decision: TradeDecision | null;
+  onHumanApproval?: () => void;
 }
 
-export function DecisionCard({ decision }: DecisionCardProps) {
+export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
   if (!decision) return null;
 
-  const style = ACTION_STYLE[decision.action] ?? ACTION_STYLE.HOLD;
+  const cfg = ACTION_CFG[decision.action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
   const confidencePct = Math.round(decision.confidence * 100);
+  const circumference = 2 * Math.PI * 30;
+  const kelly = decision.agents_summary?.kelly_position_pct ?? decision.agents_summary?.position_size_pct ?? 0;
+  const needsApproval = decision.agents_summary?.requires_human_approval;
 
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className={clsx(
-          "rounded-3xl border-2 p-6",
-          style.bg,
-          style.border
-        )}
+        initial={{ opacity: 0, scale: 0.97, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={SPRING}
+        style={{
+          background: "var(--bg-surface)",
+          border: `1px solid ${cfg.hex}44`,
+          borderRadius: "var(--radius-2xl)",
+          boxShadow: `0 0 32px ${cfg.glow}, var(--shadow-lg)`,
+          overflow: "hidden",
+        }}
       >
-        {/* 헤더 */}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-500">최종 결정</p>
-            <div className="mt-1 flex items-center gap-3">
-              <span
-                className={clsx(
-                  "text-4xl font-bold tracking-tight",
-                  style.text
-                )}
-              >
-                {style.label}
-              </span>
-              <span className="text-2xl font-bold text-gray-800">
-                {decision.ticker}
-              </span>
-            </div>
-          </div>
+        {/* top color bar */}
+        <div style={{ height: 3, background: cfg.color, opacity: 0.9 }} />
 
-          {/* 신뢰도 원형 게이지 */}
-          <div className="relative h-20 w-20">
-            <svg
-              className="h-20 w-20 -rotate-90 transform"
-              viewBox="0 0 80 80"
-            >
-              <circle
-                cx="40"
-                cy="40"
-                r="32"
-                fill="none"
-                stroke="#e5e7eb"
-                strokeWidth="8"
-              />
-              <motion.circle
-                cx="40"
-                cy="40"
-                r="32"
-                fill="none"
-                stroke={
-                  decision.action === "BUY"
-                    ? "#ef4444"
-                    : decision.action === "SELL"
-                    ? "#3b82f6"
-                    : "#6b7280"
-                }
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={`${2 * Math.PI * 32}`}
-                initial={{ strokeDashoffset: 2 * Math.PI * 32 }}
-                animate={{
-                  strokeDashoffset:
-                    2 * Math.PI * 32 * (1 - decision.confidence),
-                }}
-                transition={{ duration: 1.5, ease: "easeOut" }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className={clsx("text-lg font-bold", style.text)}>
-                {confidencePct}%
+        <div style={{ padding: 20 }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+            <div>
+              <p style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
+                최종 매매 결정
               </p>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <motion.span
+                  initial={{ scale: 0.8 }}
+                  animate={{ scale: 1 }}
+                  transition={{ ...SPRING, delay: 0.1 }}
+                  style={{ fontSize: 36, fontWeight: 800, color: cfg.color, lineHeight: 1 }}
+                >
+                  {cfg.label}
+                </motion.span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
+                  {decision.ticker}
+                </span>
+              </div>
+            </div>
+
+            {/* Confidence gauge */}
+            <div style={{ position: "relative", width: 72, height: 72 }}>
+              <svg width="72" height="72" style={{ transform: "rotate(-90deg)" }}>
+                <circle cx="36" cy="36" r="30" fill="none" stroke="var(--bg-elevated)" strokeWidth="6" />
+                <motion.circle
+                  cx="36" cy="36" r="30" fill="none"
+                  stroke={cfg.hex} strokeWidth="6" strokeLinecap="round"
+                  strokeDasharray={circumference}
+                  initial={{ strokeDashoffset: circumference }}
+                  animate={{ strokeDashoffset: circumference * (1 - decision.confidence) }}
+                  transition={{ duration: 1.2, ease: "easeOut" }}
+                />
+              </svg>
+              <div style={{
+                position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center",
+              }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: cfg.color, lineHeight: 1 }}>{confidencePct}%</span>
+                <span style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 1 }}>신뢰도</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* 에이전트 투표 결과 */}
-        {decision.agents_summary?.analyst_signals && (
-          <div className="mt-4 flex gap-3">
-            {Object.entries(decision.agents_summary.analyst_signals).map(
-              ([action, count]) => (
-                <div
-                  key={action}
-                  className="flex-1 rounded-2xl bg-white/70 px-3 py-2 text-center"
+          {/* Human approval gate */}
+          {needsApproval && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              style={{
+                background: "rgba(245,166,35,0.1)", border: "1px solid rgba(245,166,35,0.3)",
+                borderRadius: "var(--radius-lg)", padding: "10px 14px", marginBottom: 12,
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}
+            >
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)" }}>⚠ 인간 승인 필요</p>
+                <p style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 2 }}>
+                  고신뢰도 또는 대규모 포지션 — 최종 확인 필요
+                </p>
+              </div>
+              {onHumanApproval && (
+                <button
+                  onClick={onHumanApproval}
+                  style={{
+                    background: "var(--warning)", color: "#000", fontSize: 11, fontWeight: 700,
+                    padding: "6px 12px", borderRadius: "var(--radius-md)", border: "none",
+                    cursor: "pointer", flexShrink: 0,
+                  }}
                 >
-                  <p className="text-xs text-gray-500">
-                    {ACTION_STYLE[action]?.label ?? action}
-                  </p>
-                  <p className={clsx("text-xl font-bold", ACTION_STYLE[action]?.text)}>
-                    {count}
-                  </p>
-                </div>
-              )
+                  검토하기
+                </button>
+              )}
+            </motion.div>
+          )}
+
+          {/* Agent vote summary */}
+          {decision.agents_summary?.analyst_signals && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              {Object.entries(decision.agents_summary.analyst_signals).map(([action, count]) => {
+                const c = ACTION_CFG[action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
+                return (
+                  <div key={action} style={{
+                    flex: 1, borderRadius: "var(--radius-md)", padding: "8px 6px",
+                    background: c.bg, border: `1px solid ${c.hex}22`, textAlign: "center",
+                  }}>
+                    <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{c.label}</p>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: c.color, lineHeight: 1.2 }}>{String(count)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Reasoning */}
+          <div style={{
+            background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)",
+            padding: "12px 14px", marginBottom: 12,
+          }}>
+            <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 4 }}>결정 근거</p>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.7 }}>
+              {decision.reasoning}
+            </p>
+          </div>
+
+          {/* Strategy + Position */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            {kelly > 0 && (
+              <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
+                <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>Kelly 포지션</p>
+                <p style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{kelly}%</p>
+              </div>
+            )}
+            {decision.agents_summary?.risk_level && (
+              <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
+                <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>리스크 등급</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{decision.agents_summary.risk_level}</p>
+              </div>
+            )}
+            {decision.entry_strategy && (
+              <div style={{ gridColumn: "1 / -1", background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
+                <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 3 }}>진입 전략</p>
+                <p style={{ fontSize: 11, color: "var(--text-secondary)" }}>{decision.entry_strategy}</p>
+              </div>
+            )}
+            {decision.exit_strategy && (
+              <div style={{ gridColumn: "1 / -1", background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
+                <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 3 }}>청산 전략</p>
+                <p style={{ fontSize: 11, color: "var(--text-secondary)" }}>{decision.exit_strategy}</p>
+              </div>
             )}
           </div>
-        )}
-
-        {/* 결정 근거 */}
-        <div className="mt-4 rounded-2xl bg-white/70 p-4">
-          <p className="text-xs font-medium text-gray-500">결정 근거</p>
-          <p className="mt-1 text-sm leading-relaxed text-gray-700">
-            {decision.reasoning}
-          </p>
         </div>
-
-        {/* 포지션 정보 */}
-        {decision.agents_summary?.position_size_pct > 0 && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-xl bg-white/70 px-3 py-2">
-              <p className="text-xs text-gray-400">비중</p>
-              <p className="text-sm font-semibold text-gray-700">
-                {decision.agents_summary.position_size_pct}%
-              </p>
-            </div>
-            <div className="rounded-xl bg-white/70 px-3 py-2">
-              <p className="text-xs text-gray-400">리스크</p>
-              <p className="text-sm font-semibold text-gray-700">
-                {decision.agents_summary.risk_level}
-              </p>
-            </div>
-          </div>
-        )}
       </motion.div>
     </AnimatePresence>
   );
 }
+
