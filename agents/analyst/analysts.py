@@ -7,6 +7,8 @@
 """
 import sys
 import os
+import re
+import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from langchain_openai import ChatOpenAI
@@ -14,6 +16,18 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from backend.core.config import settings
 from backend.core.events import AgentRole, AgentStatus, AgentThought, emit_thought
 from data.market.fetcher import get_technical_indicators, get_stock_info, get_market_index, get_news_async
+
+
+def _safe_parse_json(text: str, fallback: dict) -> dict:
+    """LLM 응답에서 JSON을 안전하게 추출"""
+    text = re.sub(r"```(?:json)?\s*", "", text).strip("`").strip()
+    start, end = text.find("{"), text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            return json.loads(text[start:end])
+        except json.JSONDecodeError:
+            pass
+    return fallback
 
 
 def _make_llm(fast: bool = False) -> ChatOpenAI:
@@ -77,8 +91,12 @@ async def technical_analyst(ticker: str, session_id: str) -> dict:
             SystemMessage(content="당신은 KOSPI/KOSDAQ 전문 기술적 분석가입니다. 반드시 JSON만 출력하세요."),
             HumanMessage(content=prompt),
         ])
-        import json
-        result = json.loads(response.content.strip().strip("```json").strip("```"))
+        result = _safe_parse_json(response.content, {
+            "agent": "technical_analyst",
+            "signal": "HOLD",
+            "confidence": 0.3,
+            "summary": "JSON 파싱 실패",
+        })
         result["agent"] = "technical_analyst"
         result["raw_data"] = indicators
     except Exception as e:
@@ -86,7 +104,7 @@ async def technical_analyst(ticker: str, session_id: str) -> dict:
             "agent": "technical_analyst",
             "signal": "HOLD",
             "confidence": 0.3,
-            "summary": f"분석 실패: {str(e)}",
+            "summary": f"분석 실패: {str(e)[:100]}",
         }
 
     await emit_thought(session_id, AgentThought(
@@ -143,12 +161,16 @@ async def sentiment_analyst(ticker: str, company_name: str, session_id: str) -> 
             SystemMessage(content="당신은 금융 뉴스 감성 분석 전문가입니다. JSON만 출력하세요."),
             HumanMessage(content=prompt),
         ])
-        import json
-        result = json.loads(response.content.strip().strip("```json").strip("```"))
+        result = _safe_parse_json(response.content, {
+            "agent": "sentiment_analyst",
+            "signal": "HOLD",
+            "confidence": 0.3,
+            "summary": "JSON 파싱 실패",
+        })
         result["agent"] = "sentiment_analyst"
         result["news"] = news[:3]
     except Exception as e:
-        result = {"agent": "sentiment_analyst", "signal": "HOLD", "confidence": 0.3, "summary": str(e)}
+        result = {"agent": "sentiment_analyst", "signal": "HOLD", "confidence": 0.3, "summary": str(e)[:100]}
 
     await emit_thought(session_id, AgentThought(
         agent_id="sentiment_analyst",
@@ -200,12 +222,17 @@ async def macro_analyst(session_id: str) -> dict:
             SystemMessage(content="당신은 거시경제 분석 전문가입니다. JSON만 출력하세요."),
             HumanMessage(content=prompt),
         ])
-        import json
-        result = json.loads(response.content.strip().strip("```json").strip("```"))
+        result = _safe_parse_json(response.content, {
+            "agent": "macro_analyst",
+            "signal": "HOLD",
+            "market_condition": "NEUTRAL",
+            "confidence": 0.3,
+            "summary": "JSON 파싱 실패",
+        })
         result["agent"] = "macro_analyst"
         result["market_data"] = market_summary
     except Exception as e:
-        result = {"agent": "macro_analyst", "signal": "HOLD", "confidence": 0.3, "summary": str(e)}
+        result = {"agent": "macro_analyst", "signal": "HOLD", "confidence": 0.3, "summary": str(e)[:100]}
 
     await emit_thought(session_id, AgentThought(
         agent_id="macro_analyst",

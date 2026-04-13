@@ -8,8 +8,18 @@ import asyncio
 from datetime import datetime, timedelta
 from functools import lru_cache
 
+import math
 import pandas as pd
 import FinanceDataReader as fdr
+
+
+def _safe_float(val) -> float | None:
+    """NaN/Inf 를 None 으로 변환"""
+    try:
+        f = float(val)
+        return None if (math.isnan(f) or math.isinf(f)) else f
+    except Exception:
+        return None
 
 
 @lru_cache(maxsize=128)
@@ -94,21 +104,21 @@ def get_technical_indicators(ticker: str, days: int = 120) -> dict:
     latest = df.iloc[-1]
     return {
         "ticker": ticker,
-        "current_price": float(latest["Close"]),
-        "change_pct": float((latest["Close"] - df.iloc[-2]["Close"]) / df.iloc[-2]["Close"] * 100) if len(df) > 1 else 0,
-        "volume": int(latest.get("Volume", 0)),
-        "rsi_14": float(rsi.iloc[-1]) if not rsi.empty else None,
-        "macd": float(macd.iloc[-1]) if not macd.empty else None,
-        "macd_signal": float(signal.iloc[-1]) if not signal.empty else None,
-        "macd_hist": float(hist.iloc[-1]) if not hist.empty else None,
-        "bb_upper": float(bb_upper.iloc[-1]) if not bb_upper.empty else None,
-        "bb_middle": float(ma20.iloc[-1]) if not ma20.empty else None,
-        "bb_lower": float(bb_lower.iloc[-1]) if not bb_lower.empty else None,
-        "ma5": float(close.rolling(5).mean().iloc[-1]),
-        "ma20": float(close.rolling(20).mean().iloc[-1]),
-        "ma60": float(close.rolling(60).mean().iloc[-1]) if len(close) >= 60 else None,
-        "high_52w": float(close.rolling(min(252, len(close))).max().iloc[-1]),
-        "low_52w": float(close.rolling(min(252, len(close))).min().iloc[-1]),
+        "current_price": _safe_float(latest["Close"]),
+        "change_pct": _safe_float((latest["Close"] - df.iloc[-2]["Close"]) / df.iloc[-2]["Close"] * 100) if len(df) > 1 else 0.0,
+        "volume": int(latest.get("Volume", 0) or 0),
+        "rsi_14": _safe_float(rsi.iloc[-1]) if not rsi.empty else None,
+        "macd": _safe_float(macd.iloc[-1]) if not macd.empty else None,
+        "macd_signal": _safe_float(signal.iloc[-1]) if not signal.empty else None,
+        "macd_hist": _safe_float(hist.iloc[-1]) if not hist.empty else None,
+        "bb_upper": _safe_float(bb_upper.iloc[-1]) if not bb_upper.empty else None,
+        "bb_middle": _safe_float(ma20.iloc[-1]) if not ma20.empty else None,
+        "bb_lower": _safe_float(bb_lower.iloc[-1]) if not bb_lower.empty else None,
+        "ma5": _safe_float(close.rolling(5).mean().iloc[-1]),
+        "ma20": _safe_float(close.rolling(20).mean().iloc[-1]),
+        "ma60": _safe_float(close.rolling(60).mean().iloc[-1]) if len(close) >= 60 else None,
+        "high_52w": _safe_float(close.rolling(min(252, len(close))).max().iloc[-1]),
+        "low_52w": _safe_float(close.rolling(min(252, len(close))).min().iloc[-1]),
         "last_updated": datetime.now().isoformat(),
     }
 

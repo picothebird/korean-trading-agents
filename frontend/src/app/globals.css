@@ -1,26 +1,334 @@
 @import "tailwindcss";
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+
+/* ─────────────────────────────────────────────
+   KOREAN TRADING DASHBOARD — Dark-Mode Design System
+   Based on: Toss / Linear / Vercel aesthetics
+   Korean market: Red = Up (상승), Blue = Down (하락)
+───────────────────────────────────────────── */
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Backgrounds ── */
+  --bg-base:     #0C0D10;   /* deepest background */
+  --bg-surface:  #141518;   /* cards, panels */
+  --bg-elevated: #1C1E23;   /* hover state, nested card */
+  --bg-overlay:  #242730;   /* modals, dropdowns */
+  --bg-input:    #1A1C21;   /* form inputs */
+
+  /* ── Borders ── */
+  --border-subtle:  rgba(255,255,255,0.05);
+  --border-default: rgba(255,255,255,0.09);
+  --border-strong:  rgba(255,255,255,0.16);
+  --border-focus:   #3182F6;
+
+  /* ── Text ── */
+  --text-primary:   #EAEDF2;   /* headings, primary labels */
+  --text-secondary: #8B95A1;   /* secondary labels, descriptions */
+  --text-tertiary:  #4E5867;   /* placeholders, disabled */
+  --text-inverse:   #0C0D10;   /* text on colored bg */
+
+  /* ── Korean Market Price Colors ── */
+  /* RED = 상승 (up/bull)  — KRX / HTS / all Korean brokers */
+  --bull:        #F04452;
+  --bull-muted:  #C43040;
+  --bull-subtle: rgba(240, 68, 82, 0.12);
+  --bull-glow:   rgba(240, 68, 82, 0.25);
+
+  /* BLUE = 하락 (down/bear) — KRX convention */
+  --bear:        #2B7EF5;
+  --bear-muted:  #1A6AE0;
+  --bear-subtle: rgba(43, 126, 245, 0.12);
+  --bear-glow:   rgba(43, 126, 245, 0.25);
+
+  /* GRAY = 보합 (flat/hold) */
+  --hold:        #8B95A1;
+  --hold-subtle: rgba(139, 149, 161, 0.12);
+
+  /* ── Brand (Toss Blue) ── */
+  --brand:        #3182F6;   /* #3182F6 = Toss primary CTA */
+  --brand-hover:  #1A70F4;
+  --brand-subtle: rgba(49, 130, 246, 0.12);
+  --brand-glow:   rgba(49, 130, 246, 0.30);
+
+  /* ── Semantic ── */
+  --success:        #2FCA73;
+  --success-subtle: rgba(47, 202, 115, 0.12);
+  --warning:        #F5A623;
+  --warning-subtle: rgba(245, 166, 35, 0.12);
+  --error:          #F04452;
+  --error-subtle:   rgba(240, 68, 82, 0.12);
+  --info:           #3182F6;
+
+  /* ── Agent Status Colors (Linear-inspired) ── */
+  --status-idle:     #4E5867;
+  --status-thinking: #3182F6;
+  --status-analyzing:#F5A623;
+  --status-debating: #A855F7;
+  --status-deciding: #F59E0B;
+  --status-done:     #2FCA73;
+
+  /* ── Typography ── */
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace,
+    "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── Numeric data (tabular figures for aligned prices) ── */
+  --font-numeric: "Pretendard Variable", Pretendard, sans-serif;
+  --font-feature-numeric: "tnum", "lnum";
+
+  /* ── Radius ── */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  18px;
+  --radius-2xl: 24px;
+
+  /* ── Spacing (8-pt grid) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Shadows (depth layers) ── */
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg:  0 8px 24px rgba(0,0,0,0.6);
+  --shadow-xl:  0 16px 48px rgba(0,0,0,0.7);
+  --shadow-focus: 0 0 0 3px rgba(49,130,246,0.35);
+
+  /* ── Transitions ── */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-back:  cubic-bezier(0.36, 0, 0.66, -0.56);
+  --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast:   120ms;
+  --duration-base:   200ms;
+  --duration-slow:   350ms;
 }
 
+/* ─────────────────────────────────────────────
+   Tailwind v4 theme extension
+───────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--bg-base);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─────────────────────────────────────────────
+   Base
+───────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  /* Prevent layout shift during font load */
+  font-display: optional;
 }
+
+/* ─────────────────────────────────────────────
+   Scrollbar (Vercel/Linear style — subtle)
+───────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.20);
+}
+
+/* ─────────────────────────────────────────────
+   Selection
+───────────────────────────────────────────── */
+::selection {
+  background: var(--brand-subtle);
+  color: var(--text-primary);
+}
+
+/* ─────────────────────────────────────────────
+   Focus ring (accessible, Toss-style)
+───────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─────────────────────────────────────────────
+   Utility: Tabular / Monospaced price numbers
+───────────────────────────────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.01em;
+}
+
+/* ─────────────────────────────────────────────
+   Utility: Glass card (Toss modal / Linear panel)
+   backdrop-blur + semi-transparent bg + bright border
+───────────────────────────────────────────── */
+.glass {
+  background: rgba(20, 21, 24, 0.75);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--border-default);
+}
+
+/* ─────────────────────────────────────────────
+   Utility: Market price colors
+───────────────────────────────────────────── */
+.price-up   { color: var(--bull); }
+.price-down { color: var(--bear); }
+.price-flat { color: var(--hold); }
+
+/* ─────────────────────────────────────────────
+   Utility: Glow effects for active states
+───────────────────────────────────────────── */
+.glow-bull { box-shadow: 0 0 20px var(--bull-glow); }
+.glow-bear { box-shadow: 0 0 20px var(--bear-glow); }
+.glow-brand { box-shadow: 0 0 20px var(--brand-glow); }
+
+/* ─────────────────────────────────────────────
+   Utility: Agent status dot (Linear-style)
+───────────────────────────────────────────── */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.idle      { background: var(--status-idle); }
+.status-dot.thinking  { background: var(--status-thinking); animation: pulse-dot 1.4s ease-in-out infinite; }
+.status-dot.analyzing { background: var(--status-analyzing); animation: pulse-dot 1s ease-in-out infinite; }
+.status-dot.debating  { background: var(--status-debating); animation: pulse-dot 1.2s ease-in-out infinite; }
+.status-dot.deciding  { background: var(--status-deciding); animation: pulse-dot 0.8s ease-in-out infinite; }
+.status-dot.done      { background: var(--status-done); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* ─────────────────────────────────────────────
+   Utility: Number flash on price update
+   Usage: add/remove class via JS on price change
+───────────────────────────────────────────── */
+@keyframes flash-up {
+  0%   { background: var(--bull-subtle); }
+  100% { background: transparent; }
+}
+@keyframes flash-down {
+  0%   { background: var(--bear-subtle); }
+  100% { background: transparent; }
+}
+.flash-up   { animation: flash-up   0.6s var(--ease-out-expo) forwards; }
+.flash-down { animation: flash-down 0.6s var(--ease-out-expo) forwards; }
+
+/* ─────────────────────────────────────────────
+   Utility: Skeleton shimmer (Vercel-style)
+───────────────────────────────────────────── */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 0%,
+    var(--bg-elevated) 50%,
+    var(--bg-surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ─────────────────────────────────────────────
+   Utility: Sidebar active item (Linear-style)
+───────────────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background var(--duration-fast) ease,
+              color var(--duration-fast) ease;
+  cursor: pointer;
+}
+.nav-item:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.nav-item.active {
+  background: rgba(49, 130, 246, 0.10);
+  color: var(--brand);
+}
+
+/* ─────────────────────────────────────────────
+   Utility: Market ticker chip (KOSPI/KOSDAQ bar)
+───────────────────────────────────────────── */
+.ticker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────
+   Activity feed (LangSmith trace / Linear activity)
+───────────────────────────────────────────── */
+.activity-line {
+  position: absolute;
+  left: 15px;
+  top: 32px;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-subtle);
+}
+
+/* ─────────────────────────────────────────────
+   Candlestick chart conventions
+   Korean: red=up (#F04452), blue=down (#2B7EF5)
+   Wick: same color, 1px
+───────────────────────────────────────────── */
+.candle-up   { fill: var(--bull); stroke: var(--bull); }
+.candle-down { fill: var(--bear); stroke: var(--bear); }
+.candle-flat { fill: var(--hold); stroke: var(--hold); }

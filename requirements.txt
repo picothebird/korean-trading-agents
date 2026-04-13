@@ -1,24 +1,47 @@
-# LLM 프레임워크
-langchain>=0.3.0
-langgraph>=0.2.0
-langchain-openai>=0.2.0
-langchain-anthropic>=0.2.0
+# ============================================================
+# Korean Trading Agents - Requirements
+# Python 3.12+ (tested on 3.14.0)
+# Install: pip install -r requirements.txt
+# FinanceDataReader: pip install git+https://github.com/FinanceData/FinanceDataReader.git
+# ============================================================
 
-# 한국 주식 데이터
-FinanceDataReader>=0.9.0
-pykrx>=1.0.45
+# --- Web Framework ---
+fastapi==0.119.0
+uvicorn[standard]==0.37.0
+starlette==0.48.0
+httpx==0.28.1
 
-# 기술 지표
-pandas-ta>=0.3.14b
-ta>=0.11.0
+# --- LLM Framework ---
+langchain==1.2.15
+langchain-core==1.2.28
+langchain-openai==1.1.12
+langchain-community==0.4.1
+langchain-text-splitters==1.1.1
+langgraph==1.1.6
+langgraph-checkpoint==4.0.1
+langgraph-prebuilt==1.0.9
+openai==2.31.0
 
-# 데이터 처리
-pandas>=2.0.0
-numpy>=1.26.0
-requests>=2.31.0
+# --- Data & Pydantic ---
+pydantic==2.12.3
+pydantic-settings==2.13.1
+python-dotenv==1.1.1
 
-# 환경 변수
-python-dotenv>=1.0.0
+# --- Korean Market Data ---
+# FinanceDataReader: install from GitHub (PyPI wheel missing for Python 3.14)
+# pip install git+https://github.com/FinanceData/FinanceDataReader.git
+pykrx==1.2.4
+yfinance==1.2.1
+feedparser==6.0.12
 
-# 비동기
-aiohttp>=3.9.0
+# --- Technical Indicators ---
+ta==0.11.0
+
+# --- Data Processing ---
+pandas==2.3.3
+numpy==1.26.4
+requests==2.32.5
+aiohttp==3.13.5
+
+# --- Utils ---
+tzdata==2025.2
