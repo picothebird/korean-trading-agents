@@ -1,0 +1,24 @@
+# LLM 프레임워크
+langchain>=0.3.0
+langgraph>=0.2.0
+langchain-openai>=0.2.0
+langchain-anthropic>=0.2.0
+
+# 한국 주식 데이터
+FinanceDataReader>=0.9.0
+pykrx>=1.0.45
+
+# 기술 지표
+pandas-ta>=0.3.14b
+ta>=0.11.0
+
+# 데이터 처리
+pandas>=2.0.0
+numpy>=1.26.0
+requests>=2.31.0
+
+# 환경 변수
+python-dotenv>=1.0.0
+
+# 비동기
+aiohttp>=3.9.0

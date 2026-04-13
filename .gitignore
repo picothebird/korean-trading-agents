@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# 환경 변수 (API 키 절대 커밋 금지)
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# 로그
+logs/
+*.log
+
+# 데이터 캐시
+data_cache/
+*.csv
+*.parquet
+
+# 모델 가중치
+models/
+*.pt
+*.pth
+*.pkl
+
+# OS
+.DS_Store
+Thumbs.db
