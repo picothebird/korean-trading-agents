@@ -75,6 +75,17 @@ class SettingsUpdateRequest(BaseModel):
     reasoning_effort: str = "high"      # "high" | "medium" | "low"
     max_debate_rounds: int = 2
     kis_mock: bool = True
+    kis_app_key: str = ""
+    kis_app_secret: str = ""
+    kis_account_no: str = ""
+
+
+class KisOrderRequest(BaseModel):
+    ticker: str
+    side: str                  # "buy" | "sell"
+    qty: int
+    price: int
+    order_type: str = "00"    # "00": 지정가, "01": 시장가
 
 
 class AgentBacktestRequest(BaseModel):
@@ -349,6 +360,9 @@ async def get_settings_api():
         "reasoning_effort": settings.reasoning_effort,
         "max_debate_rounds": settings.max_debate_rounds,
         "kis_mock": settings.kis_mock,
+        "kis_app_key_set": bool(settings.kis_app_key),
+        "kis_app_secret_set": bool(settings.kis_app_secret),
+        "kis_account_no": settings.kis_account_no,
     }
 
 
@@ -367,6 +381,20 @@ async def update_settings_api(req: SettingsUpdateRequest):
     object.__setattr__(settings, "max_debate_rounds", req.max_debate_rounds)
     object.__setattr__(settings, "kis_mock", req.kis_mock)
 
+    # KIS 자격증명이 변경된 경우 토큰 캐시 무효화
+    kis_changed = False
+    if req.kis_app_key and req.kis_app_key != settings.kis_app_key:
+        object.__setattr__(settings, "kis_app_key", req.kis_app_key)
+        kis_changed = True
+    if req.kis_app_secret and req.kis_app_secret != settings.kis_app_secret:
+        object.__setattr__(settings, "kis_app_secret", req.kis_app_secret)
+        kis_changed = True
+    if req.kis_account_no and req.kis_account_no != settings.kis_account_no:
+        object.__setattr__(settings, "kis_account_no", req.kis_account_no)
+    if kis_changed:
+        from data.kis.client import invalidate_token
+        invalidate_token()
+
     _us.save({
         "openai_api_key": req.openai_api_key or None,  # 빈 문자열이면 저장 안 함
         "default_llm_model": req.default_llm_model,
@@ -374,8 +402,64 @@ async def update_settings_api(req: SettingsUpdateRequest):
         "reasoning_effort": req.reasoning_effort,
         "max_debate_rounds": req.max_debate_rounds,
         "kis_mock": req.kis_mock,
+        "kis_app_key": req.kis_app_key or None,
+        "kis_app_secret": req.kis_app_secret or None,
+        "kis_account_no": req.kis_account_no or None,
     })
     return {"ok": True}
+
+
+# ── KIS OpenAPI ─────────────────────────────────────────────────
+@app.get("/api/kis/status")
+async def kis_status():
+    """KIS API 연결 상태 확인"""
+    try:
+        from data.kis.trading import get_connection_status
+        return await get_connection_status()
+    except Exception as e:
+        return {"connected": False, "is_mock": settings.kis_mock, "error": str(e)}
+
+
+@app.get("/api/kis/balance")
+async def kis_balance():
+    """주식 잔고 조회"""
+    try:
+        from data.kis.trading import get_balance
+        return await get_balance()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/kis/price/{ticker}")
+async def kis_price(ticker: str):
+    """국내주식 현재가 조회"""
+    try:
+        from data.kis.trading import get_current_price
+        return await get_current_price(ticker)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/kis/order")
+async def kis_order(req: KisOrderRequest):
+    """주식 현금 주문 (매수/매도)"""
+    if req.side not in ("buy", "sell"):
+        raise HTTPException(status_code=422, detail="side는 'buy' 또는 'sell'이어야 합니다")
+    if req.qty <= 0:
+        raise HTTPException(status_code=422, detail="수량은 1 이상이어야 합니다")
+    if req.order_type not in ("00", "01"):
+        raise HTTPException(status_code=422, detail="order_type은 '00'(지정가) 또는 '01'(시장가)")
+    try:
+        from data.kis.trading import place_order
+        return await place_order(
+            ticker=req.ticker,
+            side=req.side,  # type: ignore[arg-type]
+            qty=req.qty,
+            price=req.price,
+            order_type=req.order_type,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 if __name__ == "__main__":

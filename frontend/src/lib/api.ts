@@ -103,6 +103,9 @@ export async function updateSettings(data: {
   reasoning_effort: string;
   max_debate_rounds: number;
   kis_mock: boolean;
+  kis_app_key?: string;
+  kis_app_secret?: string;
+  kis_account_no?: string;
 }): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/settings`, {
     method: "POST",
@@ -167,4 +170,45 @@ export function streamAgentBacktest(
   };
 
   return () => es.close();
+}
+
+// ── KIS OpenAPI ─────────────────────────────────────────────────
+
+export async function getKisStatus(): Promise<import("@/types").KisStatus> {
+  const res = await fetch(`${BASE_URL}/api/kis/status`);
+  if (!res.ok) throw new Error("KIS 상태 조회 실패");
+  return res.json();
+}
+
+export async function getKisBalance(): Promise<import("@/types").KisBalance> {
+  const res = await fetch(`${BASE_URL}/api/kis/balance`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "잔고 조회 실패" }));
+    throw new Error(err.detail ?? "잔고 조회 실패");
+  }
+  return res.json();
+}
+
+export async function getKisPrice(ticker: string): Promise<import("@/types").KisPrice> {
+  const res = await fetch(`${BASE_URL}/api/kis/price/${encodeURIComponent(ticker)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "현재가 조회 실패" }));
+    throw new Error(err.detail ?? "현재가 조회 실패");
+  }
+  return res.json();
+}
+
+export async function placeKisOrder(
+  req: import("@/types").KisOrderRequest
+): Promise<import("@/types").KisOrderResult> {
+  const res = await fetch(`${BASE_URL}/api/kis/order`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "주문 실패" }));
+    throw new Error(err.detail ?? "주문 실패");
+  }
+  return res.json();
 }

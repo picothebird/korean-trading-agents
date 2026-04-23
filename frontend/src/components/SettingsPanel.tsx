@@ -128,9 +128,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     reasoning_effort: "high" as "high" | "medium" | "low",
     max_debate_rounds: 2,
     kis_mock: true,
+    kis_app_key: "",
+    kis_app_secret: "",
+    kis_account_no: "",
   });
   const [apiKeyStatus, setApiKeyStatus] = useState({ set: false, preview: "" });
+  const [kisKeyStatus, setKisKeyStatus] = useState({ appKeySet: false, secretSet: false, accountNo: "" });
   const [showKey, setShowKey] = useState(false);
+  const [showKisSecret, setShowKisSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "ok" | "err">("idle");
 
@@ -140,6 +145,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     getSettings()
       .then((s) => {
         setApiKeyStatus({ set: s.openai_api_key_set, preview: s.openai_api_key_preview });
+        setKisKeyStatus({
+          appKeySet: s.kis_app_key_set ?? false,
+          secretSet: s.kis_app_secret_set ?? false,
+          accountNo: s.kis_account_no ?? "",
+        });
         setForm(prev => ({
           ...prev,
           default_llm_model: s.default_llm_model,
@@ -147,6 +157,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           reasoning_effort: s.reasoning_effort,
           max_debate_rounds: s.max_debate_rounds,
           kis_mock: s.kis_mock,
+          kis_account_no: s.kis_account_no ?? "",
         }));
       })
       .catch(() => {});
@@ -164,6 +175,17 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       if (form.openai_api_key) {
         setApiKeyStatus({ set: true, preview: `sk-...${form.openai_api_key.slice(-4)}` });
         setForm(prev => ({ ...prev, openai_api_key: "" }));
+      }
+      if (form.kis_app_key) {
+        setKisKeyStatus(prev => ({ ...prev, appKeySet: true }));
+        setForm(prev => ({ ...prev, kis_app_key: "" }));
+      }
+      if (form.kis_app_secret) {
+        setKisKeyStatus(prev => ({ ...prev, secretSet: true }));
+        setForm(prev => ({ ...prev, kis_app_secret: "" }));
+      }
+      if (form.kis_account_no) {
+        setKisKeyStatus(prev => ({ ...prev, accountNo: form.kis_account_no }));
       }
       setTimeout(() => setSaveStatus("idle"), 3000);
     } catch {
@@ -434,6 +456,110 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                       />
                     </button>
                   </div>
+                </Field>
+              </Section>
+
+              {/* ── KIS API 자격증명 ── */}
+              <Section title="KIS OpenAPI 자격증명">
+                <Field
+                  label="App Key"
+                  description="한국투자증권 KIS OpenAPI에서 발급받은 앱 키입니다. 변경 시에만 입력하세요."
+                >
+                  {kisKeyStatus.appKeySet && (
+                    <div style={{
+                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
+                      padding: "4px 10px", borderRadius: 20,
+                      background: "rgba(47,202,115,0.12)", border: "1px solid rgba(47,202,115,0.3)",
+                    }}>
+                      <span style={{ fontSize: 9, color: "var(--success)" }}>●</span>
+                      <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600 }}>설정됨</span>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    value={form.kis_app_key}
+                    onChange={(e) => set("kis_app_key", e.target.value)}
+                    placeholder={kisKeyStatus.appKeySet ? "새 키로 교체 시에만 입력" : "PS..."}
+                    autoComplete="off"
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 8,
+                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                      color: "var(--text-primary)", fontSize: 12, outline: "none",
+                      boxSizing: "border-box", fontFamily: "monospace",
+                    }}
+                  />
+                </Field>
+
+                <Field
+                  label="App Secret"
+                  description="앱 시크릿 키입니다. 변경 시에만 입력하세요."
+                >
+                  {kisKeyStatus.secretSet && (
+                    <div style={{
+                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
+                      padding: "4px 10px", borderRadius: 20,
+                      background: "rgba(47,202,115,0.12)", border: "1px solid rgba(47,202,115,0.3)",
+                    }}>
+                      <span style={{ fontSize: 9, color: "var(--success)" }}>●</span>
+                      <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600 }}>설정됨</span>
+                    </div>
+                  )}
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showKisSecret ? "text" : "password"}
+                      value={form.kis_app_secret}
+                      onChange={(e) => set("kis_app_secret", e.target.value)}
+                      placeholder={kisKeyStatus.secretSet ? "새 시크릿으로 교체 시에만 입력" : "..."}
+                      autoComplete="off"
+                      style={{
+                        width: "100%", padding: "9px 44px 9px 12px", borderRadius: 8,
+                        background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                        color: "var(--text-primary)", fontSize: 12, outline: "none",
+                        boxSizing: "border-box", fontFamily: "monospace",
+                      }}
+                    />
+                    <button
+                      onClick={() => setShowKisSecret(v => !v)}
+                      style={{
+                        position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                        background: "none", border: "none", color: "var(--text-tertiary)",
+                        cursor: "pointer", fontSize: 14, padding: 0,
+                      }}
+                    >
+                      {showKisSecret ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                </Field>
+
+                <Field
+                  label="계좌번호"
+                  description="종합 계좌번호 (예: 12345678-01). 앞 8자리-뒤 2자리 형식으로 입력하세요."
+                >
+                  {kisKeyStatus.accountNo && (
+                    <div style={{
+                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
+                      padding: "4px 10px", borderRadius: 20,
+                      background: "rgba(47,202,115,0.12)", border: "1px solid rgba(47,202,115,0.3)",
+                    }}>
+                      <span style={{ fontSize: 9, color: "var(--success)" }}>●</span>
+                      <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600 }}>
+                        {kisKeyStatus.accountNo}
+                      </span>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    value={form.kis_account_no}
+                    onChange={(e) => set("kis_account_no", e.target.value)}
+                    placeholder="12345678-01"
+                    maxLength={12}
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 8,
+                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                      color: "var(--text-primary)", fontSize: 13, outline: "none",
+                      boxSizing: "border-box", fontVariantNumeric: "tabular-nums",
+                    }}
+                  />
                 </Field>
               </Section>
 

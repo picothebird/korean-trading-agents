@@ -7,6 +7,7 @@ import { AgentOffice, ActivityFeed } from "@/components/AgentOffice";
 import { DecisionCard } from "@/components/DecisionCard";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { KisPanel } from "@/components/KisPanel";
 import { startAnalysis, streamAnalysis, getMarketIndices, runBacktest, getStock, searchStocks, startAgentBacktest, streamAgentBacktest } from "@/lib/api";
 
 const POPULAR_TICKERS = [
@@ -18,7 +19,7 @@ const POPULAR_TICKERS = [
   { code: "000270", name: "기아" },
 ];
 
-type Tab = "analysis" | "backtest";
+type Tab = "analysis" | "backtest" | "trading";
 const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.4 };
 
 // ── Utility: KRX market session check ────────────────────────────
@@ -471,6 +472,7 @@ export default function Home() {
   const [approvalModal, setApprovalModal] = useState(false);
   const [stockInfo, setStockInfo] = useState<StockIndicators | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [kisOrderTicker, setKisOrderTicker] = useState("");
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -496,7 +498,7 @@ export default function Home() {
       if (e.key === " " || e.code === "Space") {
         e.preventDefault();
         if (tab === "analysis") handleAnalyze();
-        else handleBacktest();
+        else if (tab === "backtest") handleBacktest();
       }
       if (e.key === "Escape") setApprovalModal(false);
     };
@@ -657,7 +659,7 @@ export default function Home() {
 
         {/* Nav tabs */}
         <div style={{ padding: "16px 20px" }}>
-          {(["analysis", "backtest"] as Tab[]).map((t) => (
+          {(["analysis", "backtest", "trading"] as Tab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)}
               style={{
                 display: "flex", alignItems: "center", gap: 8, width: "100%",
@@ -668,8 +670,8 @@ export default function Home() {
                 cursor: "pointer", marginBottom: 2, transition: "all 150ms",
               }}
             >
-              <span>{t === "analysis" ? "🔍" : "📈"}</span>
-              {t === "analysis" ? "AI 분석" : "백테스트"}
+              <span>{t === "analysis" ? "🔍" : t === "backtest" ? "📊" : "💰"}</span>
+              {t === "analysis" ? "AI 분석" : t === "backtest" ? "백테스트" : "KIS 매매"}
               {t === "analysis" && activeCount > 0 && (
                 <span style={{
                   marginLeft: "auto", fontSize: 10, fontWeight: 700, padding: "1px 6px",
@@ -708,19 +710,20 @@ export default function Home() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.2 }}>
-              {tab === "analysis" ? "AI 에이전트 분석" : "전략 백테스트"}
+              {tab === "analysis" ? "AI 에이전트 분석" : tab === "backtest" ? "전략 백테스트" : "KIS OpenAPI 매매"}
             </h1>
             <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>
               {companyName && <><span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{companyName}</span> · </>}
               <span style={{ fontVariantNumeric: "tabular-nums" }}>{ticker}</span>
               {tab === "analysis"
                 ? " · 8개 에이전트 병렬 분석"
-                : " · 2022.01 ~ 2024.12 · 초기자본 1,000만원"}
+                : tab === "backtest" ? " · 2022.01 ~ 2024.12 · 초기자본 1,000만원"
+                : " · 잔고/현재가/주문"}
             </p>
           </div>
           <motion.button
-            onClick={tab === "analysis" ? handleAnalyze : handleBacktest}
-            disabled={isRunning || btLoading}
+            onClick={tab === "analysis" ? handleAnalyze : tab === "backtest" ? handleBacktest : undefined}
+            disabled={isRunning || btLoading || tab === "trading"}
             whileTap={{ scale: 0.96 }}
             style={{
               padding: "10px 22px", borderRadius: "var(--radius-xl)", border: "none",
@@ -733,8 +736,9 @@ export default function Home() {
           >
             {tab === "analysis"
               ? isRunning ? "분석 중..." : "분석 시작"
-              : btLoading ? "실행 중..." : "백테스트 실행"}
-            {!isRunning && !btLoading && (
+              : tab === "backtest" ? (btLoading ? "실행 중..." : "백테스트 실행")
+              : "—"}
+            {tab !== "trading" && !isRunning && !btLoading && (
               <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}>Space</span>
             )}
           </motion.button>
@@ -790,6 +794,18 @@ export default function Home() {
                     decision={decision}
                     onHumanApproval={decision.agents_summary?.requires_human_approval ? () => setApprovalModal(true) : undefined}
                   />
+                  <button
+                    onClick={() => { setKisOrderTicker(decision.ticker); setTab("trading"); }}
+                    style={{
+                      width: "100%", marginTop: 8, padding: "10px 0",
+                      borderRadius: "var(--radius-lg)", border: "none",
+                      background: "var(--bg-elevated)", color: "var(--text-secondary)",
+                      fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      transition: "all 150ms",
+                    }}
+                  >
+                    💰 KIS 매매 탭에서 주문하기
+                  </button>
                 ) : (
                   <div style={{
                     background: "var(--bg-surface)", border: "1px solid var(--border-subtle)",
@@ -843,7 +859,7 @@ export default function Home() {
               </div>
               </div>
             </motion.div>
-          ) : (
+          ) : tab === "backtest" ? (
             <motion.div
               key="backtest"
               initial={{ opacity: 0, y: 8 }}
@@ -975,6 +991,16 @@ export default function Home() {
                   </p>
                 </div>
               )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="trading"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={SPRING}
+            >
+              <KisPanel prefillTicker={kisOrderTicker || ticker} />
             </motion.div>
           )}
         </AnimatePresence>

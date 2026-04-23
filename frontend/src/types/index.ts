@@ -109,6 +109,74 @@ export interface UserSettings {
   reasoning_effort: "high" | "medium" | "low";
   max_debate_rounds: number;
   kis_mock: boolean;
+  kis_app_key_set: boolean;
+  kis_app_secret_set: boolean;
+  kis_account_no: string;
+}
+
+// ── KIS OpenAPI 타입 ─────────────────────────────────────────────
+
+export interface KisStatus {
+  connected: boolean;
+  is_mock: boolean;
+  error?: string;
+  token_preview?: string;
+}
+
+export interface KisHolding {
+  ticker: string;
+  name: string;
+  qty: number;
+  avg_price: number;
+  current_price: number;
+  eval_amount: number;
+  profit_loss: number;
+  profit_loss_pct: number;
+  purchase_amount: number;
+}
+
+export interface KisBalance {
+  holdings: KisHolding[];
+  cash: number;
+  total_eval: number;
+  total_purchase: number;
+  total_profit_loss: number;
+  total_profit_loss_pct: number;
+  is_mock: boolean;
+}
+
+export interface KisPrice {
+  ticker: string;
+  current_price: number;
+  change: number;
+  change_pct: number;
+  volume: number;
+  high: number;
+  low: number;
+  open: number;
+  market_cap: string;
+  per: string;
+  pbr: string;
+  name: string;
+}
+
+export interface KisOrderRequest {
+  ticker: string;
+  side: "buy" | "sell";
+  qty: number;
+  price: number;
+  order_type: "00" | "01";
+}
+
+export interface KisOrderResult {
+  order_no: string;
+  order_time: string;
+  side: "buy" | "sell";
+  ticker: string;
+  qty: number;
+  price: number;
+  order_type_label: string;
+  is_mock: boolean;
 }
 
 export interface BacktestProgress {
