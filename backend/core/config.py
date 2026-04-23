@@ -19,8 +19,9 @@ class Settings(BaseSettings):
     kis_mock: bool = Field(default=True, alias="KIS_MOCK")
 
     # LLM 설정
-    default_llm_model: str = "gpt-4o"
-    fast_llm_model: str = "gpt-4o-mini"
+    default_llm_model: str = "gpt-5.4"
+    fast_llm_model: str = "gpt-5.4-mini"
+    reasoning_effort: str = "high"   # "high" | "medium" | "low" (gpt-5/o-series 전용)
     max_debate_rounds: int = 2
 
     # 서버

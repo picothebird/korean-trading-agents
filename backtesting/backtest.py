@@ -6,11 +6,12 @@
 """
 import sys
 import os
+import asyncio
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Awaitable, Optional
 import pandas as pd
 import numpy as np
 import FinanceDataReader as fdr
@@ -118,50 +119,13 @@ def run_simple_backtest(
     except Exception:
         bm_return = 0.0
 
-    # 성과 지표 계산
-    total_days = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days
-    years = max(total_days / 365, 0.01)
-
-    final_equity = float(equity.iloc[-1])
-    total_return = (final_equity / initial_capital - 1) * 100
-    annualized_return = ((final_equity / initial_capital) ** (1 / years) - 1) * 100
-
-    # 일별 수익률 (로그 수익률 기반)
-    daily_returns = equity.pct_change().dropna()
-    risk_free = 0.035
-    excess_returns = daily_returns - risk_free / 252
-    sharpe = float(excess_returns.mean() / excess_returns.std() * np.sqrt(252)) if float(excess_returns.std()) > 0 else 0.0
-
-    # 최대 낙폭
-    rolling_max = equity.cummax()
-    drawdown = (equity - rolling_max) / rolling_max * 100
-    max_dd = float(drawdown.min())
-
-    # 칼마 비율
-    calmar = annualized_return / abs(max_dd) if max_dd != 0 else 0
-
-    wins = [t for t in trades if t["result"] == "WIN"]
-    losses = [t for t in trades if t["result"] == "LOSS"]
-    win_rate = len(wins) / len(trades) * 100 if trades else 0
-
-    avg_win = float(np.mean([t["return_pct"] for t in wins])) if wins else 0.0
-    avg_loss = abs(float(np.mean([t["return_pct"] for t in losses]))) if losses else 0.001
-    profit_factor = avg_win / avg_loss if avg_loss > 0 else 0
+    metrics = _compute_metrics(equity, trades, initial_capital, start_date, end_date, bm_return)
 
     return BacktestResult(
         ticker=ticker,
         start_date=start_date,
         end_date=end_date,
-        total_return=round(total_return, 2),
-        annualized_return=round(annualized_return, 2),
-        sharpe_ratio=round(sharpe, 2),
-        max_drawdown=round(max_dd, 2),
-        win_rate=round(win_rate, 2),
-        total_trades=len(trades),
-        profit_factor=round(profit_factor, 2),
-        calmar_ratio=round(calmar, 2),
-        benchmark_return=round(bm_return, 2),
-        alpha=round(total_return - bm_return, 2),
+        **metrics,
         trades=trades[-20:],
         equity_curve=[
             {"date": str(equity.index[i].date()), "value": round(float(equity.iloc[i]), 0)}
@@ -186,3 +150,232 @@ def format_result_summary(result: BacktestResult) -> str:
 💎 손익비:        {result.profit_factor:.2f}
 🔢 총 거래 수:    {result.total_trades}회
 """
+
+
+# ── 성과 지표 공통 계산 ────────────────────────────────────────────
+def _compute_metrics(
+    equity: pd.Series,
+    trades: list,
+    initial_capital: float,
+    start_date: str,
+    end_date: str,
+    bm_return: float = 0.0,
+) -> dict:
+    total_days = (
+        datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")
+    ).days
+    years = max(total_days / 365, 0.01)
+
+    final_equity = float(equity.iloc[-1])
+    total_return = (final_equity / initial_capital - 1) * 100
+    annualized_return = ((final_equity / initial_capital) ** (1 / years) - 1) * 100
+
+    daily_returns = equity.pct_change().dropna()
+    risk_free = 0.035
+    excess_returns = daily_returns - risk_free / 252
+    sharpe = (
+        float(excess_returns.mean() / excess_returns.std() * np.sqrt(252))
+        if float(excess_returns.std()) > 0 else 0.0
+    )
+
+    rolling_max = equity.cummax()
+    drawdown = (equity - rolling_max) / rolling_max * 100
+    max_dd = float(drawdown.min())
+
+    calmar = annualized_return / abs(max_dd) if max_dd != 0 else 0.0
+
+    wins = [t for t in trades if t["result"] == "WIN"]
+    losses = [t for t in trades if t["result"] == "LOSS"]
+    win_rate = len(wins) / len(trades) * 100 if trades else 0.0
+
+    avg_win = float(np.mean([t["return_pct"] for t in wins])) if wins else 0.0
+    avg_loss = abs(float(np.mean([t["return_pct"] for t in losses]))) if losses else 0.001
+    profit_factor = avg_win / avg_loss if avg_loss > 0 else 0.0
+
+    return dict(
+        total_return=round(total_return, 2),
+        annualized_return=round(annualized_return, 2),
+        sharpe_ratio=round(sharpe, 2),
+        max_drawdown=round(max_dd, 2),
+        win_rate=round(win_rate, 2),
+        total_trades=len(trades),
+        profit_factor=round(profit_factor, 2),
+        calmar_ratio=round(calmar, 2),
+        benchmark_return=round(bm_return, 2),
+        alpha=round(total_return - bm_return, 2),
+    )
+
+
+async def run_agent_backtest(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    initial_capital: float = 10_000_000,
+    transaction_cost: float = 0.0028,
+    session_id: str | None = None,
+    on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
+) -> BacktestResult:
+    """
+    AI 에이전트(기술적 분석) 기반 백테스트.
+
+    전략:
+    - 월 1회 리밸런싱 (각 달의 첫 거래일)
+    - 해당 날짜까지의 데이터만 기술 지표 계산 (look-ahead 없음)
+    - gpt-5.4-mini로 BUY/SELL/HOLD 시그널 판단
+    - 시그널 변경 시 다음 거래일 종가 기준 체결 (1일 지연)
+    - 롱 온리 (공매도 없음)
+    """
+    from agents.analyst.analysts import get_signal_for_backtest
+    from data.market.fetcher import get_technical_indicators
+    from backend.core.events import emit_thought, AgentThought, AgentRole, AgentStatus
+
+    # ── 가격 데이터 로드 ───────────────────────────────────────────
+    # 지표 계산에 필요한 120일 워밍업 데이터를 포함해서 로드
+    warmup_start = (
+        datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=180)
+    ).strftime("%Y-%m-%d")
+
+    df_full = fdr.DataReader(ticker, warmup_start, end_date)
+    if df_full.empty or "Close" not in df_full.columns:
+        raise ValueError(f"데이터 없음: {ticker}")
+
+    # 실제 시뮬레이션 구간만 추출
+    df = df_full[df_full.index >= start_date]
+    close = df["Close"].astype(float).dropna()
+    if len(close) < 5:
+        raise ValueError("시뮬레이션 기간 데이터 부족 (5일 이상 필요)")
+
+    # ── 월별 첫 거래일 (리밸런싱 날짜) ────────────────────────────
+    rebalance_dates: list[str] = []
+    last_month: tuple | None = None
+    for idx in close.index:
+        month_key = (idx.year, idx.month)
+        if month_key != last_month:
+            rebalance_dates.append(str(idx.date()))
+            last_month = month_key
+
+    total_steps = len(rebalance_dates)
+
+    # ── 포트폴리오 시뮬레이션 ──────────────────────────────────────
+    cash = float(initial_capital)
+    shares = 0.0
+    current_signal = "HOLD"
+    pending_signal: str | None = None  # 다음 거래일에 체결할 시그널
+    entry_price = 0.0
+    entry_date = None
+    trades: list[dict] = []
+    equity_values: list[float] = []
+
+    rebalance_set = set(rebalance_dates)
+    step = 0
+
+    for i, (dt, price_val) in enumerate(zip(close.index, close)):
+        price = float(price_val)
+        date_str = str(dt.date())
+
+        # 전일 pending 시그널 체결 (1일 지연)
+        if pending_signal is not None:
+            new_sig = pending_signal
+            pending_signal = None
+
+            if new_sig == "BUY" and current_signal != "BUY" and cash > 0:
+                buy_price = price * (1 + transaction_cost / 2)
+                shares = cash / buy_price
+                cash = 0.0
+                entry_price = price
+                entry_date = dt
+
+            elif new_sig in ("SELL", "HOLD") and current_signal == "BUY" and shares > 0:
+                sell_price = price * (1 - transaction_cost / 2)
+                ret_pct = (sell_price / entry_price - 1) * 100
+                trades.append({
+                    "entry_date": str(entry_date.date()) if entry_date else date_str,
+                    "exit_date": date_str,
+                    "entry_price": round(entry_price, 0),
+                    "exit_price": round(price, 0),
+                    "return_pct": round(ret_pct, 2),
+                    "result": "WIN" if ret_pct > 0 else "LOSS",
+                    "signal": new_sig,
+                })
+                cash = shares * sell_price
+                shares = 0.0
+
+            current_signal = new_sig
+
+        # 리밸런싱 날짜: AI 시그널 조회 → 다음 거래일 pending
+        if date_str in rebalance_set:
+            step += 1
+            try:
+                indicators = get_technical_indicators(ticker, as_of_date=date_str, days=120)
+                sig_result = await get_signal_for_backtest(ticker, indicators)
+                new_signal = sig_result["signal"]
+                confidence = sig_result.get("confidence", 0.5)
+                reason = sig_result.get("reason", "")
+            except Exception as e:
+                new_signal = current_signal
+                confidence = 0.5
+                reason = f"오류: {str(e)[:40]}"
+
+            # 진행 상황 SSE emit
+            if session_id:
+                emoji = "🟢" if new_signal == "BUY" else "🔴" if new_signal == "SELL" else "⚪"
+                await emit_thought(session_id, AgentThought(
+                    agent_id="backtest_agent",
+                    role=AgentRole.TECHNICAL_ANALYST,
+                    status=AgentStatus.ANALYZING,
+                    content=f"{emoji} [{date_str}] {new_signal} (신뢰도 {confidence:.0%}) — {reason}",
+                    metadata={
+                        "date": date_str,
+                        "signal": new_signal,
+                        "confidence": confidence,
+                        "step": step,
+                        "total": total_steps,
+                    },
+                ))
+
+            if on_progress:
+                await on_progress(date_str, step, total_steps)
+
+            if new_signal != current_signal:
+                pending_signal = new_signal
+
+        equity_values.append(cash + shares * price)
+
+    # 마지막 날 포지션 강제 청산
+    if shares > 0:
+        price = float(close.iloc[-1])
+        ret_pct = (price / entry_price - 1) * 100
+        trades.append({
+            "entry_date": str(entry_date.date()) if entry_date else end_date,
+            "exit_date": end_date,
+            "entry_price": round(entry_price, 0),
+            "exit_price": round(price, 0),
+            "return_pct": round(ret_pct, 2),
+            "result": "WIN" if ret_pct > 0 else "LOSS",
+            "signal": "FORCED_CLOSE",
+        })
+        cash = shares * price * (1 - transaction_cost / 2)
+        shares = 0.0
+
+    equity = pd.Series(equity_values, index=close.index[-len(equity_values):])
+
+    # 벤치마크 (KOSPI)
+    try:
+        kospi = fdr.DataReader("KS11", start_date, end_date)["Close"].astype(float).dropna()
+        bm_return = (float(kospi.iloc[-1]) / float(kospi.iloc[0]) - 1) * 100
+    except Exception:
+        bm_return = 0.0
+
+    metrics = _compute_metrics(equity, trades, initial_capital, start_date, end_date, bm_return)
+
+    return BacktestResult(
+        ticker=ticker,
+        start_date=start_date,
+        end_date=end_date,
+        **metrics,
+        trades=trades[-20:],
+        equity_curve=[
+            {"date": str(equity.index[i].date()), "value": round(float(equity.iloc[i]), 0)}
+            for i in range(0, len(equity), max(1, len(equity) // 100))
+        ],
+    )

@@ -11,12 +11,10 @@ import re
 import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
 from backend.core.config import settings
 from backend.core.events import AgentRole, AgentStatus, AgentThought, emit_thought
+from backend.core.llm import create_response
 from data.market.fetcher import get_technical_indicators, get_stock_info, get_market_index, get_news_async
-
 
 def _safe_parse_json(text: str, fallback: dict) -> dict:
     """LLM 응답에서 JSON을 안전하게 추출"""
@@ -28,16 +26,6 @@ def _safe_parse_json(text: str, fallback: dict) -> dict:
         except json.JSONDecodeError:
             pass
     return fallback
-
-
-def _make_llm(fast: bool = False) -> ChatOpenAI:
-    model = settings.fast_llm_model if fast else settings.default_llm_model
-    return ChatOpenAI(
-        model=model,
-        api_key=settings.openai_api_key,
-        temperature=0.1,
-        streaming=True,
-    )
 
 
 async def technical_analyst(ticker: str, session_id: str) -> dict:
@@ -76,8 +64,6 @@ async def technical_analyst(ticker: str, session_id: str) -> dict:
 위 지표를 분석하여 다음 JSON 형식으로만 답하세요:
 {{"signal": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "key_signals": ["근거1", "근거2", "근거3"], "risk_level": "LOW|MEDIUM|HIGH", "summary": "200자 이내 요약"}}"""
 
-    llm = _make_llm()
-    
     await emit_thought(session_id, AgentThought(
         agent_id="technical_analyst",
         role=AgentRole.TECHNICAL_ANALYST,
@@ -87,11 +73,11 @@ async def technical_analyst(ticker: str, session_id: str) -> dict:
     ))
 
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content="당신은 KOSPI/KOSDAQ 전문 기술적 분석가입니다. 반드시 JSON만 출력하세요."),
-            HumanMessage(content=prompt),
-        ])
-        result = _safe_parse_json(response.content, {
+        text = await create_response(
+            system="당신은 KOSPI/KOSDAQ 전문 기술적 분석가입니다. 반드시 JSON만 출력하세요.",
+            user=prompt,
+        )
+        result = _safe_parse_json(text, {
             "agent": "technical_analyst",
             "signal": "HOLD",
             "confidence": 0.3,
@@ -155,13 +141,13 @@ async def sentiment_analyst(ticker: str, company_name: str, session_id: str) -> 
 시장 심리를 분석하여 JSON으로만 답하세요:
 {{"signal": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "sentiment_score": -1.0~1.0, "key_signals": ["근거1", "근거2"], "summary": "150자 이내"}}"""
 
-    llm = _make_llm(fast=True)
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content="당신은 금융 뉴스 감성 분석 전문가입니다. JSON만 출력하세요."),
-            HumanMessage(content=prompt),
-        ])
-        result = _safe_parse_json(response.content, {
+        text = await create_response(
+            system="당신은 금융 뉴스 감성 분석 전문가입니다. JSON만 출력하세요.",
+            user=prompt,
+            fast=True,
+        )
+        result = _safe_parse_json(text, {
             "agent": "sentiment_analyst",
             "signal": "HOLD",
             "confidence": 0.3,
@@ -216,13 +202,13 @@ async def macro_analyst(session_id: str) -> dict:
 전반적인 시장 환경과 투자 적합성을 분석하여 JSON으로만 답하세요:
 {{"market_condition": "BULL|BEAR|NEUTRAL", "confidence": 0.0~1.0, "risk_level": "LOW|MEDIUM|HIGH", "recommendation": "INVEST|CAUTION|AVOID", "key_factors": ["요인1", "요인2"], "summary": "150자 이내"}}"""
 
-    llm = _make_llm(fast=True)
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content="당신은 거시경제 분석 전문가입니다. JSON만 출력하세요."),
-            HumanMessage(content=prompt),
-        ])
-        result = _safe_parse_json(response.content, {
+        text = await create_response(
+            system="당신은 거시경제 분석 전문가입니다. JSON만 출력하세요.",
+            user=prompt,
+            fast=True,
+        )
+        result = _safe_parse_json(text, {
             "agent": "macro_analyst",
             "signal": "HOLD",
             "market_condition": "NEUTRAL",
@@ -242,3 +228,49 @@ async def macro_analyst(session_id: str) -> dict:
         metadata=result,
     ))
     return result
+
+
+async def get_signal_for_backtest(ticker: str, indicators: dict) -> dict:
+    """
+    백테스트 전용 경량 AI 시그널 생성.
+    - SSE 없음 (세션 불필요)
+    - as_of_date 기준 지표만 입력받아 LLM 판단
+    - fast 모델(gpt-5.4-mini) 사용으로 비용 최소화
+
+    Returns: {"signal": "BUY"|"SELL"|"HOLD", "confidence": 0.0~1.0}
+    """
+    rsi = indicators.get("rsi_14")
+    macd = indicators.get("macd")
+    macd_signal = indicators.get("macd_signal")
+    price = indicators.get("current_price", 0)
+    ma20 = indicators.get("ma20", 0)
+    ma5 = indicators.get("ma5", 0)
+    bb_upper = indicators.get("bb_upper")
+    bb_lower = indicators.get("bb_lower")
+
+    prompt = f"""종목코드 {ticker}의 기술 지표:
+RSI(14): {f'{rsi:.1f}' if rsi is not None else 'N/A'}
+MACD: {f'{macd:.3f}' if macd is not None else 'N/A'}, Signal: {f'{macd_signal:.3f}' if macd_signal is not None else 'N/A'}
+MA5: {ma5:,.0f}, MA20: {ma20:,.0f}, 현재가: {price:,.0f}
+볼린저 상단: {f'{bb_upper:,.0f}' if bb_upper else 'N/A'}, 하단: {f'{bb_lower:,.0f}' if bb_lower else 'N/A'}
+
+기술적 분석만으로 투자 판단: BUY(매수)/SELL(매도)/HOLD(관망)
+JSON만 출력: {{"signal": "BUY"|"SELL"|"HOLD", "confidence": 0.0~1.0, "reason": "50자"}}"""
+
+    try:
+        text = await create_response(
+            system="한국 주식 기술 분석가. 지표만 보고 JSON으로 시그널 판단.",
+            user=prompt,
+            fast=True,
+        )
+        result = _safe_parse_json(text, {"signal": "HOLD", "confidence": 0.5})
+        signal = result.get("signal", "HOLD").upper()
+        if signal not in ("BUY", "SELL", "HOLD"):
+            signal = "HOLD"
+        return {
+            "signal": signal,
+            "confidence": float(result.get("confidence", 0.5)),
+            "reason": result.get("reason", ""),
+        }
+    except Exception:
+        return {"signal": "HOLD", "confidence": 0.5, "reason": "오류"}

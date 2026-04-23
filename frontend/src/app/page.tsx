@@ -6,7 +6,8 @@ import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndic
 import { AgentOffice, ActivityFeed } from "@/components/AgentOffice";
 import { DecisionCard } from "@/components/DecisionCard";
 import { BacktestPanel } from "@/components/BacktestPanel";
-import { startAnalysis, streamAnalysis, getMarketIndices, runBacktest, getStock } from "@/lib/api";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import { startAnalysis, streamAnalysis, getMarketIndices, runBacktest, getStock, searchStocks, startAgentBacktest, streamAgentBacktest } from "@/lib/api";
 
 const POPULAR_TICKERS = [
   { code: "005930", name: "삼성전자" },
@@ -33,7 +34,7 @@ function isKRXOpen(): boolean {
 }
 
 // ── Stock Context Bar ─────────────────────────────────────────────
-function StockContextBar({ info, ticker }: { info: StockIndicators | null; ticker: string }) {
+function StockContextBar({ info, ticker, companyName }: { info: StockIndicators | null; ticker: string; companyName: string }) {
   const open = isKRXOpen();
   const isUp = (info?.change_pct ?? 0) >= 0;
   const priceColor = isUp ? "var(--bull)" : "var(--bear)";
@@ -53,6 +54,23 @@ function StockContextBar({ info, ticker }: { info: StockIndicators | null; ticke
         display: "flex", alignItems: "center", gap: 0, overflowX: "auto",
       }}
     >
+      {/* Company name + ticker */}
+      {(companyName || ticker) && (
+        <>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 5, paddingRight: 14, flexShrink: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
+              {companyName || ticker}
+            </span>
+            {companyName && (
+              <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                {ticker}
+              </span>
+            )}
+          </div>
+          <div style={{ width: 1, height: 22, background: "var(--border-subtle)", flexShrink: 0, marginRight: 14 }} />
+        </>
+      )}
+
       {/* Market session */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 16, flexShrink: 0 }}>
         <motion.div
@@ -145,7 +163,7 @@ function StockContextBar({ info, ticker }: { info: StockIndicators | null; ticke
           )}
         </>
       ) : (
-        <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{ticker} · 시세 데이터 로딩 중...</span>
+        <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{companyName || ticker} · 시세 데이터 로딩 중...</span>
       )}
     </motion.div>
   );
@@ -244,6 +262,106 @@ function PipelineProgress({ thoughts, isRunning, isDone }: {
   );
 }
 
+// ── Ticker Search Input (자동완성) ────────────────────────────────
+type StockSuggestion = { code: string; name: string; market: string };
+
+function TickerSearchInput({
+  ticker,
+  companyName,
+  onChange,
+}: {
+  ticker: string;
+  companyName: string;
+  onChange: (code: string, name: string) => void;
+}) {
+  const [query, setQuery] = useState(companyName ? `${companyName} (${ticker})` : ticker);
+  const [results, setResults] = useState<StockSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // 외부 클릭시 드롭다운 닫기
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // ticker/companyName 외부 변경 반영
+  useEffect(() => {
+    setQuery(companyName ? `${companyName} (${ticker})` : ticker);
+  }, [companyName, ticker]);
+
+  const handleInput = (value: string) => {
+    setQuery(value);
+    setOpen(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (!value.trim()) { setResults([]); return; }
+    timerRef.current = setTimeout(async () => {
+      const res = await searchStocks(value);
+      setResults(res);
+    }, 300);
+  };
+
+  const handleSelect = (item: StockSuggestion) => {
+    onChange(item.code, item.name);
+    setQuery(`${item.name} (${item.code})`);
+    setOpen(false);
+    setResults([]);
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ position: "relative" }}>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => handleInput(e.target.value)}
+        onFocus={() => { if (results.length > 0) setOpen(true); }}
+        placeholder="종목명 또는 코드 입력"
+        style={{
+          width: "100%", padding: "8px 10px", borderRadius: "var(--radius-md)",
+          background: "var(--bg-input)", border: "1px solid var(--border-default)",
+          color: "var(--text-primary)", fontSize: 11, outline: "none",
+          boxSizing: "border-box",
+        }}
+      />
+      {open && results.length > 0 && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
+          background: "var(--bg-surface)", border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg)", overflow: "hidden",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+        }}>
+          {results.map((item) => (
+            <button
+              key={item.code}
+              onClick={() => handleSelect(item)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center",
+                justifyContent: "space-between", padding: "8px 12px",
+                background: "transparent", border: "none", borderBottom: "1px solid var(--border-subtle)",
+                cursor: "pointer", textAlign: "left", transition: "background 120ms",
+              }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
+            >
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 1 }}>{item.name}</p>
+                <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{item.market}</p>
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", flexShrink: 0, marginLeft: 8 }}>
+                {item.code}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Human Approval Modal ──────────────────────────────────────────
 function HumanApprovalModal({
   decision,
@@ -338,6 +456,7 @@ function HumanApprovalModal({
 export default function Home() {
   const [tab, setTab] = useState<Tab>("analysis");
   const [ticker, setTicker] = useState("005930");
+  const [companyName, setCompanyName] = useState("삼성전자");
   const [isRunning, setIsRunning] = useState(false);
   const [thoughts, setThoughts] = useState<Map<AgentRole, AgentThought>>(new Map());
   const [activeAgents, setActiveAgents] = useState<Set<AgentRole>>(new Set());
@@ -346,8 +465,12 @@ export default function Home() {
   const [marketData, setMarketData] = useState<Record<string, { current: number; change_pct: number }>>({});
   const [btResult, setBtResult] = useState<BacktestResult | null>(null);
   const [btLoading, setBtLoading] = useState(false);
+  const [btMode, setBtMode] = useState<"ma" | "agent">("ma");
+  const [btProgress, setBtProgress] = useState<Array<{ date: string; signal: string; confidence: number; step: number; total: number }>>([]);
+  const btCleanupRef = useRef<(() => void) | null>(null);
   const [approvalModal, setApprovalModal] = useState(false);
   const [stockInfo, setStockInfo] = useState<StockIndicators | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -360,6 +483,7 @@ export default function Home() {
     const timer = setTimeout(() => {
       getStock(ticker).then(res => {
         setStockInfo(res.indicators ?? null);
+        if (res.info?.name && res.info.name !== "Unknown") setCompanyName(res.info.name);
       }).catch(() => setStockInfo(null));
     }, 700);
     return () => clearTimeout(timer);
@@ -417,12 +541,37 @@ export default function Home() {
   }, [ticker, isRunning]);
 
   const handleBacktest = useCallback(async () => {
-    setBtLoading(true); setBtResult(null);
-    try {
-      const result = await runBacktest({ ticker, start_date: "2022-01-01", end_date: "2024-12-31", initial_capital: 10_000_000 });
-      setBtResult(result);
-    } finally { setBtLoading(false); }
-  }, [ticker]);
+    setBtLoading(true); setBtResult(null); setBtProgress([]);
+    if (btMode === "ma") {
+      try {
+        const result = await runBacktest({ ticker, start_date: "2022-01-01", end_date: "2024-12-31", initial_capital: 10_000_000 });
+        setBtResult(result);
+      } finally { setBtLoading(false); }
+    } else {
+      try {
+        const { session_id } = await startAgentBacktest({ ticker, start_date: "2022-01-01", end_date: "2024-12-31", initial_capital: 10_000_000 });
+        const cleanup = streamAgentBacktest(
+          session_id,
+          (evt) => {
+            if (evt.metadata?.step && evt.metadata?.total) {
+              setBtProgress(prev => [...prev, {
+                date: evt.metadata?.date ?? "",
+                signal: evt.metadata?.signal ?? "HOLD",
+                confidence: evt.metadata?.confidence ?? 0.5,
+                step: evt.metadata.step!,
+                total: evt.metadata.total!,
+              }]);
+            }
+          },
+          (result) => { setBtResult(result); },
+          () => { setBtLoading(false); }
+        );
+        btCleanupRef.current = cleanup;
+      } catch {
+        setBtLoading(false);
+      }
+    }
+  }, [ticker, btMode]);
 
   // active agent count for status badge
   const activeCount = activeAgents.size;
@@ -482,7 +631,7 @@ export default function Home() {
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
             {POPULAR_TICKERS.map(({ code, name }) => (
-              <button key={code} onClick={() => setTicker(code)}
+              <button key={code} onClick={() => { setTicker(code); setCompanyName(name); }}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
                   padding: "7px 10px", borderRadius: "var(--radius-md)", border: "none",
@@ -499,15 +648,10 @@ export default function Home() {
               </button>
             ))}
           </div>
-          <input
-            type="text" value={ticker} onChange={(e) => setTicker(e.target.value.trim())}
-            placeholder="직접 입력 (예: 005930)"
-            style={{
-              width: "100%", padding: "8px 10px", borderRadius: "var(--radius-md)",
-              background: "var(--bg-input)", border: "1px solid var(--border-default)",
-              color: "var(--text-primary)", fontSize: 11, outline: "none",
-              fontVariantNumeric: "tabular-nums",
-            }}
+          <TickerSearchInput
+            ticker={ticker}
+            companyName={companyName}
+            onChange={(code, name) => { setTicker(code); setCompanyName(name); }}
           />
         </div>
 
@@ -538,8 +682,20 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Disclaimer */}
+        {/* Disclaimer + Settings button */}
         <div style={{ marginTop: "auto", padding: "16px 20px" }}>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, width: "100%",
+              padding: "9px 10px", borderRadius: "var(--radius-md)", border: "none",
+              background: "var(--bg-elevated)", color: "var(--text-secondary)",
+              fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 10,
+              transition: "all 150ms",
+            }}
+          >
+            <span>⚙️</span> 설정
+          </button>
           <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
             ⚠ 본 시스템은 투자 참고용입니다.<br />실제 투자 결정은 본인 책임입니다.
           </p>
@@ -555,9 +711,11 @@ export default function Home() {
               {tab === "analysis" ? "AI 에이전트 분석" : "전략 백테스트"}
             </h1>
             <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>
+              {companyName && <><span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{companyName}</span> · </>}
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>{ticker}</span>
               {tab === "analysis"
-                ? `${ticker} · 8개 에이전트 병렬 분석`
-                : `${ticker} · 2022.01 ~ 2024.12 · 초기자본 1,000만원`}
+                ? " · 8개 에이전트 병렬 분석"
+                : " · 2022.01 ~ 2024.12 · 초기자본 1,000만원"}
             </p>
           </div>
           <motion.button
@@ -583,7 +741,7 @@ export default function Home() {
         </div>
 
         {/* ── Stock Context Bar ──────────────────────────────── */}
-        <StockContextBar info={stockInfo} ticker={ticker} />
+        <StockContextBar info={stockInfo} ticker={ticker} companyName={companyName} />
 
         <AnimatePresence mode="wait">
           {tab === "analysis" ? (
@@ -697,22 +855,123 @@ export default function Home() {
                 borderRadius: "var(--radius-2xl)", padding: 24,
               }}
             >
+              {/* 전략 선택 토글 */}
+              {!btResult && !btLoading && (
+                <div style={{ marginBottom: 20 }}>
+                  <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+                    백테스트 전략
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {([
+                      { key: "ma" as const, label: "MA 교차 전략", desc: "이동평균 골든/데드크로스 · 즉시 실행", icon: "📊" },
+                      { key: "agent" as const, label: "AI 에이전트", desc: "월별 LLM 시그널 · 실제 AI 판단 적용", icon: "🤖" },
+                    ]).map(({ key, label, desc, icon }) => {
+                      const active = btMode === key;
+                      return (
+                        <button key={key} onClick={() => setBtMode(key)}
+                          style={{
+                            flex: 1, padding: "14px 16px", borderRadius: "var(--radius-xl)",
+                            border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                            background: active ? "rgba(49,130,246,0.08)" : "var(--bg-elevated)",
+                            cursor: "pointer", textAlign: "left", transition: "all 150ms",
+                          }}
+                        >
+                          <p style={{ fontSize: 18, marginBottom: 6 }}>{icon}</p>
+                          <p style={{ fontSize: 12, fontWeight: 700, color: active ? "var(--brand)" : "var(--text-primary)", marginBottom: 3 }}>{label}</p>
+                          <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.5 }}>{desc}</p>
+                          {key === "agent" && (
+                            <p style={{ fontSize: 9, color: "var(--brand)", marginTop: 4, fontWeight: 600 }}>
+                              gpt-5.4-mini · 월별 {`~`}24회 호출
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {btResult ? (
-                <BacktestPanel result={btResult} />
-              ) : (
-                <div style={{
-                  display: "flex", flexDirection: "column", alignItems: "center",
-                  justifyContent: "center", height: 300, gap: 12,
-                }}>
+                <div>
+                  {/* 사용된 전략 뱃지 */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+                      background: "var(--brand-subtle)", color: "var(--brand)",
+                    }}>
+                      {btMode === "agent" ? "🤖 AI 에이전트 백테스트" : "📊 MA 교차 전략"}
+                    </span>
+                    <button
+                      onClick={() => { setBtResult(null); setBtProgress([]); }}
+                      style={{
+                        fontSize: 10, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", padding: 0,
+                      }}
+                    >
+                      ↩ 다시 설정
+                    </button>
+                  </div>
+                  <BacktestPanel result={btResult} />
+                </div>
+              ) : btLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
                   <motion.span
-                    animate={btLoading ? { rotate: 360 } : {}}
+                    animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                     style={{ fontSize: 48 }}
                   >
-                    {btLoading ? "⚙️" : "📈"}
+                    {btMode === "agent" ? "🤖" : "⚙️"}
                   </motion.span>
                   <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                    {btLoading ? "백테스트 시뮬레이션 실행 중..." : "백테스트 실행 버튼을 눌러 전략 성과를 확인하세요"}
+                    {btMode === "agent" ? "AI 에이전트가 과거 시점별 판단 중..." : "시뮬레이션 실행 중..."}
+                  </p>
+
+                  {/* AI 모드: 진행 로그 */}
+                  {btMode === "agent" && btProgress.length > 0 && (
+                    <div style={{
+                      width: "100%", maxWidth: 480, maxHeight: 200, overflowY: "auto",
+                      background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)",
+                      padding: "12px 14px", border: "1px solid var(--border-subtle)",
+                    }}>
+                      {/* 진행 바 */}
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>진행</span>
+                          <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                            {btProgress[btProgress.length - 1]?.step ?? 0} / {btProgress[btProgress.length - 1]?.total ?? "?"}
+                          </span>
+                        </div>
+                        <div style={{ height: 4, background: "var(--border-subtle)", borderRadius: 2, overflow: "hidden" }}>
+                          <motion.div
+                            animate={{ width: `${((btProgress[btProgress.length - 1]?.step ?? 0) / (btProgress[btProgress.length - 1]?.total ?? 1)) * 100}%` }}
+                            style={{ height: "100%", background: "var(--brand)", borderRadius: 2 }}
+                          />
+                        </div>
+                      </div>
+                      {/* 시그널 로그 */}
+                      {[...btProgress].reverse().slice(0, 8).map((p, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{p.date}</span>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99, flexShrink: 0,
+                            background: p.signal === "BUY" ? "rgba(47,202,115,0.15)" : p.signal === "SELL" ? "rgba(240,68,82,0.15)" : "var(--bg-surface)",
+                            color: p.signal === "BUY" ? "var(--success)" : p.signal === "SELL" ? "var(--bear)" : "var(--text-tertiary)",
+                          }}>
+                            {p.signal}
+                          </span>
+                          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{(p.confidence * 100).toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  justifyContent: "center", height: 200, gap: 12,
+                }}>
+                  <span style={{ fontSize: 48 }}>📈</span>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                    전략을 선택하고 백테스트 실행 버튼을 누르세요
                   </p>
                 </div>
               )}
@@ -734,6 +993,8 @@ export default function Home() {
           />
         )}
       </AnimatePresence>
+
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

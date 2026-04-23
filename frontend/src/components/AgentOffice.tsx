@@ -138,9 +138,23 @@ export function AgentCard({ role, thought, isActive, index = 0 }: AgentCardProps
               padding: "8px 10px", borderLeft: `2px solid ${meta.dotColor}`,
             }}>
               <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6 }}
-                className="line-clamp-3">
+                className={status === "debating" ? "line-clamp-6" : "line-clamp-3"}>
                 {thought.content}
               </p>
+              {/* key_points 배지 (토론/분석 결과) */}
+              {Array.isArray(thought.metadata?.key_points) && (thought.metadata.key_points as string[]).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                  {(thought.metadata.key_points as string[]).slice(0, 3).map((pt, i) => (
+                    <span key={i} style={{
+                      fontSize: 9, padding: "2px 6px", borderRadius: 99,
+                      background: `${meta.dotColor}18`, color: meta.dotColor,
+                      fontWeight: 600,
+                    }}>
+                      {pt}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </motion.div>
         )}

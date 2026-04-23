@@ -13,25 +13,14 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
-
 from backend.core.config import settings
 from backend.core.events import (
     AgentRole, AgentStatus, AgentThought, TradeDecision,
     emit_thought
 )
+from backend.core.llm import create_response
 from agents.analyst.analysts import technical_analyst, sentiment_analyst, macro_analyst
 from data.market.fetcher import get_stock_info
-
-
-def _make_llm(fast: bool = False, temperature: float = 0.2) -> ChatOpenAI:
-    model = settings.fast_llm_model if fast else settings.default_llm_model
-    return ChatOpenAI(
-        model=model,
-        api_key=settings.openai_api_key,
-        temperature=temperature,
-    )
 
 
 def _safe_parse_json(text: str, fallback: dict) -> dict:
@@ -108,23 +97,25 @@ async def researcher_debate(
 종목 {ticker}에 대해 매수를 지지하는 논거를 제시하세요. 
 JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
 
-        llm = _make_llm(fast=True)
-        bull_resp = await llm.ainvoke([
-            SystemMessage(content="당신은 강세 주식 연구원입니다. JSON만 출력하세요."),
-            HumanMessage(content=bull_prompt),
-        ])
+        bull_resp_text = await create_response(
+            system="당신은 강세 주식 연구원입니다. JSON만 출력하세요.",
+            user=bull_prompt,
+            fast=True,
+        )
+        bull_key_points = []
         try:
-            bull_result = json.loads(bull_resp.content.strip().strip("```json").strip("```"))
-            bull_stance = bull_result.get("argument", "")
+            bull_result = _safe_parse_json(bull_resp_text, {})
+            bull_stance = bull_result.get("argument", bull_resp_text)
+            bull_key_points = bull_result.get("key_points", [])
         except Exception:
-            bull_stance = bull_resp.content
+            bull_stance = bull_resp_text
 
         await emit_thought(session_id, AgentThought(
             agent_id="bull_researcher",
             role=AgentRole.BULL_RESEARCHER,
             status=AgentStatus.DEBATING,
-            content=f"[라운드 {round_num}] {bull_stance[:100]}...",
-            metadata={"round": round_num},
+            content=f"[라운드 {round_num}] {bull_stance}",
+            metadata={"round": round_num, "key_points": bull_key_points},
         ))
 
         # 약세 연구원
@@ -146,22 +137,25 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
 종목 {ticker}에 대해 매도 또는 관망을 지지하는 논거를 제시하세요.
 JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
 
-        bear_resp = await llm.ainvoke([
-            SystemMessage(content="당신은 약세 주식 연구원입니다. JSON만 출력하세요."),
-            HumanMessage(content=bear_prompt),
-        ])
+        bear_resp_text = await create_response(
+            system="당신은 약세 주식 연구원입니다. JSON만 출력하세요.",
+            user=bear_prompt,
+            fast=True,
+        )
+        bear_key_points = []
         try:
-            bear_result = json.loads(bear_resp.content.strip().strip("```json").strip("```"))
-            bear_stance = bear_result.get("argument", "")
+            bear_result = _safe_parse_json(bear_resp_text, {})
+            bear_stance = bear_result.get("argument", bear_resp_text)
+            bear_key_points = bear_result.get("key_points", [])
         except Exception:
-            bear_stance = bear_resp.content
+            bear_stance = bear_resp_text
 
         await emit_thought(session_id, AgentThought(
             agent_id="bear_researcher",
             role=AgentRole.BEAR_RESEARCHER,
             status=AgentStatus.DEBATING,
-            content=f"[라운드 {round_num}] {bear_stance[:100]}...",
-            metadata={"round": round_num},
+            content=f"[라운드 {round_num}] {bear_stance}",
+            metadata={"round": round_num, "key_points": bear_key_points},
         ))
 
     return {"bull_stance": bull_stance, "bear_stance": bear_stance}
@@ -213,13 +207,12 @@ JSON: {{"risk_level": "LOW|MEDIUM|HIGH|CRITICAL", "max_position_pct": 0~25, "kel
 
 requires_human_approval=true 조건: 신뢰도 80% 이상이고 포지션 20% 초과, 또는 위험도 CRITICAL"""
 
-    llm = _make_llm()
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content="당신은 퀀트 리스크 관리 전문가입니다. Kelly Criterion을 반영한 JSON만 출력하세요."),
-            HumanMessage(content=prompt),
-        ])
-        result = _safe_parse_json(response.content, {
+        risk_text = await create_response(
+            system="당신은 퀀트 리스크 관리 전문가입니다. Kelly Criterion을 반영한 JSON만 출력하세요.",
+            user=prompt,
+        )
+        result = _safe_parse_json(risk_text, {
             "risk_level": "HIGH",
             "max_position_pct": 10,
             "kelly_position_pct": kelly_pct,
@@ -305,13 +298,13 @@ Kelly 모델 기반 적정 포지션: {position_pct:.1f}%
 
 JSON: {{"action": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "reasoning": "결정 근거 300자", "position_size_pct": {position_pct:.0f}, "entry_strategy": "진입 전략 (가격대, 분할 여부)", "exit_strategy": "청산 전략 (목표가, 손절가)"}}"""
 
-    llm = _make_llm()
+
     try:
-        response = await llm.ainvoke([
-            SystemMessage(content="당신은 최종 투자 결정권자입니다. Kelly Criterion을 반영하여 JSON만 출력하세요."),
-            HumanMessage(content=prompt),
-        ])
-        pm_result = _safe_parse_json(response.content, {
+        pm_text = await create_response(
+            system="당신은 최종 투자 결정권자입니다. Kelly Criterion을 반영하여 JSON만 출력하세요.",
+            user=prompt,
+        )
+        pm_result = _safe_parse_json(pm_text, {
             "action": "HOLD",
             "confidence": 0.3,
             "reasoning": "결정 과정 오류",

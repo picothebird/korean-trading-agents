@@ -51,10 +51,39 @@ def get_market_index(days: int = 90) -> dict:
     return indices
 
 
+@lru_cache(maxsize=1)
+def _get_krx_listing() -> pd.DataFrame:
+    """KRX 전체 종목 목록 (최초 1회 캐시)"""
+    return fdr.StockListing("KRX")
+
+
+def search_stocks(query: str, limit: int = 10) -> list[dict]:
+    """종목명 또는 코드로 종목 검색"""
+    if not query or not query.strip():
+        return []
+    try:
+        listing = _get_krx_listing()
+        mask = (
+            listing["Name"].str.contains(query, case=False, na=False) |
+            listing["Code"].str.contains(query, case=False, na=False)
+        )
+        matches = listing[mask].head(limit)
+        result = []
+        for _, row in matches.iterrows():
+            result.append({
+                "code": str(row.get("Code", "")),
+                "name": str(row.get("Name", "")),
+                "market": str(row.get("Market", "")),
+            })
+        return result
+    except Exception:
+        return []
+
+
 def get_stock_info(ticker: str) -> dict:
     """KRX 종목 기본 정보"""
     try:
-        listing = fdr.StockListing("KRX")
+        listing = _get_krx_listing()
         row = listing[listing["Code"] == ticker]
         if row.empty:
             return {"ticker": ticker, "name": "Unknown"}
@@ -70,10 +99,17 @@ def get_stock_info(ticker: str) -> dict:
         return {"ticker": ticker, "error": str(e)}
 
 
-def get_technical_indicators(ticker: str, days: int = 120) -> dict:
-    """기술 지표 계산 (MACD, RSI, 볼린저 밴드)"""
-    end = datetime.now().strftime("%Y-%m-%d")
-    start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | None = None) -> dict:
+    """기술 지표 계산 (MACD, RSI, 볼린저 밴드)
+    
+    as_of_date: "YYYY-MM-DD" 형식. 지정 시 해당 날짜까지의 데이터만 사용 (백테스트용, look-ahead 방지).
+    """
+    if as_of_date:
+        end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+    else:
+        end_dt = datetime.now()
+    end = end_dt.strftime("%Y-%m-%d")
+    start = (end_dt - timedelta(days=days)).strftime("%Y-%m-%d")
     
     df = get_ohlcv(ticker, start, end)
     if df.empty or "Close" not in df.columns:

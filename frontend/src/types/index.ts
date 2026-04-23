@@ -100,3 +100,34 @@ export interface MarketIndex {
   change: number;
   change_pct: number;
 }
+
+export interface UserSettings {
+  openai_api_key_set: boolean;
+  openai_api_key_preview: string;
+  default_llm_model: string;
+  fast_llm_model: string;
+  reasoning_effort: "high" | "medium" | "low";
+  max_debate_rounds: number;
+  kis_mock: boolean;
+}
+
+export interface BacktestProgress {
+  type: "connected" | "backtest_result" | "error" | "done";
+  agent_id?: string;
+  content?: string;
+  metadata?: {
+    date?: string;
+    signal?: string;
+    confidence?: number;
+    step?: number;
+    total?: number;
+  };
+  // backtest_result fields
+  ticker?: string;
+  period?: string;
+  metrics?: BacktestMetrics;
+  trades?: BacktestResult["trades"];
+  equity_curve?: BacktestResult["equity_curve"];
+  summary?: string;
+  message?: string;
+}

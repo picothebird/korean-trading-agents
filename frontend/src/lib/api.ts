@@ -78,3 +78,93 @@ export async function getMarketIndices() {
   if (!res.ok) throw new Error("시장 지수 조회 실패");
   return res.json() as Promise<Record<string, import("@/types").MarketIndex>>;
 }
+
+export async function searchStocks(q: string): Promise<Array<{ code: string; name: string; market: string }>> {
+  if (!q.trim()) return [];
+  try {
+    const res = await fetch(`${BASE_URL}/api/stock/search?q=${encodeURIComponent(q)}`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getSettings(): Promise<import("@/types").UserSettings> {
+  const res = await fetch(`${BASE_URL}/api/settings`);
+  if (!res.ok) throw new Error("설정 조회 실패");
+  return res.json();
+}
+
+export async function updateSettings(data: {
+  openai_api_key?: string;
+  default_llm_model: string;
+  fast_llm_model: string;
+  reasoning_effort: string;
+  max_debate_rounds: number;
+  kis_mock: boolean;
+}): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("설정 저장 실패");
+}
+
+export async function startAgentBacktest(params: {
+  ticker: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+}): Promise<{ session_id: string; status: string }> {
+  const res = await fetch(`${BASE_URL}/api/backtest/agent/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error("AI 백테스트 시작 실패");
+  return res.json();
+}
+
+export function streamAgentBacktest(
+  sessionId: string,
+  onProgress: (event: import("@/types").BacktestProgress) => void,
+  onResult: (result: import("@/types").BacktestResult) => void,
+  onDone: () => void
+): () => void {
+  const es = new EventSource(`${BASE_URL}/api/backtest/agent/stream/${sessionId}`);
+
+  es.onmessage = (event) => {
+    try {
+      const data: import("@/types").BacktestProgress = JSON.parse(event.data);
+      if (data.type === "done") {
+        onDone();
+        es.close();
+      } else if (data.type === "backtest_result" && data.metrics) {
+        onResult({
+          ticker: data.ticker ?? "",
+          period: data.period ?? "",
+          metrics: data.metrics,
+          trades: data.trades ?? [],
+          equity_curve: data.equity_curve ?? [],
+          summary: data.summary ?? "",
+        });
+      } else if (data.type === "error") {
+        onDone();
+        es.close();
+      } else {
+        onProgress(data);
+      }
+    } catch {
+      // 파싱 오류 무시
+    }
+  };
+
+  es.onerror = () => {
+    onDone();
+    es.close();
+  };
+
+  return () => es.close();
+}
