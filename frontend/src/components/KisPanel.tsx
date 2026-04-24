@@ -15,7 +15,7 @@ import type {
   KisOrderRequest,
 } from "@/types";
 
-const SPRING = { type: "spring", stiffness: 340, damping: 30 };
+const SPRING = { type: "spring" as const, stiffness: 340, damping: 30 };
 
 interface KisPanelProps {
   /** 분석 탭에서 넘어온 종목코드 (주문 폼 자동 채우기) */
@@ -372,7 +372,10 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
                   onClick={() => setOrderSide(side)}
                   style={{
                     flex: 1, padding: "9px 0",
-                    borderRadius: "var(--radius-lg)", border: "none",
+                    borderRadius: "var(--radius-lg)",
+                    border: `1px solid ${orderSide === side
+                      ? side === "buy" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"
+                      : "var(--border-default)"}`,
                     background: orderSide === side
                       ? side === "buy" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)"
                       : "var(--bg-elevated)",
@@ -381,9 +384,6 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
                       : "var(--text-secondary)",
                     fontWeight: orderSide === side ? 700 : 400,
                     fontSize: 13, cursor: "pointer",
-                    border: `1px solid ${orderSide === side
-                      ? side === "buy" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"
-                      : "var(--border-default)"}`,
                     transition: "all 150ms",
                   }}
                 >

@@ -107,6 +107,15 @@ async def health():
     return {"status": "ok", "version": "0.1.0"}
 
 
+@app.get("/api/stock/search")
+async def search_stock_api(q: str = Query(..., min_length=1, max_length=30)):
+    """종목명 또는 코드로 검색 (자동완성용)"""
+    try:
+        return search_stocks(q.strip(), limit=10)
+    except BaseException:
+        return []
+
+
 @app.get("/api/stock/{ticker}")
 async def get_stock(ticker: str):
     """종목 기본 정보 + 기술 지표"""
@@ -239,15 +248,6 @@ async def market_indices():
                     "change_pct": (latest - prev) / prev * 100,
                 }
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/stock/search")
-async def search_stock_api(q: str = Query(..., min_length=1, max_length=30)):
-    """종목명 또는 코드로 검색 (자동완성용)"""
-    try:
-        return search_stocks(q.strip(), limit=10)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

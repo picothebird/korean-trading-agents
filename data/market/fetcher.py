@@ -53,8 +53,56 @@ def get_market_index(days: int = 90) -> dict:
 
 @lru_cache(maxsize=1)
 def _get_krx_listing() -> pd.DataFrame:
-    """KRX 전체 종목 목록 (최초 1회 캐시)"""
-    return fdr.StockListing("KRX")
+    """KRX 전체 종목 목록 (최초 1회 캐시) — fdr 기반, pykrx 폴백"""
+    empty = pd.DataFrame(columns=["Code", "Name", "Market"])
+    # fdr first — gives both Code and Name
+    frames = []
+    for market_key in ("KOSPI", "KOSDAQ"):
+        try:
+            df = fdr.StockListing(market_key)
+            if df is not None and not df.empty:
+                df = df.copy()
+                df["Market"] = market_key
+                col_map = {}
+                for c in df.columns:
+                    lc = c.lower()
+                    if lc in ("code", "symbol", "종목코드"):
+                        col_map[c] = "Code"
+                    elif lc in ("name", "종목명"):
+                        col_map[c] = "Name"
+                if col_map:
+                    df = df.rename(columns=col_map)
+                frames.append(df)
+        except BaseException:
+            pass
+    if frames:
+        try:
+            result = pd.concat(frames, ignore_index=True)
+            if not result.empty and "Code" in result.columns:
+                return result
+        except BaseException:
+            pass
+    # pykrx fallback — codes only, no names
+    try:
+        from pykrx import stock as pykrx_stock
+        today = datetime.now().strftime("%Y%m%d")
+        rows = []
+        for market_key in ("KOSPI", "KOSDAQ"):
+            try:
+                tickers = pykrx_stock.get_market_ticker_list(today, market=market_key)
+                for t in tickers:
+                    try:
+                        name = pykrx_stock.get_market_ticker_name(t)
+                    except BaseException:
+                        name = ""
+                    rows.append({"Code": t, "Name": name, "Market": market_key})
+            except BaseException:
+                pass
+        if rows:
+            return pd.DataFrame(rows)
+    except BaseException:
+        pass
+    return empty
 
 
 def search_stocks(query: str, limit: int = 10) -> list[dict]:
@@ -63,10 +111,13 @@ def search_stocks(query: str, limit: int = 10) -> list[dict]:
         return []
     try:
         listing = _get_krx_listing()
+        if listing.empty:
+            return []
         mask = (
-            listing["Name"].str.contains(query, case=False, na=False) |
             listing["Code"].str.contains(query, case=False, na=False)
         )
+        if "Name" in listing.columns:
+            mask = mask | listing["Name"].str.contains(query, case=False, na=False)
         matches = listing[mask].head(limit)
         result = []
         for _, row in matches.iterrows():
@@ -76,7 +127,7 @@ def search_stocks(query: str, limit: int = 10) -> list[dict]:
                 "market": str(row.get("Market", "")),
             })
         return result
-    except Exception:
+    except BaseException:
         return []
 
 
