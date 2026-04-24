@@ -28,7 +28,7 @@ from backend.core.events import stream_thoughts, AgentThought, AgentRole, AgentS
 from backend.core import user_settings as _us
 from agents.orchestrator.orchestrator import run_analysis
 from backtesting.backtest import run_simple_backtest, run_agent_backtest, format_result_summary
-from data.market.fetcher import get_stock_info, get_technical_indicators, search_stocks
+from data.market.fetcher import get_stock_info, get_technical_indicators, search_stocks, get_price_history
 
 
 # ── 앱 시작 ──────────────────────────────────────────────
@@ -68,6 +68,7 @@ class BacktestRequest(BaseModel):
     start_date: str = "2023-01-01"
     end_date: str = "2024-12-31"
     initial_capital: float = 10_000_000
+    decision_interval_days: int = Field(default=20, ge=1, le=120)
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -95,6 +96,7 @@ class AgentBacktestRequest(BaseModel):
     start_date: str = "2023-01-01"
     end_date: str = "2024-12-31"
     initial_capital: float = 10_000_000
+    decision_interval_days: int = Field(default=20, ge=1, le=120)
     session_id: str | None = None
 
 
@@ -152,6 +154,30 @@ async def get_stock(ticker: str):
         info = get_stock_info(ticker)
         indicators = get_technical_indicators(ticker)
         return {"info": info, "indicators": indicators}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/stock/{ticker}/chart")
+async def get_stock_chart(
+    ticker: str,
+    timeframe: str = Query(default="6m", pattern="^(1m|3m|6m|1y|2y)$"),
+):
+    """차트 데이터 조회 (OHLCV + MA)"""
+    try:
+        days_map = {
+            "1m": 35,
+            "3m": 110,
+            "6m": 220,
+            "1y": 420,
+            "2y": 800,
+        }
+        points = get_price_history(ticker, days=days_map.get(timeframe, 220))
+        return {
+            "ticker": ticker,
+            "timeframe": timeframe,
+            "points": points,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -239,6 +265,7 @@ async def backtest(req: BacktestRequest):
             start_date=req.start_date,
             end_date=req.end_date,
             initial_capital=req.initial_capital,
+            decision_interval_days=req.decision_interval_days,
         )
         return _serialize_backtest_result(result)
     except Exception as e:
@@ -289,6 +316,7 @@ async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: Back
                 start_date=req.start_date,
                 end_date=req.end_date,
                 initial_capital=req.initial_capital,
+                decision_interval_days=req.decision_interval_days,
                 session_id=session_id,
             )
             _backtest_sessions[session_id]["result"] = _serialize_backtest_result(result)

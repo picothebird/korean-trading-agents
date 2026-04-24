@@ -67,6 +67,24 @@ export interface StockIndicators {
   last_updated: string;
 }
 
+export interface StockChartPoint {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  ma5: number | null;
+  ma20: number | null;
+  ma60: number | null;
+}
+
+export interface StockChartResponse {
+  ticker: string;
+  timeframe: "1m" | "3m" | "6m" | "1y" | "2y";
+  points: StockChartPoint[];
+}
+
 export interface BacktestMetrics {
   total_return: number;
   annualized_return: number;

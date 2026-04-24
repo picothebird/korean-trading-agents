@@ -9,6 +9,8 @@ import { BacktestPanel } from "@/components/BacktestPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { KisPanel } from "@/components/KisPanel";
 import { PixelOffice } from "@/components/PixelOffice";
+import { StockChartPanel } from "@/components/StockChartPanel";
+import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest,
@@ -691,6 +693,7 @@ export default function Home() {
   const [btStartDate, setBtStartDate] = useState("2022-01-01");
   const [btEndDate, setBtEndDate] = useState("2024-12-31");
   const [btInitialCapital, setBtInitialCapital] = useState(10_000_000);
+  const [btDecisionIntervalDays, setBtDecisionIntervalDays] = useState(20);
   const [btProgress, setBtProgress] = useState<Array<{ date: string; signal: string; confidence: number; step: number; total: number }>>([]);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
@@ -700,6 +703,7 @@ export default function Home() {
   const [kisOrderTicker, setKisOrderTicker] = useState("");
   const [recentStocks, setRecentStocks] = useState<SavedStock[]>([]);
   const [favoriteStocks, setFavoriteStocks] = useState<SavedStock[]>([]);
+  const [autoTradeRecords, setAutoTradeRecords] = useState<AutoTradeRecord[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   // Load local stock preferences
@@ -827,6 +831,7 @@ export default function Home() {
     if (btLoading) return;
 
     const normalizedCapital = Number(btInitialCapital);
+    const normalizedInterval = Number(btDecisionIntervalDays);
     const start = new Date(btStartDate);
     const end = new Date(btEndDate);
 
@@ -842,6 +847,10 @@ export default function Home() {
       setBtError("초기 자본은 10만원 이상으로 입력하세요.");
       return;
     }
+    if (!Number.isFinite(normalizedInterval) || normalizedInterval < 1 || normalizedInterval > 120) {
+      setBtError("판단 주기는 1~120 거래일 사이로 입력하세요.");
+      return;
+    }
 
     setBtLoading(true);
     setBtResult(null);
@@ -854,6 +863,7 @@ export default function Home() {
           start_date: btStartDate,
           end_date: btEndDate,
           initial_capital: normalizedCapital,
+          decision_interval_days: Math.floor(normalizedInterval),
         });
         setBtResult(result);
       } catch (e: unknown) {
@@ -868,6 +878,7 @@ export default function Home() {
           start_date: btStartDate,
           end_date: btEndDate,
           initial_capital: normalizedCapital,
+          decision_interval_days: Math.floor(normalizedInterval),
         });
         const cleanup = streamAgentBacktest(
           session_id,
@@ -896,7 +907,7 @@ export default function Home() {
         setBtLoading(false);
       }
     }
-  }, [ticker, btMode, btLoading, btStartDate, btEndDate, btInitialCapital]);
+  }, [ticker, btMode, btLoading, btStartDate, btEndDate, btInitialCapital, btDecisionIntervalDays]);
 
   // Cleanup SSE connections on unmount
   useEffect(() => {
@@ -950,7 +961,13 @@ export default function Home() {
     });
   }, [ticker, companyName]);
 
-  const backtestSummaryText = `${ticker} · ${formatYearMonth(btStartDate)} ~ ${formatYearMonth(btEndDate)} · 초기자본 ${Math.round(btInitialCapital).toLocaleString("ko-KR")}원`;
+  const backtestSummaryText = `${ticker} · ${formatYearMonth(btStartDate)} ~ ${formatYearMonth(btEndDate)} · 초기자본 ${Math.round(btInitialCapital).toLocaleString("ko-KR")}원 · 판단주기 ${Math.max(1, Math.floor(btDecisionIntervalDays))}거래일`;
+  const chartPredictionMarkers = (btResult?.ticker === ticker ? btResult?.prediction_trace ?? [] : []).map((p) => ({
+    date: p.prediction_date,
+    signal: p.signal,
+    confidence: p.confidence,
+  }));
+  const chartTradeMarkers = autoTradeRecords.filter((t) => t.ticker === ticker);
 
   // Tab navigation handler
   const handleTabChange = useCallback((newTab: Tab) => {
@@ -1164,6 +1181,13 @@ export default function Home() {
 
           {/* Toss-style stock price card */}
           <StockPriceCard info={stockInfo} ticker={ticker} companyName={companyName} />
+
+          {/* Always-visible market chart */}
+          <StockChartPanel
+            ticker={ticker}
+            predictionMarkers={chartPredictionMarkers}
+            tradeMarkers={chartTradeMarkers}
+          />
 
           {/* ── Pill Tab Navigation ──────────────────────────── */}
           <div
@@ -1554,6 +1578,28 @@ export default function Home() {
                         />
                       </label>
 
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ fontSize: 9, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 4 }}>
+                          판단 주기 (거래일)
+                          <InfoTip tip="백테스트에서 매수/매도 판단을 몇 거래일 간격으로 수행할지 설정합니다. 값이 작을수록 더 자주 판단합니다." subtle />
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={120}
+                          value={btDecisionIntervalDays}
+                          onChange={(e) => setBtDecisionIntervalDays(Number(e.target.value || 1))}
+                          style={{
+                            borderRadius: "var(--radius-md)",
+                            border: "1px solid var(--border-default)",
+                            background: "var(--bg-input)",
+                            color: "var(--text-primary)",
+                            padding: "7px 8px",
+                            fontSize: 11,
+                          }}
+                        />
+                      </label>
+
                       <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
                         현재 설정: {backtestSummaryText}
                       </p>
@@ -1754,6 +1800,26 @@ export default function Home() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={SPRING}
               >
+                <AutoLoopPanel
+                  ticker={ticker}
+                  onDecision={(autoDecision) => {
+                    setDecision(autoDecision);
+                    setKisOrderTicker(autoDecision.ticker);
+                    setLogs((prev) => [
+                      ...prev.slice(-99),
+                      {
+                        agent_id: "auto_loop",
+                        role: "portfolio_manager",
+                        status: "done",
+                        content: `자동 루프 의사결정: ${autoDecision.action} (${(autoDecision.confidence * 100).toFixed(1)}%)`,
+                        timestamp: new Date().toISOString(),
+                      },
+                    ]);
+                  }}
+                  onTradeRecorded={(trade) => {
+                    setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
+                  }}
+                />
                 <KisPanel prefillTicker={kisOrderTicker || ticker} />
               </motion.div>
             )}
@@ -1879,6 +1945,8 @@ export default function Home() {
             borderTop: "1px solid var(--border-subtle)",
             padding: "10px 16px",
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           <p
@@ -1889,11 +1957,14 @@ export default function Home() {
               textTransform: "uppercase",
               letterSpacing: "0.08em",
               marginBottom: 6,
+              flexShrink: 0,
             }}
           >
             실시간 활동 로그
           </p>
-          <ActivityFeed logs={logs} logEndRef={logEndRef} />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <ActivityFeed logs={logs} logEndRef={logEndRef} />
+          </div>
         </div>
       </main>
 

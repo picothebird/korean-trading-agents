@@ -44,6 +44,7 @@ def run_simple_backtest(
     end_date: str,
     initial_capital: float = 10_000_000,  # 1천만원
     transaction_cost: float = 0.0028,     # 매수 수수료 0.015% + 매도 거래세 0.18% + 수수료
+    decision_interval_days: int = 1,
 ) -> BacktestResult:
     """
     단순 이동평균 교차 전략 백테스트 (데모용)
@@ -74,10 +75,17 @@ def run_simple_backtest(
     trades = []
     equity_values = []
 
+    interval = max(1, int(decision_interval_days))
+
     for i in range(len(close)):
         price = float(close.iloc[i])
         # MA 계산 전 구간 건너뜀
         if pd.isna(ma5.iloc[i]) or pd.isna(ma20.iloc[i]):
+            equity_values.append(cash + shares * price)
+            continue
+
+        # 판단 주기: 지정된 거래일 간격마다만 매매 판단
+        if i % interval != 0:
             equity_values.append(cash + shares * price)
             continue
 
@@ -214,6 +222,7 @@ async def run_agent_backtest(
     end_date: str,
     initial_capital: float = 10_000_000,
     transaction_cost: float = 0.0028,
+    decision_interval_days: int = 20,
     session_id: str | None = None,
     on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
 ) -> BacktestResult:
@@ -221,7 +230,7 @@ async def run_agent_backtest(
     AI 에이전트(기술적 분석) 기반 백테스트.
 
     전략:
-    - 월 1회 리밸런싱 (각 달의 첫 거래일)
+    - N 거래일마다 리밸런싱 (판단 주기 설정 가능)
     - 해당 날짜까지의 데이터만 기술 지표 계산 (look-ahead 없음)
     - gpt-5.4-mini로 BUY/SELL/HOLD 시그널 판단
     - 시그널 변경 시 다음 거래일 종가 기준 체결 (1일 지연)
@@ -247,14 +256,12 @@ async def run_agent_backtest(
     if len(close) < 5:
         raise ValueError("시뮬레이션 기간 데이터 부족 (5일 이상 필요)")
 
-    # ── 월별 첫 거래일 (리밸런싱 날짜) ────────────────────────────
-    rebalance_dates: list[str] = []
-    last_month: tuple | None = None
-    for idx in close.index:
-        month_key = (idx.year, idx.month)
-        if month_key != last_month:
-            rebalance_dates.append(str(idx.date()))
-            last_month = month_key
+    # ── 판단 주기 기반 리밸런싱 날짜 생성 ──────────────────────────
+    interval = max(1, int(decision_interval_days))
+    all_dates = [str(idx.date()) for idx in close.index]
+    rebalance_dates = [all_dates[i] for i in range(0, len(all_dates), interval)]
+    if all_dates and rebalance_dates[-1] != all_dates[-1]:
+        rebalance_dates.append(all_dates[-1])
 
     total_steps = len(rebalance_dates)
 

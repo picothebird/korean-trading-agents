@@ -210,6 +210,47 @@ def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | Non
     }
 
 
+def get_price_history(ticker: str, days: int = 180) -> list[dict]:
+    """차트용 시계열 데이터 (OHLCV + 이동평균)"""
+    end_dt = datetime.now()
+    end = end_dt.strftime("%Y-%m-%d")
+    start = (end_dt - timedelta(days=max(days, 30))).strftime("%Y-%m-%d")
+
+    df = get_ohlcv(ticker, start, end)
+    if df.empty or "Close" not in df.columns:
+        return []
+
+    close = df["Close"].astype(float)
+    ma5 = close.rolling(5).mean()
+    ma20 = close.rolling(20).mean()
+    ma60 = close.rolling(60).mean()
+
+    result: list[dict] = []
+    for idx, row in df.iterrows():
+        close_val = _safe_float(row.get("Close"))
+        if close_val is None:
+            continue
+
+        open_val = _safe_float(row.get("Open"))
+        high_val = _safe_float(row.get("High"))
+        low_val = _safe_float(row.get("Low"))
+        volume = row.get("Volume", 0)
+
+        result.append({
+            "date": idx.strftime("%Y-%m-%d"),
+            "open": open_val if open_val is not None else close_val,
+            "high": high_val if high_val is not None else close_val,
+            "low": low_val if low_val is not None else close_val,
+            "close": close_val,
+            "volume": int(float(volume)) if volume is not None and _safe_float(volume) is not None else 0,
+            "ma5": _safe_float(ma5.loc[idx]),
+            "ma20": _safe_float(ma20.loc[idx]),
+            "ma60": _safe_float(ma60.loc[idx]),
+        })
+
+    return result
+
+
 async def get_news_async(ticker: str, company_name: str = "") -> list[dict]:
     """네이버 금융 뉴스 RSS (비동기)"""
     import feedparser

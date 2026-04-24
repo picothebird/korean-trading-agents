@@ -13,6 +13,15 @@ export async function getStock(ticker: string) {
   return res.json();
 }
 
+export async function getStockChart(
+  ticker: string,
+  timeframe: "1m" | "3m" | "6m" | "1y" | "2y" = "6m"
+): Promise<import("@/types").StockChartResponse> {
+  const res = await fetch(`${BASE_URL}/api/stock/${ticker}/chart?timeframe=${timeframe}`);
+  if (!res.ok) throw new Error(`차트 조회 실패: ${ticker}`);
+  return res.json();
+}
+
 export async function startAnalysis(ticker: string, sessionId?: string) {
   const res = await fetch(`${BASE_URL}/api/analyze/start`, {
     method: "POST",
@@ -32,24 +41,29 @@ export function streamAnalysis(
 ) {
   const es = new EventSource(`${BASE_URL}/api/analyze/stream/${sessionId}`);
   let decisionReceived = false;
+  let finalized = false;
+
+  const finalize = () => {
+    if (finalized) return;
+    finalized = true;
+    onDone();
+    es.close();
+  };
 
   es.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
       if (data.type === "done") {
-        onDone();
-        es.close();
+        finalize();
       } else if (data.type === "final_decision") {
         decisionReceived = true;
         onDecision(data);
       } else if (data.type === "error") {
         onError?.(data.message ?? "분석 처리 중 오류가 발생했습니다.");
-        onDone();
-        es.close();
+        finalize();
       } else if (data.type === "timeout") {
         if (!decisionReceived) onError?.("분석 시간 초과. 다시 시도하세요.");
-        onDone();
-        es.close();
+        finalize();
       } else if (data.agent_id) {
         onThought(data);
       }
@@ -59,12 +73,15 @@ export function streamAnalysis(
   };
 
   es.onerror = () => {
+    if (finalized) return;
     onError?.("서버 연결 끊김. 백엔드가 실행 중인지 확인하세요.");
-    onDone();
-    es.close();
+    finalize();
   };
 
-  return () => es.close();
+  return () => {
+    finalized = true;
+    es.close();
+  };
 }
 
 export async function runBacktest(params: {
@@ -72,6 +89,7 @@ export async function runBacktest(params: {
   start_date: string;
   end_date: string;
   initial_capital: number;
+  decision_interval_days?: number;
 }) {
   const res = await fetch(`${BASE_URL}/api/backtest`, {
     method: "POST",
@@ -129,6 +147,7 @@ export async function startAgentBacktest(params: {
   start_date: string;
   end_date: string;
   initial_capital: number;
+  decision_interval_days?: number;
 }): Promise<{ session_id: string; status: string }> {
   const res = await fetch(`${BASE_URL}/api/backtest/agent/start`, {
     method: "POST",
@@ -147,13 +166,20 @@ export function streamAgentBacktest(
   onError?: (msg: string) => void
 ): () => void {
   const es = new EventSource(`${BASE_URL}/api/backtest/agent/stream/${sessionId}`);
+  let finalized = false;
+
+  const finalize = () => {
+    if (finalized) return;
+    finalized = true;
+    onDone();
+    es.close();
+  };
 
   es.onmessage = (event) => {
     try {
       const data: import("@/types").BacktestProgress = JSON.parse(event.data);
       if (data.type === "done") {
-        onDone();
-        es.close();
+        finalize();
       } else if (data.type === "backtest_result" && data.metrics) {
         onResult({
           ticker: data.ticker ?? "",
@@ -167,8 +193,7 @@ export function streamAgentBacktest(
         });
       } else if (data.type === "error") {
         onError?.(data.message ?? "AI 백테스트 처리 중 오류가 발생했습니다.");
-        onDone();
-        es.close();
+        finalize();
       } else {
         onProgress(data);
       }
@@ -178,11 +203,15 @@ export function streamAgentBacktest(
   };
 
   es.onerror = () => {
-    onDone();
-    es.close();
+    if (finalized) return;
+    onError?.("AI 백테스트 SSE 연결이 끊어졌습니다. 다시 시도하세요.");
+    finalize();
   };
 
-  return () => es.close();
+  return () => {
+    finalized = true;
+    es.close();
+  };
 }
 
 // ── KIS OpenAPI ─────────────────────────────────────────────────
