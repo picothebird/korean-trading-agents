@@ -7,6 +7,7 @@ FastAPI 백엔드 서버
 import asyncio
 import sys
 import os
+import math
 
 # 프로젝트 루트를 sys.path에 추가
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -253,10 +254,14 @@ async def market_indices():
             if not df.empty and "Close" in df.columns:
                 latest = float(df["Close"].iloc[-1])
                 prev = float(df["Close"].iloc[-2]) if len(df) > 1 else latest
+                change = latest - prev
+                change_pct = (change / prev * 100) if prev else 0.0
+                if not all(math.isfinite(v) for v in (latest, change, change_pct)):
+                    continue
                 result[name] = {
                     "current": latest,
-                    "change": latest - prev,
-                    "change_pct": (latest - prev) / prev * 100,
+                    "change": change,
+                    "change_pct": change_pct,
                 }
         return result
     except Exception as e:
