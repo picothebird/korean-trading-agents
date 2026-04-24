@@ -27,6 +27,8 @@ def reset_client() -> None:
 
 def _get_client() -> AsyncOpenAI:
     global _client
+    if not settings.openai_api_key:
+        raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. /api/settings에서 API 키를 먼저 저장하세요.")
     if _client is None:
         _client = AsyncOpenAI(api_key=settings.openai_api_key)
     return _client

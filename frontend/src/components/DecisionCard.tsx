@@ -24,6 +24,7 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
   const confidencePct = Math.round(decision.confidence * 100);
   const circumference = 2 * Math.PI * 30;
   const kelly = decision.agents_summary?.kelly_position_pct ?? decision.agents_summary?.position_size_pct ?? 0;
+  const stopLossPct = decision.agents_summary?.stop_loss_pct;
   const needsApproval = decision.agents_summary?.requires_human_approval;
 
   return (
@@ -198,16 +199,22 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
                 <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{decision.agents_summary.risk_level}</p>
               </div>
             )}
-            {decision.entry_strategy && (
-              <div style={{ gridColumn: "1 / -1", background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
-                <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 3 }}>진입 전략</p>
-                <p style={{ fontSize: 11, color: "var(--text-secondary)" }}>{decision.entry_strategy}</p>
+            {typeof stopLossPct === "number" && (
+              <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
+                <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>손절 라인</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{stopLossPct}%</p>
               </div>
             )}
-            {decision.exit_strategy && (
+            {decision.agents_summary?.entry_strategy && (
+              <div style={{ gridColumn: "1 / -1", background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
+                <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 3 }}>진입 전략</p>
+                <p style={{ fontSize: 11, color: "var(--text-secondary)" }}>{decision.agents_summary.entry_strategy}</p>
+              </div>
+            )}
+            {decision.agents_summary?.exit_strategy && (
               <div style={{ gridColumn: "1 / -1", background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
                 <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 3 }}>청산 전략</p>
-                <p style={{ fontSize: 11, color: "var(--text-secondary)" }}>{decision.exit_strategy}</p>
+                <p style={{ fontSize: 11, color: "var(--text-secondary)" }}>{decision.agents_summary.exit_strategy}</p>
               </div>
             )}
           </div>

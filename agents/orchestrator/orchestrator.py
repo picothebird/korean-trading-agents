@@ -19,7 +19,7 @@ from backend.core.events import (
     emit_thought
 )
 from backend.core.llm import create_response
-from agents.analyst.analysts import technical_analyst, sentiment_analyst, macro_analyst
+from agents.analyst.analysts import technical_analyst, fundamental_analyst, sentiment_analyst, macro_analyst
 from data.market.fetcher import get_stock_info
 
 
@@ -56,6 +56,7 @@ def _kelly_position_size(
         return 0.05
 
     p = sum(agent_confidences) / len(agent_confidences)  # 평균 신뢰도 = 승률 추정
+    p = max(0.0, min(1.0, p))
     q = 1 - p
     b = avg_win_pct / avg_loss_pct  # 손익비
 
@@ -97,18 +98,18 @@ async def researcher_debate(
 종목 {ticker}에 대해 매수를 지지하는 논거를 제시하세요. 
 JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
 
-        bull_resp_text = await create_response(
-            system="당신은 강세 주식 연구원입니다. JSON만 출력하세요.",
-            user=bull_prompt,
-            fast=True,
-        )
         bull_key_points = []
         try:
+            bull_resp_text = await create_response(
+                system="당신은 강세 주식 연구원입니다. JSON만 출력하세요.",
+                user=bull_prompt,
+                fast=True,
+            )
             bull_result = _safe_parse_json(bull_resp_text, {})
             bull_stance = bull_result.get("argument", bull_resp_text)
             bull_key_points = bull_result.get("key_points", [])
-        except Exception:
-            bull_stance = bull_resp_text
+        except Exception as e:
+            bull_stance = f"강세 관점 생성 실패: {str(e)[:80]}"
 
         await emit_thought(session_id, AgentThought(
             agent_id="bull_researcher",
@@ -137,18 +138,18 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
 종목 {ticker}에 대해 매도 또는 관망을 지지하는 논거를 제시하세요.
 JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
 
-        bear_resp_text = await create_response(
-            system="당신은 약세 주식 연구원입니다. JSON만 출력하세요.",
-            user=bear_prompt,
-            fast=True,
-        )
         bear_key_points = []
         try:
+            bear_resp_text = await create_response(
+                system="당신은 약세 주식 연구원입니다. JSON만 출력하세요.",
+                user=bear_prompt,
+                fast=True,
+            )
             bear_result = _safe_parse_json(bear_resp_text, {})
             bear_stance = bear_result.get("argument", bear_resp_text)
             bear_key_points = bear_result.get("key_points", [])
-        except Exception:
-            bear_stance = bear_resp_text
+        except Exception as e:
+            bear_stance = f"약세 관점 생성 실패: {str(e)[:80]}"
 
         await emit_thought(session_id, AgentThought(
             agent_id="bear_researcher",
@@ -179,10 +180,14 @@ async def risk_manager(
     confidences = []
     for val in analyst_results.values():
         if isinstance(val, dict) and "confidence" in val:
-            confidences.append(float(val.get("confidence", 0.5)))
+            try:
+                confidences.append(float(val.get("confidence", 0.5)))
+            except (TypeError, ValueError):
+                confidences.append(0.5)
 
     kelly_size = _kelly_position_size(confidences)
     kelly_pct = round(kelly_size * 100, 1)
+    avg_confidence_pct = (sum(confidences) / len(confidences) * 100) if confidences else 50.0
 
     prompt = f"""당신은 퀀트 리스크 매니저입니다.
 
@@ -195,7 +200,7 @@ async def risk_manager(
 약세론: {debate_results.get('bear_stance', '')[:200]}
 
 [Kelly Criterion 계산 결과]
-- 에이전트 평균 신뢰도: {sum(confidences)/len(confidences)*100:.1f}% → Half-Kelly 권장 포지션: {kelly_pct}%
+- 에이전트 평균 신뢰도: {avg_confidence_pct:.1f}% → Half-Kelly 권장 포지션: {kelly_pct}%
 
 한국 시장 특수 조건 고려:
 - 서킷브레이커 (-8%): 즉시 포지션 축소 권고
@@ -375,15 +380,17 @@ async def run_analysis(ticker: str, session_id: str) -> TradeDecision:
 
     # 1단계: 분석 에이전트 병렬 실행
     tech_task = asyncio.create_task(technical_analyst(ticker, session_id))
+    fund_task = asyncio.create_task(fundamental_analyst(ticker, session_id))
     sent_task = asyncio.create_task(sentiment_analyst(ticker, company_name, session_id))
     macro_task = asyncio.create_task(macro_analyst(session_id))
 
-    tech_result, sent_result, macro_result = await asyncio.gather(
-        tech_task, sent_task, macro_task, return_exceptions=True
+    tech_result, fund_result, sent_result, macro_result = await asyncio.gather(
+        tech_task, fund_task, sent_task, macro_task, return_exceptions=True
     )
 
     analyst_results = {
         "technical": tech_result if not isinstance(tech_result, Exception) else {"signal": "HOLD"},
+        "fundamental": fund_result if not isinstance(fund_result, Exception) else {"signal": "HOLD"},
         "sentiment": sent_result if not isinstance(sent_result, Exception) else {"signal": "HOLD"},
         "macro": macro_result if not isinstance(macro_result, Exception) else {"signal": "HOLD"},
     }

@@ -217,8 +217,8 @@ function StockPriceCard({
             ].map(({ label, val }) => (
               <div key={label} style={{ flex: 1, background: "var(--bg-overlay)", borderRadius: "var(--radius-md)", padding: "6px 8px" }}>
                 <p style={{ fontSize: 8, color: "var(--text-tertiary)", marginBottom: 2 }}>{label}</p>
-                <p style={{ fontSize: 11, fontWeight: 700, color: val > info.current_price ? "var(--bear)" : "var(--bull)", fontVariantNumeric: "tabular-nums" }}>
-                  {(val / 1000).toFixed(1)}K
+                <p style={{ fontSize: 11, fontWeight: 700, color: val != null ? (val > info.current_price ? "var(--bear)" : "var(--bull)") : "var(--text-quaternary)", fontVariantNumeric: "tabular-nums" }}>
+                  {val != null ? `${(val / 1000).toFixed(1)}K` : "-"}
                 </p>
               </div>
             ))}
@@ -372,6 +372,12 @@ function TickerSearchInput({
   useEffect(() => {
     setQuery(companyName ? `${companyName} (${ticker})` : ticker);
   }, [companyName, ticker]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleInput = (value: string) => {
     setQuery(value);
@@ -638,6 +644,7 @@ export default function Home() {
   const [marketData, setMarketData] = useState<Record<string, { current: number; change_pct: number }>>({});
   const [btResult, setBtResult] = useState<BacktestResult | null>(null);
   const [btLoading, setBtLoading] = useState(false);
+  const [btError, setBtError] = useState<string | null>(null);
   const [btMode, setBtMode] = useState<"ma" | "agent">("ma");
   const [btProgress, setBtProgress] = useState<Array<{ date: string; signal: string; confidence: number; step: number; total: number }>>([]);
   const btCleanupRef = useRef<(() => void) | null>(null);
@@ -650,7 +657,12 @@ export default function Home() {
 
   // Market data
   useEffect(() => {
-    getMarketIndices().then(setMarketData).catch(() => {});
+    const loadIndices = () => {
+      getMarketIndices().then(setMarketData).catch(() => {});
+    };
+    loadIndices();
+    const timer = setInterval(loadIndices, 60_000);
+    return () => clearInterval(timer);
   }, []);
 
   // Stock info on ticker change
@@ -663,7 +675,10 @@ export default function Home() {
           setStockInfo(res.indicators ?? null);
           if (res.info?.name && res.info.name !== "Unknown") setCompanyName(res.info.name);
         })
-        .catch(() => setStockInfo(null));
+        .catch(() => {
+          setStockInfo(null);
+          setCompanyName(ticker);
+        });
     }, 700);
     return () => clearTimeout(timer);
   }, [ticker]);
@@ -730,6 +745,7 @@ export default function Home() {
     setBtLoading(true);
     setBtResult(null);
     setBtProgress([]);
+    setBtError(null);
     if (btMode === "ma") {
       try {
         const result = await runBacktest({
@@ -739,6 +755,8 @@ export default function Home() {
           initial_capital: 10_000_000,
         });
         setBtResult(result);
+      } catch (e: unknown) {
+        setBtError(e instanceof Error ? e.message : "백테스트 실패. 종목 데이터를 확인하세요.");
       } finally {
         setBtLoading(false);
       }
@@ -768,10 +786,12 @@ export default function Home() {
             }
           },
           (result) => { setBtResult(result); },
-          () => { setBtLoading(false); }
+          () => { setBtLoading(false); },
+          (errMsg) => { setBtError(errMsg); }
         );
         btCleanupRef.current = cleanup;
-      } catch {
+      } catch (e: unknown) {
+        setBtError(e instanceof Error ? e.message : "AI 백테스트 요청 실패.");
         setBtLoading(false);
       }
     }
@@ -813,10 +833,10 @@ export default function Home() {
   // Tab navigation handler
   const handleTabChange = useCallback((newTab: Tab) => {
     setTab(newTab);
-    if (newTab === "trading" && decision?.ticker && !kisOrderTicker) {
+    if (newTab === "trading" && decision?.ticker) {
       setKisOrderTicker(decision.ticker);
     }
-  }, [decision, kisOrderTicker]);
+  }, [decision]);
 
   // ── Render ────────────────────────────────────────────────────
   return (
@@ -1363,7 +1383,7 @@ export default function Home() {
                         {btMode === "agent" ? "🤖 AI 에이전트" : "📊 MA 교차"}
                       </span>
                       <button
-                        onClick={() => { setBtResult(null); setBtProgress([]); }}
+                        onClick={() => { setBtResult(null); setBtProgress([]); setBtError(null); }}
                         style={{ fontSize: 9, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
                       >
                         ↩ 다시 설정
@@ -1372,6 +1392,35 @@ export default function Home() {
                     <BacktestPanel result={btResult} />
                   </div>
                 )}
+
+                {/* Backtest error state */}
+                <AnimatePresence>
+                  {btError && !btLoading && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "10px 12px",
+                        borderRadius: "var(--radius-lg)",
+                        background: "rgba(240,68,82,0.1)",
+                        border: "1px solid rgba(240,68,82,0.25)",
+                      }}
+                    >
+                      <span style={{ fontSize: 14 }}>⚠️</span>
+                      <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{btError}</p>
+                      <button
+                        onClick={() => setBtError(null)}
+                        style={{ fontSize: 14, background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 1 }}
+                      >
+                        ✕
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Empty state */}
                 {!btResult && !btLoading && (
@@ -1553,7 +1602,11 @@ export default function Home() {
         {approvalModal && decision && (
           <HumanApprovalModal
             decision={decision}
-            onApprove={() => setApprovalModal(false)}
+            onApprove={() => {
+              setApprovalModal(false);
+              setKisOrderTicker(decision.ticker);
+              handleTabChange("trading");
+            }}
             onReject={() => {
               setApprovalModal(false);
               setDecision(null);

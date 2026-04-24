@@ -28,6 +28,16 @@ def _safe_parse_json(text: str, fallback: dict) -> dict:
     return fallback
 
 
+def _fmt_num(value, fmt: str, default: str = "N/A") -> str:
+    """None/NaN-safe number formatting for prompts."""
+    if value is None:
+        return default
+    try:
+        return format(float(value), fmt)
+    except Exception:
+        return default
+
+
 async def technical_analyst(ticker: str, session_id: str) -> dict:
     """기술적 분석 에이전트: 차트·지표 기반 매수/매도 시그널 분석"""
     await emit_thought(session_id, AgentThought(
@@ -46,20 +56,20 @@ async def technical_analyst(ticker: str, session_id: str) -> dict:
     prompt = f"""당신은 한국 주식 전문 기술적 분석가입니다.
 
 종목: {ticker} ({stock_info.get('name', '')})
-현재가: {indicators['current_price']:,}원 ({indicators['change_pct']:+.2f}%)
+현재가: {_fmt_num(indicators.get('current_price'), ',.0f')}원 ({_fmt_num(indicators.get('change_pct'), '+.2f', default='0.00')}%)
 
 [기술 지표]
-- RSI(14): {indicators.get('rsi_14', 'N/A'):.1f if indicators.get('rsi_14') else 'N/A'}
-- MACD: {indicators.get('macd', 'N/A'):.2f if indicators.get('macd') else 'N/A'}
-- MACD Signal: {indicators.get('macd_signal', 'N/A'):.2f if indicators.get('macd_signal') else 'N/A'}
-- MACD 히스토그램: {indicators.get('macd_hist', 'N/A'):.2f if indicators.get('macd_hist') else 'N/A'}
-- 볼린저 상단: {indicators.get('bb_upper', 'N/A'):,.0f if indicators.get('bb_upper') else 'N/A'}
-- 볼린저 중단: {indicators.get('bb_middle', 'N/A'):,.0f if indicators.get('bb_middle') else 'N/A'}
-- 볼린저 하단: {indicators.get('bb_lower', 'N/A'):,.0f if indicators.get('bb_lower') else 'N/A'}
-- MA5: {indicators.get('ma5', 'N/A'):,.0f}
-- MA20: {indicators.get('ma20', 'N/A'):,.0f}
-- 52주 최고: {indicators.get('high_52w', 'N/A'):,.0f}
-- 52주 최저: {indicators.get('low_52w', 'N/A'):,.0f}
+- RSI(14): {_fmt_num(indicators.get('rsi_14'), '.1f')}
+- MACD: {_fmt_num(indicators.get('macd'), '.2f')}
+- MACD Signal: {_fmt_num(indicators.get('macd_signal'), '.2f')}
+- MACD 히스토그램: {_fmt_num(indicators.get('macd_hist'), '.2f')}
+- 볼린저 상단: {_fmt_num(indicators.get('bb_upper'), ',.0f')}
+- 볼린저 중단: {_fmt_num(indicators.get('bb_middle'), ',.0f')}
+- 볼린저 하단: {_fmt_num(indicators.get('bb_lower'), ',.0f')}
+- MA5: {_fmt_num(indicators.get('ma5'), ',.0f')}
+- MA20: {_fmt_num(indicators.get('ma20'), ',.0f')}
+- 52주 최고: {_fmt_num(indicators.get('high_52w'), ',.0f')}
+- 52주 최저: {_fmt_num(indicators.get('low_52w'), ',.0f')}
 
 위 지표를 분석하여 다음 JSON 형식으로만 답하세요:
 {{"signal": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "key_signals": ["근거1", "근거2", "근거3"], "risk_level": "LOW|MEDIUM|HIGH", "summary": "200자 이내 요약"}}"""
@@ -98,6 +108,101 @@ async def technical_analyst(ticker: str, session_id: str) -> dict:
         role=AgentRole.TECHNICAL_ANALYST,
         status=AgentStatus.DONE,
         content=f"분석 완료: {result.get('signal')} (신뢰도 {result.get('confidence', 0)*100:.0f}%)",
+        metadata=result,
+    ))
+    return result
+
+
+async def fundamental_analyst(ticker: str, session_id: str) -> dict:
+    """펀더멘털 분석 에이전트: 섹터/산업/가격 구조 기반 분석"""
+    await emit_thought(session_id, AgentThought(
+        agent_id="fundamental_analyst",
+        role=AgentRole.FUNDAMENTAL_ANALYST,
+        status=AgentStatus.ANALYZING,
+        content=f"{ticker} 기업 기본 정보/가격 구조 분석 중...",
+    ))
+
+    indicators = get_technical_indicators(ticker)
+    stock_info = get_stock_info(ticker)
+
+    if "error" in indicators:
+        return {
+            "agent": "fundamental_analyst",
+            "signal": "HOLD",
+            "confidence": 0.3,
+            "summary": "데이터 없음",
+        }
+
+    current_price = indicators.get("current_price")
+    low_52w = indicators.get("low_52w")
+    high_52w = indicators.get("high_52w")
+    range_position = "N/A"
+    if all(v is not None for v in (current_price, low_52w, high_52w)) and high_52w > low_52w:
+        pct = (current_price - low_52w) / (high_52w - low_52w) * 100
+        range_position = f"{pct:.1f}%"
+
+    await emit_thought(session_id, AgentThought(
+        agent_id="fundamental_analyst",
+        role=AgentRole.FUNDAMENTAL_ANALYST,
+        status=AgentStatus.THINKING,
+        content="섹터/산업/가격 구조 기반 펀더멘털 프록시 분석 중...",
+        metadata={
+            "sector": stock_info.get("sector", ""),
+            "industry": stock_info.get("industry", ""),
+            "market": stock_info.get("market", ""),
+        },
+    ))
+
+    prompt = f"""당신은 한국 주식 펀더멘털 분석가입니다.
+
+종목: {ticker} ({stock_info.get('name', '')})
+시장: {stock_info.get('market', 'N/A')}
+섹터: {stock_info.get('sector', 'N/A')}
+산업: {stock_info.get('industry', 'N/A')}
+
+[가격 구조 데이터]
+- 현재가: {_fmt_num(current_price, ',.0f')}원
+- MA5: {_fmt_num(indicators.get('ma5'), ',.0f')}
+- MA20: {_fmt_num(indicators.get('ma20'), ',.0f')}
+- MA60: {_fmt_num(indicators.get('ma60'), ',.0f')}
+- 52주 범위: {_fmt_num(low_52w, ',.0f')} ~ {_fmt_num(high_52w, ',.0f')}원
+- 52주 범위 내 현재 위치: {range_position}
+- 거래량: {int(indicators.get('volume') or 0):,}
+
+위 정보만으로 펀더멘털 관점의 투자 판단을 내려주세요.
+JSON만 출력:
+{{"signal": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "key_signals": ["근거1", "근거2", "근거3"], "risk_level": "LOW|MEDIUM|HIGH", "summary": "200자 이내 요약"}}"""
+
+    try:
+        text = await create_response(
+            system="당신은 한국 주식 펀더멘털 분석가입니다. 반드시 JSON만 출력하세요.",
+            user=prompt,
+        )
+        result = _safe_parse_json(text, {
+            "agent": "fundamental_analyst",
+            "signal": "HOLD",
+            "confidence": 0.3,
+            "summary": "JSON 파싱 실패",
+        })
+        result["agent"] = "fundamental_analyst"
+        result["raw_data"] = {
+            "stock_info": stock_info,
+            "indicators": indicators,
+            "range_position": range_position,
+        }
+    except Exception as e:
+        result = {
+            "agent": "fundamental_analyst",
+            "signal": "HOLD",
+            "confidence": 0.3,
+            "summary": f"분석 실패: {str(e)[:100]}",
+        }
+
+    await emit_thought(session_id, AgentThought(
+        agent_id="fundamental_analyst",
+        role=AgentRole.FUNDAMENTAL_ANALYST,
+        status=AgentStatus.DONE,
+        content=f"펀더멘털 분석 완료: {result.get('signal')} (신뢰도 {result.get('confidence', 0)*100:.0f}%)",
         metadata=result,
     ))
     return result
@@ -242,16 +347,16 @@ async def get_signal_for_backtest(ticker: str, indicators: dict) -> dict:
     rsi = indicators.get("rsi_14")
     macd = indicators.get("macd")
     macd_signal = indicators.get("macd_signal")
-    price = indicators.get("current_price", 0)
-    ma20 = indicators.get("ma20", 0)
-    ma5 = indicators.get("ma5", 0)
+    price = indicators.get("current_price")
+    ma20 = indicators.get("ma20")
+    ma5 = indicators.get("ma5")
     bb_upper = indicators.get("bb_upper")
     bb_lower = indicators.get("bb_lower")
 
     prompt = f"""종목코드 {ticker}의 기술 지표:
 RSI(14): {f'{rsi:.1f}' if rsi is not None else 'N/A'}
 MACD: {f'{macd:.3f}' if macd is not None else 'N/A'}, Signal: {f'{macd_signal:.3f}' if macd_signal is not None else 'N/A'}
-MA5: {ma5:,.0f}, MA20: {ma20:,.0f}, 현재가: {price:,.0f}
+MA5: {_fmt_num(ma5, ',.0f')}, MA20: {_fmt_num(ma20, ',.0f')}, 현재가: {_fmt_num(price, ',.0f')}
 볼린저 상단: {f'{bb_upper:,.0f}' if bb_upper else 'N/A'}, 하단: {f'{bb_lower:,.0f}' if bb_lower else 'N/A'}
 
 기술적 분석만으로 투자 판단: BUY(매수)/SELL(매도)/HOLD(관망)

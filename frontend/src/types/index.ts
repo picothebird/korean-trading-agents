@@ -39,6 +39,7 @@ export interface TradeDecision {
     risk_level: string;
     position_size_pct: number;
     kelly_position_pct?: number;
+    stop_loss_pct?: number;
     requires_human_approval?: boolean;
     entry_strategy?: string;
     exit_strategy?: string;
@@ -58,8 +59,8 @@ export interface StockIndicators {
   bb_upper: number | null;
   bb_middle: number | null;
   bb_lower: number | null;
-  ma5: number;
-  ma20: number;
+  ma5: number | null;
+  ma20: number | null;
   ma60: number | null;
   high_52w: number;
   low_52w: number;

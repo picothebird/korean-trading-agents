@@ -42,6 +42,10 @@ export function streamAnalysis(
       } else if (data.type === "final_decision") {
         decisionReceived = true;
         onDecision(data);
+      } else if (data.type === "error") {
+        onError?.(data.message ?? "분석 처리 중 오류가 발생했습니다.");
+        onDone();
+        es.close();
       } else if (data.type === "timeout") {
         if (!decisionReceived) onError?.("분석 시간 초과. 다시 시도하세요.");
         onDone();
@@ -105,7 +109,7 @@ export async function updateSettings(data: {
   openai_api_key?: string;
   default_llm_model: string;
   fast_llm_model: string;
-  reasoning_effort: string;
+  reasoning_effort: "high" | "medium" | "low";
   max_debate_rounds: number;
   kis_mock: boolean;
   kis_app_key?: string;
@@ -139,7 +143,8 @@ export function streamAgentBacktest(
   sessionId: string,
   onProgress: (event: import("@/types").BacktestProgress) => void,
   onResult: (result: import("@/types").BacktestResult) => void,
-  onDone: () => void
+  onDone: () => void,
+  onError?: (msg: string) => void
 ): () => void {
   const es = new EventSource(`${BASE_URL}/api/backtest/agent/stream/${sessionId}`);
 
@@ -159,6 +164,7 @@ export function streamAgentBacktest(
           summary: data.summary ?? "",
         });
       } else if (data.type === "error") {
+        onError?.(data.message ?? "AI 백테스트 처리 중 오류가 발생했습니다.");
         onDone();
         es.close();
       } else {

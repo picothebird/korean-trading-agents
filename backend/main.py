@@ -19,7 +19,8 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 
 from backend.core.config import settings
 from backend.core.events import stream_thoughts, AgentThought, AgentRole, AgentStatus, emit_thought
@@ -72,8 +73,8 @@ class SettingsUpdateRequest(BaseModel):
     openai_api_key: str = ""            # 빈 문자열이면 기존 유지
     default_llm_model: str = "gpt-5.4"
     fast_llm_model: str = "gpt-5.4-mini"
-    reasoning_effort: str = "high"      # "high" | "medium" | "low"
-    max_debate_rounds: int = 2
+    reasoning_effort: Literal["high", "medium", "low"] = "high"
+    max_debate_rounds: int = Field(default=2, ge=1, le=8)
     kis_mock: bool = True
     kis_app_key: str = ""
     kis_app_secret: str = ""
@@ -99,6 +100,31 @@ class AgentBacktestRequest(BaseModel):
 # ── 실행 중인 세션 저장 (간단한 인메모리) ─────────────────
 _active_sessions: dict[str, dict] = {}
 _backtest_sessions: dict[str, dict] = {}  # 에이전트 백테스트 세션
+
+
+def _serialize_backtest_result(result) -> dict:
+    """BacktestResult 공통 직렬화 (REST/SSE 동일 포맷 보장)."""
+    return {
+        "ticker": result.ticker,
+        "start_date": result.start_date,
+        "end_date": result.end_date,
+        "period": f"{result.start_date} ~ {result.end_date}",
+        "metrics": {
+            "total_return": result.total_return,
+            "annualized_return": result.annualized_return,
+            "sharpe_ratio": result.sharpe_ratio,
+            "max_drawdown": result.max_drawdown,
+            "win_rate": result.win_rate,
+            "total_trades": result.total_trades,
+            "profit_factor": result.profit_factor,
+            "calmar_ratio": result.calmar_ratio,
+            "benchmark_return": result.benchmark_return,
+            "alpha": result.alpha,
+        },
+        "trades": result.trades,
+        "equity_curve": result.equity_curve,
+        "summary": format_result_summary(result),
+    }
 
 
 # ── 라우터 ───────────────────────────────────────────────
@@ -176,6 +202,9 @@ async def stream_analysis(session_id: str):
         if session.get("decision"):
             import json
             yield f"data: {json.dumps({'type': 'final_decision', **session['decision']})}\n\n"
+        elif session.get("error"):
+            import json
+            yield f"data: {json.dumps({'type': 'error', 'message': session['error']})}\n\n"
         
         yield "data: {\"type\": \"done\"}\n\n"
 
@@ -208,25 +237,7 @@ async def backtest(req: BacktestRequest):
             end_date=req.end_date,
             initial_capital=req.initial_capital,
         )
-        return {
-            "ticker": result.ticker,
-            "period": f"{result.start_date} ~ {result.end_date}",
-            "metrics": {
-                "total_return": result.total_return,
-                "annualized_return": result.annualized_return,
-                "sharpe_ratio": result.sharpe_ratio,
-                "max_drawdown": result.max_drawdown,
-                "win_rate": result.win_rate,
-                "total_trades": result.total_trades,
-                "profit_factor": result.profit_factor,
-                "calmar_ratio": result.calmar_ratio,
-                "benchmark_return": result.benchmark_return,
-                "alpha": result.alpha,
-            },
-            "trades": result.trades,
-            "equity_curve": result.equity_curve,
-            "summary": format_result_summary(result),
-        }
+        return _serialize_backtest_result(result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -273,27 +284,7 @@ async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: Back
                 initial_capital=req.initial_capital,
                 session_id=session_id,
             )
-            _backtest_sessions[session_id]["result"] = {
-                "ticker": result.ticker,
-                "start_date": result.start_date,
-                "end_date": result.end_date,
-                "period": f"{result.start_date} ~ {result.end_date}",
-                "metrics": {
-                    "total_return": result.total_return,
-                    "annualized_return": result.annualized_return,
-                    "sharpe_ratio": result.sharpe_ratio,
-                    "max_drawdown": result.max_drawdown,
-                    "win_rate": result.win_rate,
-                    "total_trades": result.total_trades,
-                    "profit_factor": result.profit_factor,
-                    "calmar_ratio": result.calmar_ratio,
-                    "benchmark_return": result.benchmark_return,
-                    "alpha": result.alpha,
-                },
-                "trades": result.trades,
-                "equity_curve": result.equity_curve,
-                "summary": format_result_summary(result),
-            }
+            _backtest_sessions[session_id]["result"] = _serialize_backtest_result(result)
             _backtest_sessions[session_id]["status"] = "done"
         except Exception as e:
             _backtest_sessions[session_id]["status"] = "error"
