@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole } from "@/types";
 
@@ -19,18 +19,245 @@ interface AgentMeta {
   hair: string;
   shirt: string;
   pants: string;
+  desk: boolean;
 }
 
 const AGENTS: Record<AgentRole, AgentMeta> = {
-  technical_analyst:   { x: 75,  y: 120, label: "기술분석가",     layer: 1, accent: "#3182F6", hair: "#3c1e0e", shirt: "#1a3d7c", pants: "#18203a" },
-  fundamental_analyst: { x: 210, y: 120, label: "펀더멘털",       layer: 1, accent: "#A855F7", hair: "#0e0e0e", shirt: "#5a1e7c", pants: "#10102a" },
-  sentiment_analyst:   { x: 348, y: 120, label: "감성분석가",     layer: 1, accent: "#F5A623", hair: "#7a5800", shirt: "#882e00", pants: "#18101e" },
-  macro_analyst:       { x: 485, y: 120, label: "매크로",         layer: 1, accent: "#2FCA73", hair: "#b4b4b4", shirt: "#0a5e28", pants: "#121212" },
-  bull_researcher:     { x: 150, y: 232, label: "강세 연구원",    layer: 2, accent: "#F04452", hair: "#3e2008", shirt: "#6e0c0c", pants: "#080a12" },
-  bear_researcher:     { x: 448, y: 232, label: "약세 연구원",    layer: 2, accent: "#2B7EF5", hair: "#060606", shirt: "#0c1e56", pants: "#04040c" },
-  risk_manager:        { x: 185, y: 335, label: "리스크 매니저",  layer: 3, accent: "#F5A623", hair: "#140808", shirt: "#6e4e00", pants: "#0c0c0c" },
-  portfolio_manager:   { x: 422, y: 335, label: "포트폴리오 매니저", layer: 3, accent: "#3182F6", hair: "#585858", shirt: "#bcc4cc", pants: "#1e1e2e" },
+  technical_analyst:   { x: 90,  y: 150, label: "기술분석가",       layer: 1, accent: "#3182F6", hair: "#3c1e0e", shirt: "#1a3d7c", pants: "#18203a", desk: true },
+  fundamental_analyst: { x: 250, y: 150, label: "펀더멘털",         layer: 1, accent: "#A855F7", hair: "#0e0e0e", shirt: "#5a1e7c", pants: "#10102a", desk: true },
+  sentiment_analyst:   { x: 90,  y: 300, label: "감성분석가",       layer: 1, accent: "#F5A623", hair: "#7a5800", shirt: "#882e00", pants: "#18101e", desk: true },
+  macro_analyst:       { x: 250, y: 300, label: "매크로",           layer: 1, accent: "#2FCA73", hair: "#b4b4b4", shirt: "#0a5e28", pants: "#121212", desk: true },
+  bull_researcher:     { x: 430, y: 320, label: "강세 연구원",      layer: 2, accent: "#F04452", hair: "#3e2008", shirt: "#6e0c0c", pants: "#080a12", desk: false },
+  bear_researcher:     { x: 510, y: 320, label: "약세 연구원",      layer: 2, accent: "#2B7EF5", hair: "#060606", shirt: "#0c1e56", pants: "#04040c", desk: false },
+  risk_manager:        { x: 430, y: 250, label: "리스크 매니저",    layer: 3, accent: "#F5A623", hair: "#140808", shirt: "#6e4e00", pants: "#0c0c0c", desk: true },
+  portfolio_manager:   { x: 510, y: 110, label: "포트폴리오 매니저", layer: 3, accent: "#3182F6", hair: "#585858", shirt: "#bcc4cc", pants: "#1e1e2e", desk: false },
 };
+
+const LAYER_1_ROLES: AgentRole[] = [
+  "technical_analyst",
+  "fundamental_analyst",
+  "sentiment_analyst",
+  "macro_analyst",
+];
+
+const LAYER_2_ROLES: AgentRole[] = ["bull_researcher", "bear_researcher"];
+const LAYER_3_ROLES: AgentRole[] = ["risk_manager", "portfolio_manager"];
+
+const TILE = 20;
+const TILE_CENTER_OFFSET = 10;
+
+type SceneZone = "office" | "meeting" | "exchange";
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface RoleSceneTargets {
+  home: Point;
+  investigate: Point;
+  debate: Point;
+  report: Point;
+  decide: Point;
+  execute: Point;
+}
+
+interface ActorRuntimeState {
+  x: number;
+  y: number;
+  path: Point[];
+  targetKey: string;
+  walkPhase: number;
+  moving: boolean;
+}
+
+function snapToTileCenter(v: number): number {
+  return Math.round((v - TILE_CENTER_OFFSET) / TILE) * TILE + TILE_CENTER_OFFSET;
+}
+
+function snapPoint(x: number, y: number): Point {
+  return { x: snapToTileCenter(x), y: snapToTileCenter(y) };
+}
+
+function tileCol(x: number): number {
+  return Math.round((x - TILE_CENTER_OFFSET) / TILE);
+}
+
+function tileRow(y: number): number {
+  return Math.round((y - TILE_CENTER_OFFSET) / TILE);
+}
+
+function fromTileCol(col: number): number {
+  return col * TILE + TILE_CENTER_OFFSET;
+}
+
+function fromTileRow(row: number): number {
+  return row * TILE + TILE_CENTER_OFFSET;
+}
+
+const ROOM_WAYPOINTS = {
+  office_to_exchange: snapPoint(370, 130),
+  office_to_meeting: snapPoint(370, 290),
+  exchange_to_meeting: snapPoint(470, 170),
+};
+
+const ROLE_SCENE_TARGETS: Record<AgentRole, RoleSceneTargets> = {
+  technical_analyst: {
+    home: snapPoint(90, 150),
+    investigate: snapPoint(90, 150),
+    debate: snapPoint(390, 260),
+    report: snapPoint(390, 300),
+    decide: snapPoint(390, 300),
+    execute: snapPoint(90, 150),
+  },
+  fundamental_analyst: {
+    home: snapPoint(250, 150),
+    investigate: snapPoint(250, 150),
+    debate: snapPoint(430, 260),
+    report: snapPoint(430, 300),
+    decide: snapPoint(430, 300),
+    execute: snapPoint(250, 150),
+  },
+  sentiment_analyst: {
+    home: snapPoint(90, 300),
+    investigate: snapPoint(90, 300),
+    debate: snapPoint(470, 260),
+    report: snapPoint(470, 300),
+    decide: snapPoint(470, 300),
+    execute: snapPoint(90, 300),
+  },
+  macro_analyst: {
+    home: snapPoint(250, 300),
+    investigate: snapPoint(250, 300),
+    debate: snapPoint(510, 260),
+    report: snapPoint(510, 300),
+    decide: snapPoint(510, 300),
+    execute: snapPoint(250, 300),
+  },
+  bull_researcher: {
+    home: snapPoint(430, 320),
+    investigate: snapPoint(390, 300),
+    debate: snapPoint(430, 320),
+    report: snapPoint(430, 260),
+    decide: snapPoint(450, 260),
+    execute: snapPoint(470, 120),
+  },
+  bear_researcher: {
+    home: snapPoint(510, 320),
+    investigate: snapPoint(510, 300),
+    debate: snapPoint(510, 320),
+    report: snapPoint(510, 260),
+    decide: snapPoint(470, 260),
+    execute: snapPoint(490, 120),
+  },
+  risk_manager: {
+    home: snapPoint(430, 250),
+    investigate: snapPoint(430, 280),
+    debate: snapPoint(450, 330),
+    report: snapPoint(450, 280),
+    decide: snapPoint(450, 250),
+    execute: snapPoint(470, 120),
+  },
+  portfolio_manager: {
+    home: snapPoint(510, 110),
+    investigate: snapPoint(490, 280),
+    debate: snapPoint(490, 330),
+    report: snapPoint(490, 280),
+    decide: snapPoint(490, 250),
+    execute: snapPoint(510, 110),
+  },
+};
+
+function getZoneFromPoint(p: Point): SceneZone {
+  if (p.x >= 360 && p.y < 160) return "exchange";
+  if (p.x >= 360) return "meeting";
+  return "office";
+}
+
+function buildAxisPath(from: Point, to: Point): Point[] {
+  const path: Point[] = [];
+  let col = tileCol(from.x);
+  let row = tileRow(from.y);
+  const targetCol = tileCol(to.x);
+  const targetRow = tileRow(to.y);
+
+  while (col !== targetCol) {
+    col += Math.sign(targetCol - col);
+    path.push({ x: fromTileCol(col), y: fromTileRow(row) });
+  }
+
+  while (row !== targetRow) {
+    row += Math.sign(targetRow - row);
+    path.push({ x: fromTileCol(col), y: fromTileRow(row) });
+  }
+
+  return path;
+}
+
+function buildRoutedPath(from: Point, to: Point): Point[] {
+  const sourceZone = getZoneFromPoint(from);
+  const targetZone = getZoneFromPoint(to);
+  const routeWaypoints: Point[] = [];
+
+  if (sourceZone !== targetZone) {
+    if (sourceZone === "office" && targetZone === "exchange") {
+      routeWaypoints.push(ROOM_WAYPOINTS.office_to_exchange);
+    } else if (sourceZone === "office" && targetZone === "meeting") {
+      routeWaypoints.push(ROOM_WAYPOINTS.office_to_meeting);
+    } else if (sourceZone === "exchange" && targetZone === "office") {
+      routeWaypoints.push(ROOM_WAYPOINTS.office_to_exchange);
+    } else if (sourceZone === "meeting" && targetZone === "office") {
+      routeWaypoints.push(ROOM_WAYPOINTS.office_to_meeting);
+    } else {
+      routeWaypoints.push(ROOM_WAYPOINTS.exchange_to_meeting);
+    }
+  }
+
+  const points: Point[] = [];
+  let cursor = from;
+  for (const waypoint of [...routeWaypoints, to]) {
+    points.push(...buildAxisPath(cursor, waypoint));
+    cursor = waypoint;
+  }
+  return points;
+}
+
+function getTargetForStatus(role: AgentRole, status: string): { key: keyof RoleSceneTargets; point: Point } {
+  const roleTargets = ROLE_SCENE_TARGETS[role];
+
+  if (status === "thinking" || status === "analyzing") {
+    return { key: "investigate", point: roleTargets.investigate };
+  }
+  if (status === "debating") {
+    return { key: "debate", point: roleTargets.debate };
+  }
+  if (status === "deciding") {
+    return { key: "decide", point: roleTargets.decide };
+  }
+  if (status === "done") {
+    if (role === "portfolio_manager" || role === "risk_manager") {
+      return { key: "execute", point: roleTargets.execute };
+    }
+    return { key: "report", point: roleTargets.report };
+  }
+  return { key: "home", point: roleTargets.home };
+}
+
+function createInitialActorRuntimeState(): Record<AgentRole, ActorRuntimeState> {
+  const state = {} as Record<AgentRole, ActorRuntimeState>;
+  for (const role of Object.keys(AGENTS) as AgentRole[]) {
+    const home = ROLE_SCENE_TARGETS[role].home;
+    state[role] = {
+      x: home.x,
+      y: home.y,
+      path: [],
+      targetKey: `${role}:home`,
+      walkPhase: 0,
+      moving: false,
+    };
+  }
+  return state;
+}
 
 // ── Status helpers ─────────────────────────────────────────────────
 function isActiveStatus(s: string) {
@@ -39,55 +266,165 @@ function isActiveStatus(s: string) {
 
 // ── Canvas drawing functions ───────────────────────────────────────
 
-function drawBackground(ctx: CanvasRenderingContext2D) {
-  // Checkerboard floor
-  const ts = 20;
-  for (let gy = 0; gy < H; gy += ts) {
-    for (let gx = 0; gx < W; gx += ts) {
-      const light = (((gx / ts) + (gy / ts)) % 2 === 0);
-      ctx.fillStyle = light ? "#111418" : "#131720";
-      ctx.fillRect(gx, gy, ts, ts);
+function fillTiledRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  tileSize: number,
+  c1: string,
+  c2: string
+) {
+  for (let gy = y; gy < y + h; gy += tileSize) {
+    for (let gx = x; gx < x + w; gx += tileSize) {
+      const light = (((gx - x) / tileSize + (gy - y) / tileSize) % 2 === 0);
+      ctx.fillStyle = light ? c1 : c2;
+      ctx.fillRect(gx, gy, tileSize, tileSize);
+
+      ctx.fillStyle = "rgba(0,0,0,0.08)";
+      ctx.fillRect(gx, gy, tileSize, 1);
+      ctx.fillRect(gx, gy, 1, tileSize);
     }
   }
+}
 
-  // Layer zone background tints
-  const zones = [
-    { y: 0, h: 165, color: "rgba(49,130,246,0.03)", label: "LAYER 1 · 데이터 수집", textColor: "#3182F6" },
-    { y: 165, h: 115, color: "rgba(168,85,247,0.03)", label: "LAYER 2 · 강세 vs 약세 토론", textColor: "#A855F7" },
-    { y: 280, h: 110, color: "rgba(245,166,35,0.03)", label: "LAYER 3 · 리스크 & 최종 결정", textColor: "#F5A623" },
-  ];
+function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.fillStyle = "#4d2f1b";
+  ctx.fillRect(x, y, 58, 22);
+  ctx.fillStyle = "#70462a";
+  ctx.fillRect(x + 2, y + 2, 54, 18);
+  ctx.fillStyle = "#2d1a0f";
+  ctx.fillRect(x + 2, y + 10, 54, 2);
+  ctx.fillStyle = "#8f5b2e";
+  ctx.fillRect(x, y + 20, 58, 2);
 
-  for (const zone of zones) {
-    ctx.fillStyle = zone.color;
-    ctx.fillRect(0, zone.y, W, zone.h);
+  const bookColors = ["#be4b57", "#4f7ec4", "#a0c65d", "#ece3b8"];
+  for (let i = 0; i < 8; i++) {
+    ctx.fillStyle = bookColors[i % bookColors.length];
+    ctx.fillRect(x + 5 + i * 6, y + 4, 4, 5);
+    ctx.fillRect(x + 5 + i * 6, y + 13, 4, 5);
   }
+}
 
-  // Layer dividers
-  const dividers = [
-    { y: 165, label: "LAYER 2 · 강세 vs 약세 토론", textColor: "#A855F7" },
-    { y: 280, label: "LAYER 3 · 리스크 & 최종 결정", textColor: "#F5A623" },
-  ];
+function drawPlant(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.fillStyle = "#7f8a99";
+  ctx.fillRect(x + 3, y + 12, 8, 8);
+  ctx.fillStyle = "#90b463";
+  ctx.fillRect(x + 5, y + 2, 4, 10);
+  ctx.fillRect(x + 2, y + 6, 4, 8);
+  ctx.fillRect(x + 8, y + 6, 4, 8);
+}
 
-  for (const d of dividers) {
-    ctx.fillStyle = "rgba(255,255,255,0.04)";
-    ctx.fillRect(0, d.y, W, 16);
-    ctx.fillStyle = d.textColor;
-    ctx.font = "bold 8px 'Courier New', monospace";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(d.label.toUpperCase(), 8, d.y + 8);
+function drawMeetingTable(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.fillStyle = "#7a5230";
+  ctx.fillRect(x - 34, y - 20, 68, 40);
+  ctx.fillStyle = "#9a6c40";
+  ctx.fillRect(x - 30, y - 16, 60, 32);
+  ctx.fillStyle = "#2f1e13";
+  ctx.fillRect(x - 34, y + 18, 5, 4);
+  ctx.fillRect(x + 29, y + 18, 5, 4);
+
+  // chairs
+  ctx.fillStyle = "#8a5a8f";
+  ctx.fillRect(x - 45, y - 16, 10, 32);
+  ctx.fillRect(x + 35, y - 16, 10, 32);
+  ctx.fillStyle = "#b07ab5";
+  ctx.fillRect(x - 43, y - 14, 6, 28);
+  ctx.fillRect(x + 37, y - 14, 6, 28);
+}
+
+function drawExchangeCounter(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.fillStyle = "#d4cbc3";
+  ctx.fillRect(x, y, 86, 18);
+  ctx.fillStyle = "#b59c86";
+  ctx.fillRect(x + 2, y + 14, 82, 4);
+  ctx.fillStyle = "#ece5de";
+  ctx.fillRect(x + 2, y + 2, 82, 10);
+}
+
+function drawVendingMachine(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.fillStyle = "#8ea4b7";
+  ctx.fillRect(x, y, 36, 46);
+  ctx.fillStyle = "#dce8f4";
+  ctx.fillRect(x + 3, y + 3, 30, 12);
+  ctx.fillStyle = "#4e5f72";
+  ctx.fillRect(x + 3, y + 18, 20, 24);
+  ctx.fillStyle = "#879bb0";
+  ctx.fillRect(x + 24, y + 18, 8, 20);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i % 2 === 0 ? "#cc5a66" : "#5f8ed5";
+    ctx.fillRect(x + 5 + i * 6, y + 22, 4, 6);
+    ctx.fillRect(x + 5 + i * 6, y + 31, 4, 6);
   }
+}
 
-  // Layer 1 label at top
-  ctx.fillStyle = "#3182F6";
-  ctx.font = "bold 8px 'Courier New', monospace";
+function drawBackground(ctx: CanvasRenderingContext2D) {
+  // Room floors
+  fillTiledRect(ctx, 0, 0, 340, H, 20, "#915f30", "#84562c");       // office wood floor
+  fillTiledRect(ctx, 340, 0, W - 340, 160, 20, "#e6ddd5", "#d8cfc8"); // exchange light floor
+  fillTiledRect(ctx, 340, 160, W - 340, H - 160, 20, "#5783a9", "#4b7498"); // meeting blue floor
+
+  // Structural walls with door openings
+  ctx.fillStyle = "#0d1524";
+  ctx.fillRect(336, 0, 8, 106);
+  ctx.fillRect(336, 146, 8, 112);
+  ctx.fillRect(336, 298, 8, H - 298);
+  ctx.fillRect(340, 156, W - 340, 8);
+
+  // Door thresholds
+  ctx.fillStyle = "rgba(20, 24, 34, 0.5)";
+  ctx.fillRect(340, 106, 12, 40); // office <-> exchange
+  ctx.fillRect(340, 258, 12, 40); // office <-> meeting
+  ctx.fillRect(462, 156, 40, 8);  // exchange <-> meeting
+
+  // Room furniture
+  drawBookshelf(ctx, 22, 22);
+  drawBookshelf(ctx, 170, 22);
+  drawBookshelf(ctx, 354, 224);
+  drawBookshelf(ctx, 500, 224);
+  drawBookshelf(ctx, 354, 44);
+
+  drawPlant(ctx, 18, 318);
+  drawPlant(ctx, 300, 318);
+  drawPlant(ctx, 430, 225);
+  drawPlant(ctx, 560, 225);
+
+  drawMeetingTable(ctx, 470, 300);
+  drawExchangeCounter(ctx, 510, 34);
+  drawVendingMachine(ctx, 350, 16);
+
+  // small devices in exchange room
+  ctx.fillStyle = "#a9b8c8";
+  ctx.fillRect(430, 28, 20, 28); // water dispenser
+  ctx.fillStyle = "#dbe5ef";
+  ctx.fillRect(434, 24, 12, 8);
+  ctx.fillStyle = "#6a7c91";
+  ctx.fillRect(438, 38, 4, 6);
+
+  ctx.fillStyle = "#7a8796";
+  ctx.fillRect(470, 52, 10, 12); // trash can
+  ctx.fillStyle = "#5b6674";
+  ctx.fillRect(470, 52, 10, 2);
+
+  // Room titles / stage labels
+  ctx.font = "bold 10px 'VT323', 'Courier New', monospace";
   ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText("LAYER 1 · 데이터 수집", 8, 8);
+  ctx.textBaseline = "top";
 
-  // Bottom border
-  ctx.fillStyle = "rgba(255,255,255,0.04)";
-  ctx.fillRect(0, H - 1, W, 1);
+  ctx.fillStyle = "rgba(236,225,194,0.88)";
+  ctx.fillText("RESEARCH FLOOR", 10, 8);
+
+  ctx.fillStyle = "rgba(76,115,160,0.9)";
+  ctx.fillText("EXCHANGE", 346, 6);
+
+  ctx.fillStyle = "rgba(215,225,255,0.95)";
+  ctx.fillText("MEETING ROOM", 346, 166);
+
+  // Process pipeline hint
+  ctx.fillStyle = "rgba(225, 233, 255, 0.74)";
+  ctx.font = "bold 9px 'VT323', 'Courier New', monospace";
+  ctx.fillText("INVESTIGATE -> DEBATE -> REPORT -> DECIDE -> EXCHANGE", 10, H - 12);
 }
 
 function drawDesk(
@@ -356,14 +693,14 @@ function drawLabel(
   const isDone = status === "done";
   const isActive = isActiveStatus(status);
 
-  ctx.font = "bold 8px 'Courier New', monospace";
+  ctx.font = "bold 9px 'VT323', 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
 
   // Label background pill
   const metrics = ctx.measureText(label);
-  const lw = metrics.width + 10;
-  const lh = 11;
+  const lw = metrics.width + 12;
+  const lh = 12;
   const lx = cx - lw / 2;
   const ly = charY + 28;
 
@@ -388,11 +725,14 @@ interface PixelOfficeProps {
 const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.35 };
 
 export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
+  const [overlayTick, setOverlayTick] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
   const rafRef = useRef<number>(0);
   const thoughtsRef = useRef(thoughts);
   const activeRef = useRef(activeAgents);
+  const actorStatesRef = useRef<Record<AgentRole, ActorRuntimeState>>(createInitialActorRuntimeState());
+  const lastFrameTimeRef = useRef<number>(0);
 
   // Keep refs in sync without re-triggering effect
   thoughtsRef.current = thoughts;
@@ -406,22 +746,77 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
 
     frameRef.current++;
     const frame = frameRef.current;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const last = lastFrameTimeRef.current || now;
+    const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
+    lastFrameTimeRef.current = now;
+
     const currentThoughts = thoughtsRef.current;
     const currentActive = activeRef.current;
+    const actors = actorStatesRef.current;
 
     ctx.clearRect(0, 0, W, H);
     drawBackground(ctx);
 
-    // Draw all agents
+    // Draw all agents with tile-based routed movement
     for (const [roleStr, meta] of Object.entries(AGENTS)) {
       const role = roleStr as AgentRole;
       const thought = currentThoughts.get(role);
       const isActive = currentActive.has(role);
       const status = thought?.status ?? "idle";
+      const target = getTargetForStatus(role, status);
+      const actor = actors[role];
+      const targetKey = `${role}:${target.key}`;
 
-      drawDesk(ctx, meta.x, meta.y, meta.accent, isActive, frame);
-      drawCharacter(ctx, meta.x, meta.y, meta, status, frame);
-      drawLabel(ctx, meta.x, meta.y, meta.label, meta.accent, status);
+      if (actor.targetKey !== targetKey) {
+        actor.path = buildRoutedPath({ x: actor.x, y: actor.y }, target.point);
+        actor.targetKey = targetKey;
+      }
+
+      const speed = isActiveStatus(status) ? 96 : 64;
+      let remainingDistance = speed * dt;
+      let movedDistance = 0;
+
+      while (remainingDistance > 0 && actor.path.length > 0) {
+        const nextPoint = actor.path[0];
+        const dx = nextPoint.x - actor.x;
+        const dy = nextPoint.y - actor.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 0.001) {
+          actor.x = nextPoint.x;
+          actor.y = nextPoint.y;
+          actor.path.shift();
+          continue;
+        }
+
+        if (dist <= remainingDistance) {
+          actor.x = nextPoint.x;
+          actor.y = nextPoint.y;
+          actor.path.shift();
+          remainingDistance -= dist;
+          movedDistance += dist;
+          continue;
+        }
+
+        const ux = dx / dist;
+        const uy = dy / dist;
+        actor.x += ux * remainingDistance;
+        actor.y += uy * remainingDistance;
+        movedDistance += remainingDistance;
+        remainingDistance = 0;
+      }
+
+      actor.moving = movedDistance > 0.01;
+      if (actor.moving) {
+        actor.walkPhase += dt * 10;
+      }
+
+      if (meta.desk) {
+        drawDesk(ctx, meta.x, meta.y, meta.accent, isActive, frame);
+      }
+      drawCharacter(ctx, actor.x, actor.y, meta, status, frame + actor.walkPhase);
+      drawLabel(ctx, actor.x, actor.y, meta.label, meta.accent, status);
     }
 
     rafRef.current = requestAnimationFrame(render);
@@ -432,19 +827,50 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
     return () => cancelAnimationFrame(rafRef.current);
   }, [render]);
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setOverlayTick((v) => v + 1);
+    }, 120);
+    return () => clearInterval(timer);
+  }, []);
+
   // Build speech bubbles from active agents
   const speechBubbles = Array.from(Object.entries(AGENTS)).map(([roleStr, meta]) => {
     const role = roleStr as AgentRole;
     const thought = thoughts.get(role);
+    const actor = actorStatesRef.current[role];
     const isActive = activeAgents.has(role);
     const hasContent = thought?.content && thought.content.trim().length > 0;
     const shouldShow = isActive && hasContent && thought?.status !== "done" && thought?.status !== "idle";
 
-    return { role, meta, thought, shouldShow };
+    return {
+      role,
+      meta,
+      thought,
+      shouldShow,
+      anchorX: actor?.x ?? meta.x,
+      anchorY: actor?.y ?? meta.y,
+    };
   });
+
+  const countDoneInLayer = (roles: AgentRole[]) => {
+    return roles.filter((r) => thoughts.get(r)?.status === "done").length;
+  };
+
+  const layerMetrics = [
+    { key: "data", label: "DATA", color: "#58A6FF", done: countDoneInLayer(LAYER_1_ROLES), total: LAYER_1_ROLES.length },
+    { key: "debate", label: "DEBATE", color: "#BC8CFF", done: countDoneInLayer(LAYER_2_ROLES), total: LAYER_2_ROLES.length },
+    { key: "decision", label: "DECISION", color: "#E3B341", done: countDoneInLayer(LAYER_3_ROLES), total: LAYER_3_ROLES.length },
+  ];
+
+  const totalDone = Array.from(thoughts.values()).filter((t) => t.status === "done").length;
+  const activeLabels = Array.from(activeAgents)
+    .map((role) => AGENTS[role]?.label ?? role)
+    .slice(0, 4);
 
   return (
     <div
+      data-overlay-tick={overlayTick}
       style={{
         position: "relative",
         width: "100%",
@@ -453,9 +879,10 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
         maxWidth: "100%",
         maxHeight: "100%",
         margin: "0 auto",
-        background: "#0a0c10",
-        border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: 16,
+        background: "linear-gradient(180deg, #121523 0%, #171a2d 100%)",
+        border: "2px solid rgba(145,133,255,0.28)",
+        borderRadius: 4,
+        boxShadow: "3px 3px 0 rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04)",
         overflow: "hidden",
       }}
     >
@@ -466,16 +893,115 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
         style={{ display: "block", position: "absolute", inset: 0, width: "100%", height: "100%" }}
       />
 
+      {/* CRT scanline overlay for retro monitoring feel */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          background: "repeating-linear-gradient(180deg, rgba(255,255,255,0.03) 0, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 3px)",
+          opacity: 0.26,
+          zIndex: 2,
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 8,
+          right: 8,
+          top: 8,
+          zIndex: 18,
+          pointerEvents: "none",
+          fontFamily: "'VT323', 'Press Start 2P', monospace",
+        }}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+          {layerMetrics.map((metric) => {
+            const pct = Math.round((metric.done / metric.total) * 100);
+            return (
+              <div
+                key={metric.key}
+                style={{
+                  background: "rgba(11,13,22,0.9)",
+                  border: `1px solid ${metric.color}66`,
+                  padding: "4px 6px",
+                  borderRadius: 2,
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)",
+                }}
+              >
+                <p style={{ margin: 0, fontSize: 9, color: metric.color, letterSpacing: "0.08em" }}>{metric.label}</p>
+                <p style={{ margin: 0, marginTop: 1, fontSize: 10, color: "rgba(236,240,255,0.92)" }}>
+                  {metric.done}/{metric.total} ({pct}%)
+                </p>
+              </div>
+            );
+          })}
+          <div
+            style={{
+              background: "rgba(11,13,22,0.9)",
+              border: "1px solid rgba(151,242,193,0.6)",
+              padding: "4px 6px",
+              borderRadius: 2,
+              boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 9, color: "#97F2C1", letterSpacing: "0.08em" }}>ACTIVE</p>
+            <p style={{ margin: 0, marginTop: 1, fontSize: 10, color: "rgba(236,240,255,0.92)" }}>
+              {activeAgents.size} / DONE {totalDone}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {activeLabels.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            left: 8,
+            right: 8,
+            bottom: 8,
+            zIndex: 18,
+            pointerEvents: "none",
+            background: "rgba(10,11,18,0.9)",
+            border: "1px solid rgba(151,242,193,0.35)",
+            borderRadius: 2,
+            padding: "4px 6px",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            flexWrap: "wrap",
+            fontFamily: "'VT323', 'Press Start 2P', monospace",
+          }}
+        >
+          <span style={{ fontSize: 9, color: "#97F2C1", letterSpacing: "0.08em" }}>RUNNING</span>
+          {activeLabels.map((label) => (
+            <span
+              key={label}
+              style={{
+                fontSize: 9,
+                color: "rgba(226,233,255,0.88)",
+                padding: "1px 4px",
+                border: "1px solid rgba(128,139,170,0.45)",
+                borderRadius: 2,
+              }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Speech bubbles */}
       <AnimatePresence>
-        {speechBubbles.map(({ role, meta, thought, shouldShow }) => {
+        {speechBubbles.map(({ role, meta, thought, shouldShow, anchorX, anchorY }) => {
           if (!shouldShow || !thought) return null;
 
           // Clamp bubble in logical canvas coordinates so edge clipping does not happen after responsive scaling.
           const bubbleW = 170;
           const bubbleH = 68;
-          const bubbleX = Math.max(8, Math.min(W - bubbleW - 8, meta.x - bubbleW / 2));
-          const bubbleY = Math.max(8, Math.min(H - bubbleH - 10, meta.y - 82));
+          const bubbleX = Math.max(8, Math.min(W - bubbleW - 8, anchorX - bubbleW / 2));
+          const bubbleY = Math.max(8, Math.min(H - bubbleH - 10, anchorY - 82));
           const xPct = (bubbleX / W) * 100;
           const yPct = (bubbleY / H) * 100;
 
@@ -501,18 +1027,19 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
                 position: "absolute",
                 left: `${xPct}%`,
                 top: `${yPct}%`,
-                zIndex: 10,
+                zIndex: 16,
                 width: bubbleW,
                 pointerEvents: "none",
               }}
             >
               <div
                 style={{
-                  background: "rgba(20,21,24,0.96)",
+                  background: "rgba(17,19,30,0.98)",
                   border: `1px solid ${meta.accent}50`,
-                  borderRadius: 8,
+                  borderRadius: 2,
                   padding: "6px 8px",
-                  boxShadow: `0 0 12px ${meta.accent}25, 0 4px 16px rgba(0,0,0,0.6)`,
+                  boxShadow: `2px 2px 0 rgba(0,0,0,0.5), 0 0 0 1px ${meta.accent}25`,
+                  fontFamily: "'VT323', 'Press Start 2P', monospace",
                 }}
               >
                 <div
@@ -534,7 +1061,7 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
                   />
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 10,
                       fontWeight: 700,
                       color: meta.accent,
                       whiteSpace: "nowrap",
@@ -544,7 +1071,7 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
                   </span>
                   <span
                     style={{
-                      fontSize: 8,
+                      fontSize: 9,
                       color: "rgba(255,255,255,0.35)",
                       marginLeft: "auto",
                     }}
@@ -554,9 +1081,9 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
                 </div>
                 <p
                   style={{
-                    fontSize: 9,
+                    fontSize: 10,
                     color: "rgba(234,237,242,0.75)",
-                    lineHeight: 1.5,
+                    lineHeight: 1.35,
                     margin: 0,
                     display: "-webkit-box",
                     WebkitLineClamp: 3,
@@ -598,18 +1125,20 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
         >
           <div
             style={{
-              background: "rgba(12,13,16,0.72)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              borderRadius: 12,
-              padding: "12px 20px",
+              background: "rgba(13,15,24,0.88)",
+              border: "1px solid rgba(145,133,255,0.36)",
+              borderRadius: 2,
+              padding: "10px 16px",
               textAlign: "center",
+              boxShadow: "2px 2px 0 rgba(0,0,0,0.4)",
+              fontFamily: "'VT323', 'Press Start 2P', monospace",
             }}
           >
-            <p style={{ fontSize: 12, color: "#4E5867", marginBottom: 4 }}>
-              에이전트 오피스
+            <p style={{ fontSize: 12, color: "#DCD6FF", marginBottom: 4, letterSpacing: "0.06em" }}>
+              PIXEL AGENT OFFICE
             </p>
-            <p style={{ fontSize: 10, color: "#2a2e38" }}>
-              분석 시작 시 에이전트들이 활성화됩니다
+            <p style={{ fontSize: 10, color: "#A8B4D4" }}>
+              분석 시작 시 데이터 수집-토론-결정 흐름을 추적합니다
             </p>
           </div>
         </div>

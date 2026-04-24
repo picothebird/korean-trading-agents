@@ -1,7 +1,6 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { clsx } from "clsx";
 import type { AgentThought, AgentRole, AgentStatus } from "@/types";
 
 const AGENT_META: Record<
@@ -31,6 +30,22 @@ const STATUS_DOT: Record<AgentStatus, string> = {
   deciding:  "bg-[var(--warning)]",
   done:      "bg-[var(--success)]",
 };
+
+const LAYER_DATA_ROLES: AgentRole[] = [
+  "technical_analyst",
+  "fundamental_analyst",
+  "sentiment_analyst",
+  "macro_analyst",
+];
+
+const LAYER_DEBATE_ROLES: AgentRole[] = ["bull_researcher", "bear_researcher"];
+const LAYER_DECISION_ROLES: AgentRole[] = ["risk_manager", "portfolio_manager"];
+
+function layerOfRole(role: AgentRole): "DATA" | "DEBATE" | "DECISION" {
+  if (LAYER_DATA_ROLES.includes(role)) return "DATA";
+  if (LAYER_DEBATE_ROLES.includes(role)) return "DEBATE";
+  return "DECISION";
+}
 
 interface AgentCardProps {
   role: AgentRole;
@@ -180,56 +195,144 @@ interface ActivityFeedProps {
 }
 
 export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
-  const recent = logs.slice(-30);
+  const recent = logs.slice(-40);
+  const latestByRole = new Map<AgentRole, AgentThought>();
+  for (const log of logs) {
+    latestByRole.set(log.role, log);
+  }
+
+  const dataDone = LAYER_DATA_ROLES.filter((r) => latestByRole.get(r)?.status === "done").length;
+  const debateDone = LAYER_DEBATE_ROLES.filter((r) => latestByRole.get(r)?.status === "done").length;
+  const decisionDone = LAYER_DECISION_ROLES.filter((r) => latestByRole.get(r)?.status === "done").length;
+  const exchangeDone = ["risk_manager", "portfolio_manager"].filter(
+    (r) => latestByRole.get(r as AgentRole)?.status === "done"
+  ).length;
+
+  const flowCards = [
+    { key: "DATA", label: "DATA", done: dataDone, total: LAYER_DATA_ROLES.length, color: "#58A6FF" },
+    { key: "DEBATE", label: "DEBATE", done: debateDone, total: LAYER_DEBATE_ROLES.length, color: "#BC8CFF" },
+    { key: "DECISION", label: "DECISION", done: decisionDone, total: LAYER_DECISION_ROLES.length, color: "#E3B341" },
+    { key: "EXCHANGE", label: "EXCHANGE", done: exchangeDone, total: 2, color: "#97F2C1" },
+  ];
+
   return (
-    <div style={{ height: "100%", overflowY: "auto", padding: "4px 0" }}>
+    <div style={{ height: "100%", overflowY: "auto", padding: "2px 0", fontFamily: "'VT323', 'Press Start 2P', monospace" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginBottom: 8 }}>
+        {flowCards.map((card) => {
+          const pct = Math.round((card.done / card.total) * 100);
+          return (
+            <div
+              key={card.key}
+              style={{
+                background: "rgba(13,15,24,0.9)",
+                border: `1px solid ${card.color}66`,
+                borderRadius: 2,
+                padding: "4px 6px",
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 9, color: card.color, letterSpacing: "0.08em" }}>{card.label}</p>
+              <p style={{ margin: 0, marginTop: 1, fontSize: 10, color: "rgba(234,237,242,0.9)" }}>
+                {card.done}/{card.total} ({pct}%)
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
       {recent.length === 0 ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-tertiary)", fontSize: 12 }}>
-          분석 시작 시 로그가 표시됩니다
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "calc(100% - 36px)",
+            color: "rgba(177,189,216,0.8)",
+            fontSize: 12,
+            border: "1px dashed rgba(134,147,178,0.35)",
+            borderRadius: 2,
+          }}
+        >
+          로그 스트림 대기 중
         </div>
       ) : (
-        <div style={{ position: "relative", paddingLeft: 28 }}>
-          {/* vertical connector */}
-          <div style={{
-            position: "absolute", left: 8, top: 8, bottom: 8, width: 1,
-            background: "var(--border-default)",
-          }} />
+        <div style={{ position: "relative", paddingLeft: 10 }}>
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 2,
+              background: "linear-gradient(180deg, #58A6FF 0%, #BC8CFF 48%, #E3B341 100%)",
+              opacity: 0.55,
+            }}
+          />
           {recent.map((log, i) => {
             const meta = AGENT_META[log.role as AgentRole];
+            const lane = layerOfRole(log.role as AgentRole);
             return (
               <motion.div
                 key={`${log.timestamp}-${i}`}
                 initial={{ opacity: 0, x: -4 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.2, delay: 0 }}
-                style={{ display: "flex", gap: 10, marginBottom: 8, position: "relative" }}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  marginBottom: 6,
+                  position: "relative",
+                  background: "rgba(12,14,22,0.72)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 2,
+                  padding: "5px 7px",
+                }}
               >
-                {/* node dot */}
-                <span style={{
-                  position: "absolute", left: -24, top: 5, width: 7, height: 7,
-                  borderRadius: "50%", background: meta?.dotColor ?? "var(--text-tertiary)",
-                  border: "1.5px solid var(--bg-surface)", flexShrink: 0,
-                }} />
+                <span
+                  style={{
+                    position: "absolute",
+                    left: -13,
+                    top: 10,
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: meta?.dotColor ?? "var(--text-tertiary)",
+                    border: "1px solid rgba(9,10,14,0.9)",
+                    flexShrink: 0,
+                  }}
+                />
+
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 2 }}>
-                    <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                    <span style={{ fontSize: 9, color: "rgba(163,171,188,0.86)", fontVariantNumeric: "tabular-nums" }}>
                       {new Date(log.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                     </span>
                     <span style={{ fontSize: 10, fontWeight: 600, color: meta?.dotColor ?? "var(--text-secondary)" }}>
                       {meta?.name ?? log.role}
                     </span>
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: "rgba(230,236,255,0.9)",
+                        border: "1px solid rgba(122,131,156,0.45)",
+                        borderRadius: 2,
+                        padding: "1px 4px",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      {lane}
+                    </span>
                     {(() => {
                       const badge = getSemanticBadge(log.content);
                       return badge ? (
                         <span style={{
-                          fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 99,
+                          fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 2,
                           background: `${badge.color}22`, color: badge.color, letterSpacing: "0.05em",
                         }}>{badge.label}</span>
                       ) : null;
                     })()}
                   </div>
-                  <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.55, marginTop: 0 }}
-                    className="line-clamp-3">
+                  <p style={{ fontSize: 11, color: "rgba(224,229,243,0.86)", lineHeight: 1.4, marginTop: 0 }} className="line-clamp-3">
                     {log.content}
                   </p>
                 </div>

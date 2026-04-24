@@ -214,6 +214,52 @@ export function streamAgentBacktest(
   };
 }
 
+// ── Server Auto Loop ────────────────────────────────────────────
+
+export async function startAutoLoop(
+  req: import("@/types").AutoLoopStartRequest
+): Promise<{ loop_id: string; status: string }> {
+  const res = await fetch(`${BASE_URL}/api/auto-loop/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "자동 루프 시작 실패" }));
+    throw new Error(err.detail ?? "자동 루프 시작 실패");
+  }
+  return res.json();
+}
+
+export async function stopAutoLoop(loopId: string): Promise<{ loop_id: string; status: string }> {
+  const res = await fetch(`${BASE_URL}/api/auto-loop/stop/${encodeURIComponent(loopId)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "자동 루프 중지 실패" }));
+    throw new Error(err.detail ?? "자동 루프 중지 실패");
+  }
+  return res.json();
+}
+
+export async function getAutoLoopStatus(loopId: string): Promise<import("@/types").AutoLoopStatus> {
+  const res = await fetch(`${BASE_URL}/api/auto-loop/status/${encodeURIComponent(loopId)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "자동 루프 상태 조회 실패" }));
+    throw new Error(err.detail ?? "자동 루프 상태 조회 실패");
+  }
+  return res.json();
+}
+
+export async function listAutoLoops(): Promise<{ loops: import("@/types").AutoLoopStatus[] }> {
+  const res = await fetch(`${BASE_URL}/api/auto-loop/list`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "자동 루프 목록 조회 실패" }));
+    throw new Error(err.detail ?? "자동 루프 목록 조회 실패");
+  }
+  return res.json();
+}
+
 // ── KIS OpenAPI ─────────────────────────────────────────────────
 
 export async function getKisStatus(): Promise<import("@/types").KisStatus> {

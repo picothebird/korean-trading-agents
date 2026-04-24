@@ -26,6 +26,12 @@ from typing import Literal
 from backend.core.config import settings
 from backend.core.events import stream_thoughts, AgentThought, AgentRole, AgentStatus, emit_thought
 from backend.core import user_settings as _us
+from backend.services.auto_trading import (
+    auto_trading_supervisor,
+    AutoLoopSettings,
+    SupervisionLevel,
+    ExecutionSessionMode,
+)
 from agents.orchestrator.orchestrator import run_analysis
 from backtesting.backtest import run_simple_backtest, run_agent_backtest, format_result_summary
 from data.market.fetcher import get_stock_info, get_technical_indicators, search_stocks, get_price_history
@@ -38,6 +44,7 @@ async def lifespan(app: FastAPI):
     _us.apply_to_settings(settings)
     print("🚀 Korean Trading Agents API 서버 시작")
     yield
+    await auto_trading_supervisor.shutdown()
     print("👋 서버 종료")
 
 
@@ -98,6 +105,21 @@ class AgentBacktestRequest(BaseModel):
     initial_capital: float = 10_000_000
     decision_interval_days: int = Field(default=20, ge=1, le=120)
     session_id: str | None = None
+
+
+class AutoLoopStartRequest(BaseModel):
+    ticker: str
+    interval_min: int = Field(default=15, ge=1, le=1440)
+    min_confidence: float = Field(default=0.72, ge=0.0, le=1.0)
+    order_qty: int = Field(default=1, ge=1, le=1_000_000)
+    paper_trade: bool = True
+    fee_bps: float = Field(default=1.5, ge=0.0, le=500.0)
+    slippage_bps: float = Field(default=3.0, ge=0.0, le=200.0)
+    tax_bps: float = Field(default=18.0, ge=0.0, le=1000.0)
+    max_position_pct: float = Field(default=25.0, ge=1.0, le=100.0)
+    supervision_level: Literal["strict", "balanced", "aggressive"] = "balanced"
+    execution_session_mode: Literal["regular_only", "regular_and_after_hours"] = "regular_only"
+    initial_cash: float = Field(default=10_000_000, ge=10_000)
 
 
 # ── 실행 중인 세션 저장 (간단한 인메모리) ─────────────────
@@ -433,6 +455,56 @@ async def update_settings_api(req: SettingsUpdateRequest):
         "kis_account_no": req.kis_account_no or None,
     })
     return {"ok": True}
+
+
+# ── 서버 상주 자동매매 루프 API ─────────────────────────
+@app.post("/api/auto-loop/start")
+async def start_auto_loop(req: AutoLoopStartRequest):
+    """서버에서 지속 실행되는 자동 분석/주문 루프 시작"""
+    settings_obj = AutoLoopSettings(
+        ticker=req.ticker,
+        interval_min=req.interval_min,
+        min_confidence=req.min_confidence,
+        order_qty=req.order_qty,
+        paper_trade=req.paper_trade,
+        fee_bps=req.fee_bps,
+        slippage_bps=req.slippage_bps,
+        tax_bps=req.tax_bps,
+        max_position_pct=req.max_position_pct,
+        supervision_level=SupervisionLevel(req.supervision_level),
+        execution_session_mode=ExecutionSessionMode(req.execution_session_mode),
+        initial_cash=req.initial_cash,
+    )
+    rt = await auto_trading_supervisor.start(settings_obj)
+    return {
+        "loop_id": rt.loop_id,
+        "status": "running",
+    }
+
+
+@app.post("/api/auto-loop/stop/{loop_id}")
+async def stop_auto_loop(loop_id: str):
+    """자동매매 루프 중지"""
+    ok = await auto_trading_supervisor.stop(loop_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="루프를 찾을 수 없습니다")
+    return {"loop_id": loop_id, "status": "stopped"}
+
+
+@app.get("/api/auto-loop/status/{loop_id}")
+async def auto_loop_status(loop_id: str):
+    """자동매매 루프 상태/로그/이력 조회"""
+    status = await auto_trading_supervisor.status(loop_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="루프를 찾을 수 없습니다")
+    return status
+
+
+@app.get("/api/auto-loop/list")
+async def auto_loop_list():
+    """현재 생성된 자동매매 루프 목록"""
+    loops = await auto_trading_supervisor.list_loops()
+    return {"loops": loops}
 
 
 # ── KIS OpenAPI ─────────────────────────────────────────────────

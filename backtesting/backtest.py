@@ -15,6 +15,7 @@ from typing import Callable, Awaitable, Optional
 import pandas as pd
 import numpy as np
 import FinanceDataReader as fdr
+from data.market.krx_rules import normalize_share_qty, round_to_tick
 
 
 @dataclass
@@ -70,6 +71,8 @@ def run_simple_backtest(
     cash = float(initial_capital)
     shares = 0.0
     in_position = False
+    current_signal = "HOLD"
+    pending_signal: str | None = None
     entry_price = 0.0
     entry_date = None
     trades = []
@@ -79,43 +82,53 @@ def run_simple_backtest(
 
     for i in range(len(close)):
         price = float(close.iloc[i])
+        date_idx = close.index[i]
+
+        # 전일 시그널을 금일 체결 (1일 지연) -> 동일봉 미래정보 누수 방지
+        if pending_signal is not None:
+            executed_signal = current_signal
+            if pending_signal == "BUY" and not in_position and cash > 0:
+                buy_price = float(round_to_tick(price * (1 + transaction_cost / 2), direction="up"))
+                buy_qty = normalize_share_qty(cash / max(1.0, buy_price), lot_size=1)
+                if buy_qty > 0:
+                    shares = float(buy_qty)
+                    cash -= buy_qty * buy_price
+                    in_position = True
+                    entry_price = buy_price
+                    entry_date = date_idx
+                    executed_signal = "BUY"
+            elif pending_signal in ("SELL", "HOLD") and in_position and shares > 0:
+                sell_qty = normalize_share_qty(shares, lot_size=1)
+                if sell_qty > 0:
+                    sell_price = float(round_to_tick(price * (1 - transaction_cost / 2), direction="down"))
+                    proceeds = sell_qty * sell_price
+                    ret_pct = (sell_price / entry_price - 1) * 100
+                    trades.append({
+                        "entry_date": str(entry_date.date()) if entry_date is not None else str(date_idx.date()),
+                        "exit_date": str(date_idx.date()),
+                        "entry_price": round(entry_price, 0),
+                        "exit_price": round(sell_price, 0),
+                        "return_pct": round(ret_pct, 2),
+                        "result": "WIN" if ret_pct > 0 else "LOSS",
+                    })
+                    cash += proceeds
+                    shares = max(0.0, shares - sell_qty)
+                    in_position = shares > 0
+                    executed_signal = pending_signal
+
+            current_signal = executed_signal
+            pending_signal = None
+
         # MA 계산 전 구간 건너뜀
         if pd.isna(ma5.iloc[i]) or pd.isna(ma20.iloc[i]):
             equity_values.append(cash + shares * price)
             continue
 
-        # 판단 주기: 지정된 거래일 간격마다만 매매 판단
-        if i % interval != 0:
-            equity_values.append(cash + shares * price)
-            continue
-
-        golden_cross = float(ma5.iloc[i]) > float(ma20.iloc[i])
-
-        if golden_cross and not in_position and cash > 0:
-            # 매수
-            buy_price = price * (1 + transaction_cost / 2)
-            shares = cash / buy_price
-            cash = 0.0
-            in_position = True
-            entry_price = price
-            entry_date = close.index[i]
-
-        elif not golden_cross and in_position and shares > 0:
-            # 매도
-            sell_price = price * (1 - transaction_cost / 2)
-            proceeds = shares * sell_price
-            ret_pct = (sell_price / entry_price - 1) * 100
-            trades.append({
-                "entry_date": str(entry_date.date()),
-                "exit_date": str(close.index[i].date()),
-                "entry_price": round(entry_price, 0),
-                "exit_price": round(price, 0),
-                "return_pct": round(ret_pct, 2),
-                "result": "WIN" if ret_pct > 0 else "LOSS",
-            })
-            cash = proceeds
-            shares = 0.0
-            in_position = False
+        # 판단 주기: 지정된 거래일 간격마다만 신호 판단
+        if i % interval == 0:
+            desired_signal = "BUY" if float(ma5.iloc[i]) > float(ma20.iloc[i]) else "SELL"
+            if desired_signal != current_signal:
+                pending_signal = desired_signal
 
         portfolio_value = cash + shares * price
         equity_values.append(portfolio_value)
@@ -275,6 +288,7 @@ async def run_agent_backtest(
     trades: list[dict] = []
     equity_values: list[float] = []
     prediction_trace: list[dict] = []
+    pending_prediction_evals: list[dict] = []
 
     rebalance_set = set(rebalance_dates)
     step = 0
@@ -287,30 +301,63 @@ async def run_agent_backtest(
         if pending_signal is not None:
             new_sig = pending_signal
             pending_signal = None
+            executed_signal = current_signal
 
             if new_sig == "BUY" and current_signal != "BUY" and cash > 0:
-                buy_price = price * (1 + transaction_cost / 2)
-                shares = cash / buy_price
-                cash = 0.0
-                entry_price = price
-                entry_date = dt
+                buy_price = float(round_to_tick(price * (1 + transaction_cost / 2), direction="up"))
+                buy_qty = normalize_share_qty(cash / max(1.0, buy_price), lot_size=1)
+                if buy_qty > 0:
+                    shares = float(buy_qty)
+                    cash -= buy_qty * buy_price
+                    entry_price = buy_price
+                    entry_date = dt
+                    executed_signal = "BUY"
 
             elif new_sig in ("SELL", "HOLD") and current_signal == "BUY" and shares > 0:
-                sell_price = price * (1 - transaction_cost / 2)
-                ret_pct = (sell_price / entry_price - 1) * 100
-                trades.append({
-                    "entry_date": str(entry_date.date()) if entry_date else date_str,
-                    "exit_date": date_str,
-                    "entry_price": round(entry_price, 0),
-                    "exit_price": round(price, 0),
-                    "return_pct": round(ret_pct, 2),
-                    "result": "WIN" if ret_pct > 0 else "LOSS",
-                    "signal": new_sig,
-                })
-                cash = shares * sell_price
-                shares = 0.0
+                sell_qty = normalize_share_qty(shares, lot_size=1)
+                if sell_qty > 0:
+                    sell_price = float(round_to_tick(price * (1 - transaction_cost / 2), direction="down"))
+                    ret_pct = (sell_price / entry_price - 1) * 100
+                    trades.append({
+                        "entry_date": str(entry_date.date()) if entry_date else date_str,
+                        "exit_date": date_str,
+                        "entry_price": round(entry_price, 0),
+                        "exit_price": round(sell_price, 0),
+                        "return_pct": round(ret_pct, 2),
+                        "result": "WIN" if ret_pct > 0 else "LOSS",
+                        "signal": new_sig,
+                    })
+                    cash += sell_qty * sell_price
+                    shares = max(0.0, shares - sell_qty)
+                    executed_signal = new_sig
 
-            current_signal = new_sig
+            current_signal = executed_signal
+
+        # 이미 생성된 예측은 평가 시점 도달 후에만 채점 (future price 선참조 금지)
+        if pending_prediction_evals:
+            remain_pending: list[dict] = []
+            for pending in pending_prediction_evals:
+                if pending["eval_date"] != date_str:
+                    remain_pending.append(pending)
+                    continue
+
+                trace_idx = pending["trace_index"]
+                base_price = float(pending["base_price"])
+                predicted_signal = str(pending["signal"])
+                actual_return_pct = (price / base_price - 1) * 100 if base_price else 0.0
+
+                if predicted_signal == "BUY":
+                    hit = actual_return_pct > 0
+                elif predicted_signal == "SELL":
+                    hit = actual_return_pct < 0
+                else:
+                    hit = abs(actual_return_pct) <= 1.0
+
+                prediction_trace[trace_idx]["actual_price"] = round(price, 2)
+                prediction_trace[trace_idx]["actual_return_pct"] = round(actual_return_pct, 2)
+                prediction_trace[trace_idx]["hit"] = bool(hit)
+
+            pending_prediction_evals = remain_pending
 
         # 리밸런싱 날짜: AI 시그널 조회 → 다음 거래일 pending
         if date_str in rebalance_set:
@@ -333,24 +380,10 @@ async def run_agent_backtest(
 
             # 백테스트 리밸런싱 단위에서 예측 vs 실제를 기록해 모니터링에 활용
             eval_date = rebalance_dates[step] if step < total_steps else str(close.index[-1].date())
-            try:
-                eval_price = float(close.loc[pd.Timestamp(eval_date)])
-            except Exception:
-                eval_date = str(close.index[-1].date())
-                eval_price = float(close.iloc[-1])
 
             direction = 1 if new_signal == "BUY" else -1 if new_signal == "SELL" else 0
             predicted_return_pct = direction * max(0.5, confidence_val * 4.0)
             predicted_price = price * (1 + predicted_return_pct / 100)
-            actual_return_pct = (eval_price / price - 1) * 100 if price else 0.0
-
-            if new_signal == "BUY":
-                hit = actual_return_pct > 0
-            elif new_signal == "SELL":
-                hit = actual_return_pct < 0
-            else:
-                hit = abs(actual_return_pct) <= 1.0
-
             prediction_trace.append({
                 "prediction_date": date_str,
                 "eval_date": eval_date,
@@ -358,10 +391,16 @@ async def run_agent_backtest(
                 "confidence": round(confidence_val, 3),
                 "price_at_prediction": round(price, 2),
                 "predicted_price": round(predicted_price, 2),
-                "actual_price": round(eval_price, 2),
+                "actual_price": round(price, 2),
                 "predicted_return_pct": round(predicted_return_pct, 2),
-                "actual_return_pct": round(actual_return_pct, 2),
-                "hit": bool(hit),
+                "actual_return_pct": 0.0,
+                "hit": False,
+            })
+            pending_prediction_evals.append({
+                "trace_index": len(prediction_trace) - 1,
+                "eval_date": eval_date,
+                "base_price": price,
+                "signal": new_signal,
             })
 
             # 진행 상황 SSE emit
@@ -392,18 +431,43 @@ async def run_agent_backtest(
     # 마지막 날 포지션 강제 청산
     if shares > 0:
         price = float(close.iloc[-1])
-        ret_pct = (price / entry_price - 1) * 100
-        trades.append({
-            "entry_date": str(entry_date.date()) if entry_date else end_date,
-            "exit_date": end_date,
-            "entry_price": round(entry_price, 0),
-            "exit_price": round(price, 0),
-            "return_pct": round(ret_pct, 2),
-            "result": "WIN" if ret_pct > 0 else "LOSS",
-            "signal": "FORCED_CLOSE",
-        })
-        cash = shares * price * (1 - transaction_cost / 2)
-        shares = 0.0
+        sell_qty = normalize_share_qty(shares, lot_size=1)
+        if sell_qty > 0:
+            sell_price = float(round_to_tick(price * (1 - transaction_cost / 2), direction="down"))
+            ret_pct = (sell_price / entry_price - 1) * 100
+            trades.append({
+                "entry_date": str(entry_date.date()) if entry_date else end_date,
+                "exit_date": end_date,
+                "entry_price": round(entry_price, 0),
+                "exit_price": round(sell_price, 0),
+                "return_pct": round(ret_pct, 2),
+                "result": "WIN" if ret_pct > 0 else "LOSS",
+                "signal": "FORCED_CLOSE",
+            })
+            cash += sell_qty * sell_price
+            shares = max(0.0, shares - sell_qty)
+
+    # 마지막 평가일을 넘기지 못한 예측은 종료일 가격으로 사후 평가
+    if pending_prediction_evals:
+        final_price = float(close.iloc[-1])
+        final_date = str(close.index[-1].date())
+        for pending in pending_prediction_evals:
+            trace_idx = pending["trace_index"]
+            base_price = float(pending["base_price"])
+            predicted_signal = str(pending["signal"])
+            actual_return_pct = (final_price / base_price - 1) * 100 if base_price else 0.0
+
+            if predicted_signal == "BUY":
+                hit = actual_return_pct > 0
+            elif predicted_signal == "SELL":
+                hit = actual_return_pct < 0
+            else:
+                hit = abs(actual_return_pct) <= 1.0
+
+            prediction_trace[trace_idx]["eval_date"] = final_date
+            prediction_trace[trace_idx]["actual_price"] = round(final_price, 2)
+            prediction_trace[trace_idx]["actual_return_pct"] = round(actual_return_pct, 2)
+            prediction_trace[trace_idx]["hit"] = bool(hit)
 
     equity = pd.Series(equity_values, index=close.index[-len(equity_values):])
 

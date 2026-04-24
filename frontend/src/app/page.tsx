@@ -1800,30 +1800,35 @@ export default function Home() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={SPRING}
               >
-                <AutoLoopPanel
-                  ticker={ticker}
-                  onDecision={(autoDecision) => {
-                    setDecision(autoDecision);
-                    setKisOrderTicker(autoDecision.ticker);
-                    setLogs((prev) => [
-                      ...prev.slice(-99),
-                      {
-                        agent_id: "auto_loop",
-                        role: "portfolio_manager",
-                        status: "done",
-                        content: `자동 루프 의사결정: ${autoDecision.action} (${(autoDecision.confidence * 100).toFixed(1)}%)`,
-                        timestamp: new Date().toISOString(),
-                      },
-                    ]);
-                  }}
-                  onTradeRecorded={(trade) => {
-                    setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
-                  }}
-                />
                 <KisPanel prefillTicker={kisOrderTicker || ticker} />
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Keep automation loop mounted so it can run continuously across tabs */}
+          <div style={{ display: tab === "trading" ? "block" : "none" }}>
+            <AutoLoopPanel
+              ticker={ticker}
+              showVisuals={tab === "trading"}
+              onDecision={(autoDecision) => {
+                setDecision(autoDecision);
+                setKisOrderTicker(autoDecision.ticker);
+                setLogs((prev) => [
+                  ...prev.slice(-99),
+                  {
+                    agent_id: "auto_loop",
+                    role: "portfolio_manager",
+                    status: "done",
+                    content: `자동 루프 의사결정: ${autoDecision.action} (${(autoDecision.confidence * 100).toFixed(1)}%)`,
+                    timestamp: new Date().toISOString(),
+                  },
+                ]);
+              }}
+              onTradeRecorded={(trade) => {
+                setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
+              }}
+            />
+          </div>
         </div>
 
         {/* ── Footer ─────────────────────────────────────────── */}
@@ -1880,29 +1885,31 @@ export default function Home() {
         {/* ── Right panel header ─────────────────────────────── */}
         <div
           style={{
-            padding: "14px 20px",
+            padding: "12px 16px",
             borderBottom: "1px solid var(--border-subtle)",
             flexShrink: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            background: "linear-gradient(180deg, rgba(116,111,255,0.14) 0%, rgba(14,15,20,0.9) 100%)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
-              에이전트 오피스
+            <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(231,226,255,0.94)", letterSpacing: "0.08em" }}>
+              PIXEL AGENT CONTROL ROOM
             </p>
             <span
               style={{
-                fontSize: 10,
-                color: "var(--text-tertiary)",
-                background: "var(--bg-elevated)",
-                padding: "2px 8px",
-                borderRadius: 99,
-                border: "1px solid var(--border-subtle)",
+                fontSize: 9,
+                color: "rgba(187,176,255,0.95)",
+                background: "rgba(16,17,26,0.88)",
+                padding: "2px 7px",
+                borderRadius: 2,
+                border: "1px solid rgba(145,133,255,0.35)",
+                letterSpacing: "0.06em",
               }}
             >
-              8 에이전트 · 3 레이어
+              DATA | DEBATE | DECISION
             </span>
           </div>
 
@@ -1932,38 +1939,58 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── Pixel Office Canvas ─────────────────────────────── */}
-        <div style={{ flex: 1, minHeight: 0, padding: "12px 16px 0", overflow: "hidden", display: "flex", alignItems: "stretch" }}>
-          <PixelOffice thoughts={thoughts} activeAgents={activeAgents} />
-        </div>
-
-        {/* ── Activity Feed ───────────────────────────────────── */}
+        {/* ── 50/50 split: Pixel Office + Activity Feed ───────── */}
         <div
           style={{
-            flexShrink: 0,
-            height: isNarrowLayout ? 140 : 210,
-            borderTop: "1px solid var(--border-subtle)",
-            padding: "10px 16px",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+            padding: "10px 14px 12px",
+            display: "grid",
+            gridTemplateRows: "1fr 1fr",
+            gap: 10,
           }}
         >
-          <p
+          <div
             style={{
-              fontSize: 9,
-              fontWeight: 700,
-              color: "var(--text-tertiary)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              marginBottom: 6,
-              flexShrink: 0,
+              minHeight: 0,
+              border: "1px solid var(--border-subtle)",
+              borderRadius: 12,
+              padding: 8,
+              background: "linear-gradient(180deg, rgba(96,48,255,0.06) 0%, rgba(20,21,24,0.65) 100%)",
+              overflow: "hidden",
             }}
           >
-            실시간 활동 로그
-          </p>
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <ActivityFeed logs={logs} logEndRef={logEndRef} />
+            <PixelOffice thoughts={thoughts} activeAgents={activeAgents} />
+          </div>
+
+          <div
+            style={{
+              minHeight: 0,
+              border: "1px solid var(--border-subtle)",
+              borderRadius: 12,
+              padding: "8px 10px",
+              background: "linear-gradient(180deg, rgba(116,111,255,0.08) 0%, rgba(18,19,24,0.9) 100%)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <p
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: "rgba(214,210,255,0.95)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: 6,
+                flexShrink: 0,
+              }}
+            >
+              실시간 활동 로그
+            </p>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <ActivityFeed logs={logs} logEndRef={logEndRef} />
+            </div>
           </div>
         </div>
       </main>

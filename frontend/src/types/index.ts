@@ -243,3 +243,88 @@ export interface BacktestProgress {
   summary?: string;
   message?: string;
 }
+
+// ── Server Auto Loop ────────────────────────────────────────────
+
+export type SupervisionLevel = "strict" | "balanced" | "aggressive";
+export type ExecutionSessionMode = "regular_only" | "regular_and_after_hours";
+
+export interface AutoLoopStartRequest {
+  ticker: string;
+  interval_min: number;
+  min_confidence: number;
+  order_qty: number;
+  paper_trade: boolean;
+  fee_bps: number;
+  slippage_bps: number;
+  tax_bps: number;
+  max_position_pct: number;
+  supervision_level: SupervisionLevel;
+  execution_session_mode: ExecutionSessionMode;
+  initial_cash: number;
+}
+
+export interface AutoLoopLog {
+  timestamp: string;
+  level: "info" | "success" | "warn" | "error";
+  message: string;
+}
+
+export interface AutoLoopDecisionHistoryPoint {
+  timestamp: string;
+  confidence: number;
+  actionScore: number;
+  action: "BUY" | "SELL" | "HOLD";
+}
+
+export interface AutoLoopTradeRecord {
+  timestamp: string;
+  ticker: string;
+  side: "buy" | "sell";
+  qty: number;
+  price: number;
+  status: "simulated" | "executed" | "failed";
+  confidence: number;
+  reason: string;
+}
+
+export interface AutoLoopPaperAccount {
+  cash: number;
+  shares: number;
+  avg_buy_price: number;
+  market_value: number;
+  total_equity: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  position_pct: number;
+  total_fees: number;
+  total_taxes: number;
+}
+
+export interface AutoLoopStatus {
+  loop_id: string;
+  ticker: string;
+  running: boolean;
+  cycle_running: boolean;
+  created_at: string;
+  started_at: string | null;
+  stopped_at: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  settings: AutoLoopStartRequest;
+  stats: {
+    cycle_count: number;
+    simulated_trades: number;
+    executed_trades: number;
+    failed_trades: number;
+    skipped_cycles: number;
+  };
+  latest_price: number;
+  latest_price_time: string | null;
+  current_session: string;
+  latest_decision: TradeDecision | null;
+  paper_account: AutoLoopPaperAccount | null;
+  decision_history: AutoLoopDecisionHistoryPoint[];
+  trade_history: AutoLoopTradeRecord[];
+  logs: AutoLoopLog[];
+}
