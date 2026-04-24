@@ -161,6 +161,8 @@ export function streamAgentBacktest(
           metrics: data.metrics,
           trades: data.trades ?? [],
           equity_curve: data.equity_curve ?? [],
+          prediction_trace: data.prediction_trace ?? [],
+          prediction_monitoring: data.prediction_monitoring,
           summary: data.summary ?? "",
         });
       } else if (data.type === "error") {

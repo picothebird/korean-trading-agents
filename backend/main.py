@@ -124,6 +124,8 @@ def _serialize_backtest_result(result) -> dict:
         },
         "trades": result.trades,
         "equity_curve": result.equity_curve,
+        "prediction_trace": getattr(result, "prediction_trace", []),
+        "prediction_monitoring": getattr(result, "prediction_monitoring", {}),
         "summary": format_result_summary(result),
     }
 

@@ -34,6 +34,8 @@ class BacktestResult:
     alpha: float               # 초과 수익
     trades: list = field(default_factory=list)
     equity_curve: list = field(default_factory=list)
+    prediction_trace: list = field(default_factory=list)
+    prediction_monitoring: dict = field(default_factory=dict)
 
 
 def run_simple_backtest(
@@ -265,6 +267,7 @@ async def run_agent_backtest(
     entry_date = None
     trades: list[dict] = []
     equity_values: list[float] = []
+    prediction_trace: list[dict] = []
 
     rebalance_set = set(rebalance_dates)
     step = 0
@@ -316,6 +319,44 @@ async def run_agent_backtest(
                 confidence = 0.5
                 reason = f"오류: {str(e)[:40]}"
 
+            try:
+                confidence_val = max(0.0, min(float(confidence), 1.0))
+            except (TypeError, ValueError):
+                confidence_val = 0.5
+
+            # 백테스트 리밸런싱 단위에서 예측 vs 실제를 기록해 모니터링에 활용
+            eval_date = rebalance_dates[step] if step < total_steps else str(close.index[-1].date())
+            try:
+                eval_price = float(close.loc[pd.Timestamp(eval_date)])
+            except Exception:
+                eval_date = str(close.index[-1].date())
+                eval_price = float(close.iloc[-1])
+
+            direction = 1 if new_signal == "BUY" else -1 if new_signal == "SELL" else 0
+            predicted_return_pct = direction * max(0.5, confidence_val * 4.0)
+            predicted_price = price * (1 + predicted_return_pct / 100)
+            actual_return_pct = (eval_price / price - 1) * 100 if price else 0.0
+
+            if new_signal == "BUY":
+                hit = actual_return_pct > 0
+            elif new_signal == "SELL":
+                hit = actual_return_pct < 0
+            else:
+                hit = abs(actual_return_pct) <= 1.0
+
+            prediction_trace.append({
+                "prediction_date": date_str,
+                "eval_date": eval_date,
+                "signal": new_signal,
+                "confidence": round(confidence_val, 3),
+                "price_at_prediction": round(price, 2),
+                "predicted_price": round(predicted_price, 2),
+                "actual_price": round(eval_price, 2),
+                "predicted_return_pct": round(predicted_return_pct, 2),
+                "actual_return_pct": round(actual_return_pct, 2),
+                "hit": bool(hit),
+            })
+
             # 진행 상황 SSE emit
             if session_id:
                 emoji = "🟢" if new_signal == "BUY" else "🔴" if new_signal == "SELL" else "⚪"
@@ -327,7 +368,7 @@ async def run_agent_backtest(
                     metadata={
                         "date": date_str,
                         "signal": new_signal,
-                        "confidence": confidence,
+                        "confidence": confidence_val,
                         "step": step,
                         "total": total_steps,
                     },
@@ -368,6 +409,30 @@ async def run_agent_backtest(
 
     metrics = _compute_metrics(equity, trades, initial_capital, start_date, end_date, bm_return)
 
+    prediction_monitoring = {
+        "prediction_count": 0,
+        "hit_rate": 0.0,
+        "avg_predicted_return_pct": 0.0,
+        "avg_actual_return_pct": 0.0,
+        "avg_abs_error_pct": 0.0,
+    }
+    if prediction_trace:
+        prediction_count = len(prediction_trace)
+        hit_rate = sum(1 for p in prediction_trace if p.get("hit")) / prediction_count * 100
+        avg_pred = float(np.mean([p["predicted_return_pct"] for p in prediction_trace]))
+        avg_actual = float(np.mean([p["actual_return_pct"] for p in prediction_trace]))
+        avg_abs_error = float(np.mean([
+            abs(p["predicted_return_pct"] - p["actual_return_pct"])
+            for p in prediction_trace
+        ]))
+        prediction_monitoring = {
+            "prediction_count": prediction_count,
+            "hit_rate": round(hit_rate, 2),
+            "avg_predicted_return_pct": round(avg_pred, 2),
+            "avg_actual_return_pct": round(avg_actual, 2),
+            "avg_abs_error_pct": round(avg_abs_error, 2),
+        }
+
     return BacktestResult(
         ticker=ticker,
         start_date=start_date,
@@ -378,4 +443,6 @@ async def run_agent_backtest(
             {"date": str(equity.index[i].date()), "value": round(float(equity.iloc[i]), 0)}
             for i in range(0, len(equity), max(1, len(equity) // 100))
         ],
+        prediction_trace=prediction_trace,
+        prediction_monitoring=prediction_monitoring,
     )

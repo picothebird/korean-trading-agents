@@ -80,6 +80,27 @@ export interface BacktestMetrics {
   alpha: number;
 }
 
+export interface BacktestPredictionPoint {
+  prediction_date: string;
+  eval_date: string;
+  signal: "BUY" | "SELL" | "HOLD";
+  confidence: number;
+  price_at_prediction: number;
+  predicted_price: number;
+  actual_price: number;
+  predicted_return_pct: number;
+  actual_return_pct: number;
+  hit: boolean;
+}
+
+export interface BacktestPredictionMonitoring {
+  prediction_count: number;
+  hit_rate: number;
+  avg_predicted_return_pct: number;
+  avg_actual_return_pct: number;
+  avg_abs_error_pct: number;
+}
+
 export interface BacktestResult {
   ticker: string;
   period: string;
@@ -93,6 +114,8 @@ export interface BacktestResult {
     result: "WIN" | "LOSS";
   }>;
   equity_curve: Array<{ date: string; value: number }>;
+  prediction_trace?: BacktestPredictionPoint[];
+  prediction_monitoring?: BacktestPredictionMonitoring;
   summary: string;
 }
 
@@ -197,6 +220,8 @@ export interface BacktestProgress {
   metrics?: BacktestMetrics;
   trades?: BacktestResult["trades"];
   equity_curve?: BacktestResult["equity_curve"];
+  prediction_trace?: BacktestResult["prediction_trace"];
+  prediction_monitoring?: BacktestResult["prediction_monitoring"];
   summary?: string;
   message?: string;
 }
