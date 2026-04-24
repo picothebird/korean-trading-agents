@@ -27,9 +27,11 @@ export function streamAnalysis(
   sessionId: string,
   onThought: (thought: import("@/types").AgentThought) => void,
   onDecision: (decision: import("@/types").TradeDecision) => void,
-  onDone: () => void
+  onDone: () => void,
+  onError?: (msg: string) => void
 ) {
   const es = new EventSource(`${BASE_URL}/api/analyze/stream/${sessionId}`);
+  let decisionReceived = false;
 
   es.onmessage = (event) => {
     try {
@@ -38,8 +40,10 @@ export function streamAnalysis(
         onDone();
         es.close();
       } else if (data.type === "final_decision") {
+        decisionReceived = true;
         onDecision(data);
       } else if (data.type === "timeout") {
+        if (!decisionReceived) onError?.("분석 시간 초과. 다시 시도하세요.");
         onDone();
         es.close();
       } else if (data.agent_id) {
@@ -51,6 +55,7 @@ export function streamAnalysis(
   };
 
   es.onerror = () => {
+    onError?.("서버 연결 끊김. 백엔드가 실행 중인지 확인하세요.");
     onDone();
     es.close();
   };

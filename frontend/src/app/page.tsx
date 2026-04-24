@@ -630,6 +630,7 @@ export default function Home() {
   const [ticker, setTicker] = useState("005930");
   const [companyName, setCompanyName] = useState("삼성전자");
   const [isRunning, setIsRunning] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [thoughts, setThoughts] = useState<Map<AgentRole, AgentThought>>(new Map());
   const [activeAgents, setActiveAgents] = useState<Set<AgentRole>>(new Set());
   const [decision, setDecision] = useState<TradeDecision | null>(null);
@@ -673,9 +674,20 @@ export default function Home() {
   }, [logs]);
 
   // ── Core handlers ──────────────────────────────────────────────
+  const handleCancelAnalysis = useCallback(() => {
+    analysisCleanupRef.current?.();
+    analysisCleanupRef.current = null;
+    setIsRunning(false);
+    setActiveAgents(new Set());
+  }, []);
+
   const handleAnalyze = useCallback(async () => {
     if (isRunning) return;
+    // Close any existing SSE before starting new analysis
+    analysisCleanupRef.current?.();
+    analysisCleanupRef.current = null;
     setIsRunning(true);
+    setAnalysisError(null);
     setDecision(null);
     setThoughts(new Map());
     setActiveAgents(new Set());
@@ -701,15 +713,20 @@ export default function Home() {
         () => {
           setIsRunning(false);
           setActiveAgents(new Set());
+        },
+        (errMsg) => {
+          setAnalysisError(errMsg);
         }
       );
       analysisCleanupRef.current = cleanup;
     } catch {
       setIsRunning(false);
+      setAnalysisError("분석 요청 실패. 백엔드가 실행 중인지 확인하세요.");
     }
   }, [ticker, isRunning]);
 
   const handleBacktest = useCallback(async () => {
+    if (btLoading) return;
     setBtLoading(true);
     setBtResult(null);
     setBtProgress([]);
@@ -758,7 +775,7 @@ export default function Home() {
         setBtLoading(false);
       }
     }
-  }, [ticker, btMode]);
+  }, [ticker, btMode, btLoading]);
 
   // Cleanup SSE connections on unmount
   useEffect(() => {
@@ -775,14 +792,21 @@ export default function Home() {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(tgt.tagName)) return;
       if (e.key === " " || e.code === "Space") {
         e.preventDefault();
-        if (tab === "analysis") handleAnalyze();
-        else if (tab === "backtest") handleBacktest();
+        if (tab === "analysis") {
+          if (isRunning) handleCancelAnalysis();
+          else handleAnalyze();
+        } else if (tab === "backtest") {
+          handleBacktest();
+        }
       }
-      if (e.key === "Escape") setApprovalModal(false);
+      if (e.key === "Escape") {
+        setApprovalModal(false);
+        if (isRunning) handleCancelAnalysis();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [tab, handleAnalyze, handleBacktest]);
+  }, [tab, handleAnalyze, handleBacktest, handleCancelAnalysis, isRunning]);
 
   const activeCount = activeAgents.size;
 
@@ -991,47 +1015,100 @@ export default function Home() {
                 transition={SPRING}
                 style={{ display: "flex", flexDirection: "column", gap: 10 }}
               >
-                {/* Run button */}
-                <motion.button
-                  onClick={handleAnalyze}
-                  disabled={isRunning}
-                  whileTap={{ scale: 0.97 }}
-                  style={{
-                    width: "100%",
-                    padding: "12px 0",
-                    borderRadius: "var(--radius-xl)",
-                    border: "none",
-                    background: isRunning ? "var(--bg-elevated)" : "var(--brand)",
-                    color: isRunning ? "var(--text-tertiary)" : "#fff",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: isRunning ? "not-allowed" : "pointer",
-                    boxShadow: isRunning ? "none" : "0 4px 16px var(--brand-glow)",
-                    transition: "all 200ms",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                  }}
-                >
-                  {isRunning ? (
-                    <>
-                      <motion.span
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        style={{ fontSize: 14 }}
-                      >
-                        ⚙️
-                      </motion.span>
-                      분석 중...
-                    </>
-                  ) : (
-                    <>
-                      🔍 분석 시작
-                      <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400 }}>Space</span>
-                    </>
+                {/* Run / Cancel button row */}
+                <div style={{ display: "flex", gap: 6 }}>
+                  <motion.button
+                    onClick={handleAnalyze}
+                    disabled={isRunning}
+                    whileTap={{ scale: 0.97 }}
+                    style={{
+                      flex: 1,
+                      padding: "12px 0",
+                      borderRadius: "var(--radius-xl)",
+                      border: "none",
+                      background: isRunning ? "var(--bg-elevated)" : "var(--brand)",
+                      color: isRunning ? "var(--text-tertiary)" : "#fff",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: isRunning ? "not-allowed" : "pointer",
+                      boxShadow: isRunning ? "none" : "0 4px 16px var(--brand-glow)",
+                      transition: "all 200ms",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    }}
+                  >
+                    {isRunning ? (
+                      <>
+                        <motion.span
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          style={{ fontSize: 14 }}
+                        >
+                          ⚙️
+                        </motion.span>
+                        분석 중...
+                      </>
+                    ) : (
+                      <>
+                        🔍 분석 시작
+                        <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400 }}>Space</span>
+                      </>
+                    )}
+                  </motion.button>
+                  {isRunning && (
+                    <motion.button
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      onClick={handleCancelAnalysis}
+                      whileTap={{ scale: 0.95 }}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: "var(--radius-xl)",
+                        border: "1px solid var(--border-default)",
+                        background: "var(--bg-elevated)",
+                        color: "var(--text-tertiary)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                      title="분석 중단 (Esc)"
+                    >
+                      중단
+                    </motion.button>
                   )}
-                </motion.button>
+                </div>
+
+                {/* Error state */}
+                <AnimatePresence>
+                  {analysisError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "10px 12px",
+                        borderRadius: "var(--radius-lg)",
+                        background: "rgba(240,68,82,0.1)",
+                        border: "1px solid rgba(240,68,82,0.25)",
+                      }}
+                    >
+                      <span style={{ fontSize: 14 }}>⚠️</span>
+                      <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{analysisError}</p>
+                      <button
+                        onClick={() => setAnalysisError(null)}
+                        style={{ fontSize: 14, background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 1 }}
+                      >
+                        ✕
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Pipeline progress */}
                 <AnimatePresence>
@@ -1441,7 +1518,7 @@ export default function Home() {
         </div>
 
         {/* ── Pixel Office Canvas ─────────────────────────────── */}
-        <div style={{ flex: 1, minHeight: 0, padding: "12px 16px 0", overflow: "hidden" }}>
+        <div style={{ flex: 1, minHeight: 0, padding: "12px 16px 0", overflow: "hidden", display: "flex", alignItems: "flex-start" }}>
           <PixelOffice thoughts={thoughts} activeAgents={activeAgents} />
         </div>
 

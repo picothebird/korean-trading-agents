@@ -182,7 +182,7 @@ interface ActivityFeedProps {
 export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
   const recent = logs.slice(-30);
   return (
-    <div style={{ height: 320, overflowY: "auto", padding: "4px 0" }}>
+    <div style={{ height: "100%", overflowY: "auto", padding: "4px 0" }}>
       {recent.length === 0 ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-tertiary)", fontSize: 12 }}>
           분석 시작 시 로그가 표시됩니다

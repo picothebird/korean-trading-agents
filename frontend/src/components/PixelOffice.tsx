@@ -447,6 +447,9 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
     <div
       style={{
         position: "relative",
+        width: "100%",
+        aspectRatio: `${W} / ${H}`,
+        maxHeight: "100%",
         background: "#0a0c10",
         border: "1px solid rgba(255,255,255,0.06)",
         borderRadius: 16,
@@ -457,7 +460,7 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
         ref={canvasRef}
         width={W}
         height={H}
-        style={{ display: "block", width: "100%", height: "auto" }}
+        style={{ display: "block", position: "absolute", inset: 0, width: "100%", height: "100%" }}
       />
 
       {/* Speech bubbles */}
@@ -465,10 +468,9 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
         {speechBubbles.map(({ role, meta, thought, shouldShow }) => {
           if (!shouldShow || !thought) return null;
 
-          // Position bubble above character, scaled to canvas CSS width
-          // Canvas is displayed at full container width via CSS width:100%
-          // We calculate position as percentage of canvas logical size
-          const xPct = (meta.x / W) * 100;
+          // Position bubble above character as % of canvas logical size.
+          // Clamp x to [7%, 80%] to prevent edge clipping (bubble maxWidth ~170px)
+          const xPct = Math.max(7, Math.min(80, (meta.x / W) * 100));
           const yPct = (Math.max(0, meta.y - 80) / H) * 100;
 
           const truncated = thought.content.length > 120
@@ -493,7 +495,6 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
                 position: "absolute",
                 left: `${xPct}%`,
                 top: `${yPct}%`,
-                transform: "translateX(-50%)",
                 zIndex: 10,
                 maxWidth: 170,
                 pointerEvents: "none",
