@@ -217,6 +217,54 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
         </ul>
       </div>
 
+      {/* 분석 파이프라인 시각화 (P3.R2) */}
+      <details style={{
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: "var(--radius-lg)",
+        padding: "10px 14px",
+      }}>
+        <summary style={{ fontSize: 11, color: "var(--text-secondary)", cursor: "pointer", fontWeight: 700, listStyle: "none" }}>
+          🔀 9개 에이전트는 어떤 순서로 결정에 이르렀나요?
+        </summary>
+        <div style={{ marginTop: 10 }}>
+          {/* 4단계 파이프라인 */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
+            {[
+              { step: "L1", title: "분석", emoji: "🔍", body: "9명이 각자 데이터를 봅니다", color: "var(--brand-active)" },
+              { step: "L2", title: "토론", emoji: "⚔️", body: `강세 vs 약세 ${debate?.rounds ?? 0}라운드`, color: "var(--warning)" },
+              { step: "L3", title: "리스크", emoji: "🛡️", body: "위험·Kelly 산정", color: "var(--bear)" },
+              { step: "L4", title: "결정", emoji: "🎯", body: `${SIGNAL_CFG[decision.action]?.label ?? decision.action} ${confidencePct}%`, color: SIGNAL_CFG[decision.action]?.color ?? "var(--text-primary)" },
+            ].map((s, i) => (
+              <div key={s.step} style={{ position: "relative" }}>
+                <div style={{
+                  background: "var(--bg-surface)",
+                  border: `1px solid ${s.color}33`,
+                  borderRadius: "var(--radius-md)",
+                  padding: "8px 6px",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 16 }}>{s.emoji}</div>
+                  <p style={{ fontSize: 9, color: s.color, fontWeight: 800, marginTop: 2 }}>{s.step} · {s.title}</p>
+                  <p style={{ fontSize: 8, color: "var(--text-tertiary)", marginTop: 2, lineHeight: 1.3 }}>{s.body}</p>
+                </div>
+                {i < 3 && (
+                  <span style={{
+                    position: "absolute", right: -6, top: "50%", transform: "translateY(-50%)",
+                    fontSize: 10, color: "var(--text-quaternary)", zIndex: 1,
+                  }}>
+                    →
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.55 }}>
+            각 단계의 산출물이 다음 단계의 입력으로 전달됩니다. 토론 라운드가 길수록 신뢰도가 보정되고, 리스크 매니저가 Kelly 비중을 깎거나 GURU 정책이 결과를 강제로 바꿀 수도 있습니다.
+          </p>
+        </div>
+      </details>
+
       {/* 1. 한 줄 요약 (사람의 말) */}
       <Section title="1. 한 줄 요약" index={0}>
         <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.7 }}>

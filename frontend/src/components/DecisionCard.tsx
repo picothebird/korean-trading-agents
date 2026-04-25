@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TradeDecision } from "@/types";
 import { Tooltip } from "@/components/ui";
@@ -23,6 +24,32 @@ interface DecisionCardProps {
 }
 
 export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTrading, onGoBacktest, onGoAutoLoop }: DecisionCardProps) {
+  // GURU 30일 누적 통계 (P4.23)
+  const [guruStats, setGuruStats] = useState<{ total: number; changed: number; defensive: number }>({ total: 0, changed: 0, defensive: 0 });
+  useEffect(() => {
+    if (!decision?.agents_summary?.guru?.enabled) return;
+    try {
+      const KEY = "kta_guru_history_v1";
+      const now = Date.now();
+      const cutoff = now - 30 * 86_400_000;
+      const raw = window.localStorage.getItem(KEY);
+      const arr: Array<{ t: number; ch: boolean; lc: number; ac: number }> = raw ? JSON.parse(raw) : [];
+      const last = arr[arr.length - 1];
+      const guru = decision.agents_summary.guru;
+      if (!guru) return;
+      const newItem = { t: now, ch: !!guru.action_changed, lc: guru.llm_confidence, ac: decision.confidence };
+      if (!last || now - last.t > 1000) arr.push(newItem);
+      const filtered = arr.filter((x) => x.t > cutoff).slice(-200);
+      window.localStorage.setItem(KEY, JSON.stringify(filtered));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setGuruStats({
+        total: filtered.length,
+        changed: filtered.filter((x) => x.ch).length,
+        defensive: filtered.filter((x) => x.ch && x.lc > x.ac).length,
+      });
+    } catch { /* ignore */ }
+  }, [decision]);
+
   if (!decision) return null;
 
   const cfg = ACTION_CFG[decision.action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
@@ -280,6 +307,73 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTr
               {decision.reasoning}
             </p>
           </div>
+
+          {/* 결정 추적 익스플로러 (P4.22) */}
+          {(() => {
+            const details = decision.agents_summary?.analyst_details;
+            const guru = decision.agents_summary?.guru;
+            if (!details || Object.keys(details).length === 0) return null;
+            return (
+              <details style={{
+                background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)",
+                padding: "10px 14px", marginBottom: 12,
+                border: "1px solid var(--border-subtle)",
+              }}>
+                <summary style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 700, cursor: "pointer", listStyle: "none" }}>
+                  🔬 결정 추적 — 어떤 에이전트가 어떻게 표를 던졌나
+                </summary>
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+                  {Object.entries(details).map(([agent, d]) => {
+                    const c = ACTION_CFG[d.signal as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
+                    return (
+                      <div key={agent} style={{
+                        display: "grid", gridTemplateColumns: "100px 50px 1fr",
+                        gap: 8, alignItems: "center",
+                        padding: "5px 8px", background: "var(--bg-surface)",
+                        borderRadius: "var(--radius-sm)",
+                        borderLeft: `3px solid ${c.hex}`,
+                      }}>
+                        <span style={{ fontSize: 10, color: "var(--text-secondary)", fontWeight: 600 }}>{agent}</span>
+                        <span style={{ fontSize: 10, color: c.color, fontWeight: 700 }}>
+                          {c.label} {Math.round(d.confidence * 100)}%
+                        </span>
+                        <span style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.summary}>
+                          {d.summary}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {/* GURU 영향 표기 */}
+                  {guru?.enabled && (
+                    <div style={{
+                      marginTop: 6, padding: "6px 10px",
+                      background: guru.action_changed ? "var(--warning-subtle)" : "var(--bg-surface)",
+                      border: `1px solid ${guru.action_changed ? "var(--warning-border)" : "var(--border-subtle)"}`,
+                      borderRadius: "var(--radius-sm)",
+                    }}>
+                      <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 700, marginBottom: 2 }}>
+                        🎓 GURU 정책 ({guru.risk_profile})
+                      </p>
+                      <p style={{ fontSize: 9, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                        AI 합의 <b>{guru.llm_action} {Math.round(guru.llm_confidence * 100)}%</b>
+                        {" → "}
+                        최종 <b style={{ color: guru.action_changed ? "var(--warning)" : "var(--text-primary)" }}>{guru.final_action}</b>
+                        {guru.action_changed && " · 정책에 의해 변경됨"}
+                      </p>
+                      {/* 30일 누적 통계 (P4.23) */}
+                      {guruStats.total > 0 && (
+                        <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 4, lineHeight: 1.45 }}>
+                          📊 최근 30일: 총 {guruStats.total}건 중 GURU가 {guruStats.changed}건 보정
+                          {guruStats.defensive > 0 && ` (방어적 보정 ${guruStats.defensive}건)`}
+                          {guruStats.changed === 0 && " — AI 합의를 그대로 따름"}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </details>
+            );
+          })()}
 
           {/* Strategy + Position */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
