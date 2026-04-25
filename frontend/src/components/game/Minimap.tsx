@@ -20,6 +20,7 @@ import {
 } from "./defaultOfficeMap";
 import { DESK_POSITIONS } from "./deskPositions";
 import { ttFrame } from "./assets";
+import { ROOM_ZONES } from "./RoomLabels";
 import type { OfficeSceneController } from "./OfficeSceneController";
 
 const CELL = 4; // SVG cell size
@@ -145,6 +146,18 @@ export function Minimap({ controller, thoughts }: Props) {
             />
           )),
         )}
+        {/* 룸 구획 (옥상의 회색 + 룸 컬러) */}
+        {ROOM_ZONES.map((zone) => (
+          <rect
+            key={zone.name}
+            x={zone.col0 * CELL}
+            y={zone.row0 * CELL}
+            width={(zone.col1 - zone.col0 + 1) * CELL}
+            height={(zone.row1 - zone.row0 + 1) * CELL}
+            fill={`#${zone.color.toString(16).padStart(6, "0")}`}
+            opacity={0.18}
+          />
+        ))}
         {/* 책상 도트 */}
         {Object.entries(DESK_POSITIONS).map(([role, pos]) => {
           const status = statusByRole[role as AgentRole] ?? "idle";

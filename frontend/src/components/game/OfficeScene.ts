@@ -24,6 +24,7 @@ import {
 import { AgentActor } from "./AgentActor";
 import { DESK_POSITIONS } from "./deskPositions";
 import { createDeskProps, type DeskPropsHandle } from "./DeskProps";
+import { createRoomLabels, type RoomLabelsHandle } from "./RoomLabels";
 
 export const OFFICE_SCENE_KEY = "OfficeScene";
 
@@ -53,6 +54,7 @@ export class OfficeScene extends Phaser.Scene {
   private bgRect?: Phaser.GameObjects.Rectangle;
   private actors: Map<AgentRole, AgentActor> = new Map();
   private deskProps: DeskPropsHandle[] = [];
+  private roomLabels: RoomLabelsHandle | null = null;
   private pendingSnapshots: Map<AgentRole, ThoughtSnapshot> | null = null;
   private lastSeen: Map<AgentRole, string> = new Map(); // role → 마지막 적용 timestamp
   private clickHandler: ((role: AgentRole) => void) | null = null;
@@ -90,6 +92,7 @@ export class OfficeScene extends Phaser.Scene {
 
     this.mapLayer = this.add.container(0, 0);
     this.drawDefaultOffice();
+    this.roomLabels = createRoomLabels(this);
     this.spawnActors();
     this.centerCameraOnMap();
     this.setupCameraControls();
@@ -104,7 +107,7 @@ export class OfficeScene extends Phaser.Scene {
     this.bootText = this.add.text(
       width / 2,
       height - 24,
-      `MS3+ wander OK · 활성 액터 책상 주변 자유 이동 · 휠 줌 / 드래그 팬`,
+      `룸 라벨 OK · 분석실 / 토론실 / 의사결정실 구획 · 휠 줌 / 드래그 팬`,
       {
         fontFamily: "Pretendard, system-ui, sans-serif",
         fontSize: "12px",
