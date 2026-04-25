@@ -123,6 +123,8 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
   const [paperAccount, setPaperAccount] = useState<AutoLoopStatus["paper_account"]>(null);
   const [statusInfo, setStatusInfo] = useState<AutoLoopStatus["stats"] | null>(null);
   const [busy, setBusy] = useState(false);
+  // 고급 설정 토글 (P3.A3) — Easy 모드 기본
+  const [showAdvanced, setShowAdvanced] = useState(false);
   type InnerTab = "settings" | "activity" | "trades";
   const [innerTab, setInnerTab] = useState<InnerTab>("settings");
 
@@ -631,7 +633,28 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         </FieldRow>
       </SettingsSection>
 
+      {/* ── 고급 설정 토글 (P3.A3) ───────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", marginTop: 4 }}>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          style={{
+            padding: "8px 14px", borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border-default)",
+            background: showAdvanced ? "var(--brand-subtle)" : "var(--bg-elevated)",
+            color: showAdvanced ? "var(--brand-active)" : "var(--text-secondary)",
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+          }}
+        >
+          {showAdvanced ? "▼ 고급 설정 닫기" : "▶ 고급 설정 (수수료·세션·GURU 등)"}
+        </button>
+        <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
+          {showAdvanced ? "전문가용 — 잘 모르면 기본값 그대로 두세요" : "초보는 닫아두는 것을 권장합니다"}
+        </span>
+      </div>
+
       {/* ── 섹션 3: 거래 비용 (bps) ─────────────────────────── */}
+      {showAdvanced && (<>
       <SettingsSection
         title="거래 비용"
         desc={
@@ -767,9 +790,11 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
           </FieldCell>
         </FieldRow>
       </SettingsSection>
+      </>)}
 
       <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4, marginBottom: 10, lineHeight: 1.6 }}>
         루프 동작: 서버에서 {settings.intervalMin}분마다 분석 → 감독 규칙/신뢰도 체크 → 주문 또는 보류 → 로그/계좌 업데이트를 반복합니다.
+        {" "}<span style={{ color: "var(--text-quaternary)" }}>(설정 변경은 다음 판단 주기부터 적용됩니다 — A7)</span>
       </p>
       </>)}
 

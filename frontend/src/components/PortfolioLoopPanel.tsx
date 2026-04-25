@@ -704,6 +704,34 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           }}
         >
           <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 6 }}>보유 포지션</p>
+          {/* 분산/집중 경고 (P4.25) */}
+          {(() => {
+            const positions = statusData?.account.positions ?? [];
+            if (positions.length === 0) return null;
+            const top = [...positions].sort((a, b) => b.weight_pct - a.weight_pct)[0];
+            const warnings: string[] = [];
+            if (top && top.weight_pct >= 30) {
+              warnings.push(`⚠️ ${top.ticker} 비중이 ${top.weight_pct.toFixed(1)}% — 한 종목 집중도가 높습니다`);
+            }
+            if (positions.length === 1) {
+              warnings.push("⚠️ 단일 종목만 보유 — 분산이 부족합니다");
+            } else if (positions.length === 2 && top && top.weight_pct >= 60) {
+              warnings.push("⚠️ 2종목 중 한쪽으로 크게 쏠려 있습니다");
+            }
+            if (warnings.length === 0) return null;
+            return (
+              <div style={{
+                background: "var(--warning-subtle, var(--bg-surface))",
+                border: "1px solid var(--warning-border, var(--border-subtle))",
+                borderRadius: "var(--radius-md)",
+                padding: "6px 8px", marginBottom: 6,
+              }}>
+                {warnings.map((w, i) => (
+                  <p key={i} style={{ fontSize: 9, color: "var(--warning, var(--text-secondary))", lineHeight: 1.4 }}>{w}</p>
+                ))}
+              </div>
+            );
+          })()}
           <div style={{ maxHeight: 130, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
             {(statusData?.account.positions ?? []).slice(0, 12).map((p) => (
               <div key={p.ticker} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center" }}>

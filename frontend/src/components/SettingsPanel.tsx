@@ -1048,6 +1048,62 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
 
                 {activeTab === "kis" && (
                   <>
+                    {/* KIS 토큰 발급 Stepper (P3.K6 + S4) */}
+                    <Section title="🪜 KIS 연동 시작 가이드">
+                      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "14px 16px" }}>
+                        <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 10 }}>
+                          처음이라면 아래 4단계를 순서대로 따라 하세요. 모의투자는 키 없이도 작동하지만, 실거래는 모든 단계가 필요합니다.
+                        </p>
+                        <ol style={{ paddingLeft: 0, listStyle: "none", margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                          {[
+                            {
+                              n: 1, title: "KIS Developers 가입",
+                              body: "한국투자증권 OPEN API Developers에 가입하고 로그인합니다.",
+                              link: { url: "https://apiportal.koreainvestment.com/", label: "apiportal.koreainvestment.com →" },
+                            },
+                            {
+                              n: 2, title: "앱 등록 → AppKey/AppSecret 발급",
+                              body: "Developers 대시보드에서 새 앱을 등록하면 AppKey, AppSecret 두 값이 발급됩니다.",
+                              link: { url: "https://apiportal.koreainvestment.com/howto-use", label: "발급 가이드 →" },
+                            },
+                            {
+                              n: 3, title: "계좌번호 확인",
+                              body: "본인 계좌번호 8자리(예: 5012345601). 위탁 가능 계좌만 사용 가능.",
+                            },
+                            {
+                              n: 4, title: "아래 [인증 정보] 입력 후 [저장] → [연결 테스트]",
+                              body: "값을 저장하면 자동으로 토큰이 발급되고, 거래 탭에서 잔고가 조회되면 성공입니다.",
+                            },
+                          ].map((s) => (
+                            <li key={s.n} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                              <div style={{
+                                flexShrink: 0, width: 26, height: 26, borderRadius: 99,
+                                background: "var(--brand-active)", color: "#fff",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 12, fontWeight: 800,
+                              }}>
+                                {s.n}
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>{s.title}</p>
+                                <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.5 }}>{s.body}</p>
+                                {s.link && (
+                                  <a
+                                    href={s.link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ fontSize: 10, color: "var(--brand-active)", marginTop: 3, display: "inline-block", fontWeight: 600 }}
+                                  >
+                                    {s.link.label}
+                                  </a>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    </Section>
+
                     <Section title="거래 모드">
                       <Field label="KIS 투자 모드" description="모의투자는 가상 계좌, 실투자는 실제 계좌를 사용합니다.">
                         <div
