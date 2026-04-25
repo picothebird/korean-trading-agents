@@ -25,6 +25,8 @@ import { AgentActor } from "./AgentActor";
 import { DESK_POSITIONS } from "./deskPositions";
 import { createDeskProps, type DeskPropsHandle } from "./DeskProps";
 import { createRoomLabels, type RoomLabelsHandle } from "./RoomLabels";
+import { validateOfficeMap, type OfficeMapData } from "./mapLoader";
+import { playSfx } from "./sfx";
 
 export const OFFICE_SCENE_KEY = "OfficeScene";
 
@@ -55,6 +57,9 @@ export class OfficeScene extends Phaser.Scene {
   private actors: Map<AgentRole, AgentActor> = new Map();
   private deskProps: DeskPropsHandle[] = [];
   private roomLabels: RoomLabelsHandle | null = null;
+  /** MS9 외부 로드된 맵 데이터 (null = 폴백 필요) */
+  private externalMap: OfficeMapData | null = null;
+  private mapDataSource: "external" | "fallback" = "fallback";
   private pendingSnapshots: Map<AgentRole, ThoughtSnapshot> | null = null;
   private lastSeen: Map<AgentRole, string> = new Map(); // role → 마지막 적용 timestamp
   private clickHandler: ((role: AgentRole) => void) | null = null;
@@ -74,6 +79,8 @@ export class OfficeScene extends Phaser.Scene {
         spacing: sheet.spacing,
       });
     }
+    // MS9 외부 맵 JSON. 실패 시 Phaser가 'loaderror'를 발사하며 cache에 없으므로 create()에서 폴백됨.
+    this.load.json("office-map", "/game/maps/office.json");
   }
 
   create(): void {
@@ -91,6 +98,15 @@ export class OfficeScene extends Phaser.Scene {
     }
 
     this.mapLayer = this.add.container(0, 0);
+    // MS9 Phaser cache에서 JSON 읽어 externalMap 설정 (loadOfficeMap은 스탠들어론 외 폴백 경로)
+    if (this.cache.json.has("office-map")) {
+      const raw: unknown = this.cache.json.get("office-map");
+      const map = validateOfficeMap(raw);
+      if (map) {
+        this.externalMap = map;
+        this.mapDataSource = "external";
+      }
+    }
     this.drawDefaultOffice();
     this.roomLabels = createRoomLabels(this);
     this.spawnActors();
@@ -107,7 +123,7 @@ export class OfficeScene extends Phaser.Scene {
     this.bootText = this.add.text(
       width / 2,
       height - 24,
-      `룸 라벨 OK · 분석실 / 토론실 / 의사결정실 구획 · 휠 줌 / 드래그 팬`,
+      `MS9 외부 맵 ${this.mapDataSource === "external" ? "✓" : "(폴백)"} · MS10 사운드 · 룸 라벨 · 휠 줌 / 드래그 팬`,
       {
         fontFamily: "Pretendard, system-ui, sans-serif",
         fontSize: "12px",
@@ -126,14 +142,19 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
-  /** 30×20 디폴트 오피스를 좌상단 (0,0) 기준 절대 좌표로 그림. */
+  /** 30×20 오피스를 좌상단 (0,0) 기준 절대 좌표로 그림. 외부 맵 우선, 실패 시 DEFAULT_OFFICE_LAYOUT 폴백. */
   private drawDefaultOffice(): void {
     if (!this.mapLayer) return;
     this.mapLayer.removeAll(true);
 
-    for (let r = 0; r < MAP_ROWS; r++) {
-      for (let c = 0; c < MAP_COLS; c++) {
-        const frame = DEFAULT_OFFICE_LAYOUT[r][c];
+    const grid: ReadonlyArray<ReadonlyArray<number>> =
+      this.externalMap?.layers[0]?.data ?? DEFAULT_OFFICE_LAYOUT;
+    const rows = this.externalMap?.rows ?? MAP_ROWS;
+    const cols = this.externalMap?.cols ?? MAP_COLS;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const frame = grid[r][c];
         if (frame < 0) continue;
         const sprite = this.add.image(
           c * SCREEN_TILE + SCREEN_TILE / 2,
@@ -157,6 +178,7 @@ export class OfficeScene extends Phaser.Scene {
       this.deskProps.push(createDeskProps(this, x, y));
       const actor = new AgentActor(this, x, y, role);
       actor.onPointerDown(() => {
+        playSfx("click");
         if (this.clickHandler) this.clickHandler(role);
       });
       this.actors.set(role, actor);

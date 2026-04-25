@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * HudControls — MS4+ 줌/리셋 버튼 (캔버스 우상단)
+ * HudControls — 줌/리셋/사운드 (캔버스 우상단)
  */
 
+import { useState } from "react";
 import type { OfficeSceneController } from "./OfficeSceneController";
+import { isSfxEnabled, setSfxEnabled, playSfx } from "./sfx";
 
 interface Props {
   controller: OfficeSceneController | null;
@@ -29,6 +31,13 @@ const BTN_STYLE: React.CSSProperties = {
 
 export function HudControls({ controller }: Props) {
   const disabled = !controller;
+  const [muted, setMuted] = useState(() => !isSfxEnabled());
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    setSfxEnabled(!next);
+    if (!next) playSfx("select"); // 음소거 해제 시 확인 톤
+  };
   return (
     <div
       style={{
@@ -71,6 +80,15 @@ export function HudControls({ controller }: Props) {
         style={{ ...BTN_STYLE, fontSize: 11, fontWeight: 500 }}
       >
         ⌂
+      </button>
+      <button
+        type="button"
+        title={muted ? "사운드 켜기" : "사운드 끄기"}
+        aria-label={muted ? "사운드 켜기" : "사운드 끄기"}
+        onClick={toggleMute}
+        style={{ ...BTN_STYLE, fontSize: 11, fontWeight: 500 }}
+      >
+        {muted ? "♪̸" : "♪"}
       </button>
     </div>
   );
