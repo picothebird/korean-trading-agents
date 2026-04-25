@@ -2,20 +2,21 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole, AgentStatus } from "@/types";
+import { Icon, type IconName } from "@/components/ui";
 
 const AGENT_META: Record<
   AgentRole,
-  { name: string; icon: string; layer: string; dotColor: string }
+  { name: string; icon: IconName; layer: string; dotColor: string }
 > = {
-  technical_analyst:   { name: "기술적 분석가",     icon: "📊", layer: "Layer 1 · 데이터",   dotColor: "#3182F6" },
-  fundamental_analyst: { name: "펀더멘털 분석가",   icon: "📋", layer: "Layer 1 · 데이터",   dotColor: "#A855F7" },
-  sentiment_analyst:   { name: "감성 분석가",       icon: "🌐", layer: "Layer 1 · 데이터",   dotColor: "#F5A623" },
-  macro_analyst:       { name: "매크로 분석가",     icon: "🌍", layer: "Layer 1 · 데이터",   dotColor: "#2FCA73" },
-  bull_researcher:     { name: "강세 연구원",       icon: "🐂", layer: "Layer 2 · 토론",     dotColor: "#F04452" },
-  bear_researcher:     { name: "약세 연구원",       icon: "🐻", layer: "Layer 2 · 토론",     dotColor: "#2B7EF5" },
-  risk_manager:        { name: "리스크 매니저",     icon: "🛡️", layer: "Layer 3 · 결정",     dotColor: "#F5A623" },
-  portfolio_manager:   { name: "포트폴리오 매니저", icon: "👔", layer: "Layer 3 · 결정",     dotColor: "#3182F6" },
-  guru_agent:          { name: "GURU",              icon: "🧙", layer: "Layer 3 · 결정",     dotColor: "#7D6BFF" },
+  technical_analyst:   { name: "기술적 분석가",     icon: "chart-bar",   layer: "Layer 1 · 데이터",   dotColor: "#3182F6" },
+  fundamental_analyst: { name: "펀더멘털 분석가",   icon: "list",        layer: "Layer 1 · 데이터",   dotColor: "#A855F7" },
+  sentiment_analyst:   { name: "감성 분석가",       icon: "globe",       layer: "Layer 1 · 데이터",   dotColor: "#F5A623" },
+  macro_analyst:       { name: "매크로 분석가",     icon: "globe",       layer: "Layer 1 · 데이터",   dotColor: "#2FCA73" },
+  bull_researcher:     { name: "강세 연구원",       icon: "trend-up",    layer: "Layer 2 · 토론",     dotColor: "#F04452" },
+  bear_researcher:     { name: "약세 연구원",       icon: "trend-down",  layer: "Layer 2 · 토론",     dotColor: "#2B7EF5" },
+  risk_manager:        { name: "리스크 매니저",     icon: "shield",      layer: "Layer 3 · 결정",     dotColor: "#F5A623" },
+  portfolio_manager:   { name: "포트폴리오 매니저", icon: "briefcase",   layer: "Layer 3 · 결정",     dotColor: "#3182F6" },
+  guru_agent:          { name: "GURU",              icon: "sparkles",    layer: "Layer 3 · 결정",     dotColor: "#7D6BFF" },
 };
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -100,12 +101,13 @@ export function AgentCard({ role, thought, isActive, index = 0 }: AgentCardProps
           style={{
             width: 40, height: 40, borderRadius: "var(--radius-lg)",
             background: "var(--bg-overlay)", display: "flex", alignItems: "center",
-            justifyContent: "center", fontSize: 18, flexShrink: 0, position: "relative",
+            justifyContent: "center", flexShrink: 0, position: "relative",
+            color: meta.dotColor,
           }}
           animate={isPulse ? { scale: [1, 1.06, 1] } : { scale: 1 }}
           transition={{ duration: 1.8, repeat: isPulse ? Infinity : 0 }}
         >
-          {meta.icon}
+          <Icon name={meta.icon} size={20} decorative />
           {/* live dot */}
           <span style={{
             position: "absolute", top: -3, right: -3, width: 9, height: 9,
@@ -383,7 +385,14 @@ export function AgentOffice({ thoughts, activeAgents }: AgentOfficeProps) {
                     border: allDone ? "1px solid var(--success-border)" : "1px solid var(--border-subtle)",
                   }}
                 >
-                  {allDone ? "✓ 완료" : `${doneCount} / ${layer.roles.length}`}
+                  {allDone ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Icon name="check" size={11} strokeWidth={2.4} decorative />
+                      완료
+                    </span>
+                  ) : (
+                    `${doneCount} / ${layer.roles.length}`
+                  )}
                 </motion.span>
               )}
             </div>

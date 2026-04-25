@@ -19,6 +19,7 @@ import type {
   KisOrderRequest,
   KisOrderApproval,
 } from "@/types";
+import { Icon } from "@/components/ui";
 
 const SPRING = { type: "spring" as const, stiffness: 340, damping: 30 };
 
@@ -349,7 +350,10 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   fontSize: 11, fontWeight: 700, cursor: "pointer",
                 }}
               >
-                ⚙ KIS 설정
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Icon name="settings" size={13} decorative />
+                  KIS 설정
+                </span>
               </button>
             )}
             <button
@@ -368,7 +372,9 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
         </div>
         {status?.error && (
           <div style={{ padding: "10px 20px", background: "var(--bear-subtle)" }}>
-            <p style={{ fontSize: 11, color: "var(--bear)" }}>⚠ {status.error}</p>
+            <p style={{ fontSize: 11, color: "var(--bear)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <Icon name="warning" size={12} decorative /> {status.error}
+            </p>
             <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 4 }}>
               설정 패널에서 KIS API 키와 계좌번호를 입력해주세요.
             </p>
@@ -395,7 +401,9 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
         {!status?.error && status?.connected && (
           <div style={{ padding: "10px 20px", background: "var(--bull-subtle)" }}>
             <p style={{ fontSize: 11, color: "var(--bull)" }}>
-              ✓ API 연결 정상 {status.token_preview ? `· 토큰: ${status.token_preview}` : ""}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Icon name="check-circle" size={12} decorative /> API 연결 정상 {status.token_preview ? `· 토큰: ${status.token_preview}` : ""}
+              </span>
             </p>
           </div>
         )}
@@ -426,7 +434,9 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
 
         {balanceError && (
           <div style={{ padding: "14px 20px" }}>
-            <p style={{ fontSize: 12, color: "var(--bear)" }}>⚠ {balanceError}</p>
+            <p style={{ fontSize: 12, color: "var(--bear)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <Icon name="warning" size={13} decorative /> {balanceError}
+            </p>
           </div>
         )}
 
@@ -503,18 +513,18 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
           <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>빠른 주문</p>
           {isMock && (
             <p style={{ fontSize: 10, color: "var(--warning)", marginTop: 4, fontWeight: 600 }}>
-              ⚠ 현재 모의투자 모드입니다. 실제 주문이 체결되지 않습니다.
+              <Icon name="warning" size={12} decorative /> 현재 모의투자 모드입니다. 실제 주문이 체결되지 않습니다.
             </p>
           )}
           {!isMock && (
             <p style={{ fontSize: 10, color: "var(--bear)", marginTop: 4, fontWeight: 600 }}>
-              🔴 실전투자 모드 — 실제 주문이 체결됩니다!
+              <Icon name="warning" size={12} decorative style={{ color: "var(--bull)" }} /> 실전투자 모드 — 실제 주문이 체결됩니다!
             </p>
           )}
           {!isMock && guruRequireUserConfirmation && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 4 }}>
               <p style={{ fontSize: 10, color: "var(--warning)", fontWeight: 700 }}>
-                🛡 GURU 승인 강제 ON — 주문 전 승인요청 생성 후 승인/거절 버튼으로 최종 실행됩니다.
+                <Icon name="shield" size={12} decorative /> GURU 승인 강제 ON — 주문 전 승인요청 생성 후 승인/거절 버튼으로 최종 실행됩니다.
               </p>
               {onOpenSettings && (
                 <button
@@ -587,7 +597,10 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                     transition: "all 150ms",
                   }}
                 >
-                  {side === "buy" ? "📈 매수" : "📉 매도"}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Icon name={side === "buy" ? "trend-up" : "trend-down"} size={13} decorative />
+                    {side === "buy" ? "매수" : "매도"}
+                  </span>
                 </button>
               ))}
             </div>
@@ -703,7 +716,11 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                 }}
               >
                 <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>
-                  주문 확인 {isMock ? "(모의투자)" : "⚠ 실전투자"}
+                  주문 확인 {isMock ? ("(모의투자)") : (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Icon name="warning" size={12} decorative /> 실전투자
+                    </span>
+                  )}
                 </p>
                 <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.6 }}>
                   <b style={{ color: orderSide === "buy" ? "var(--bull)" : "var(--bear)" }}>
@@ -837,7 +854,9 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   background: "var(--bull-subtle)", border: "1px solid var(--bull-border)",
                 }}
               >
-                <p style={{ fontSize: 12, color: "var(--bull)", fontWeight: 600 }}>✓ {orderResult}</p>
+                <p style={{ fontSize: 12, color: "var(--bull)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Icon name="check-circle" size={13} decorative /> {orderResult}
+                </p>
               </motion.div>
             )}
             {orderError && (
@@ -850,7 +869,9 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   background: "var(--bear-subtle)", border: "1px solid var(--bear-border)",
                 }}
               >
-                <p style={{ fontSize: 12, color: "var(--bear)", fontWeight: 600 }}>⚠ {orderError}</p>
+                <p style={{ fontSize: 12, color: "var(--bear)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Icon name="warning" size={13} decorative /> {orderError}
+                </p>
               </motion.div>
             )}
           </AnimatePresence>

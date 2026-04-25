@@ -1,5 +1,6 @@
 "use client";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { Icon, type IconName } from "./Icon";
 
 type ToastTone = "info" | "success" | "warning" | "danger";
 interface ToastItem {
@@ -20,11 +21,11 @@ export function useToast(): ToastCtx {
   return c ?? { push: () => {} };
 }
 
-const TONE_STYLE: Record<ToastTone, { bg: string; border: string; color: string; icon: string }> = {
-  info:    { bg: "var(--info-subtle)",    border: "var(--brand-border)",   color: "var(--brand-active)", icon: "ℹ" },
-  success: { bg: "var(--success-subtle)", border: "var(--success-border)", color: "var(--success)",      icon: "✓" },
-  warning: { bg: "var(--warning-subtle)", border: "var(--warning-border)", color: "var(--warning)",      icon: "!" },
-  danger:  { bg: "var(--danger-subtle)",  border: "var(--error-border)",   color: "var(--danger)",       icon: "×" },
+const TONE_STYLE: Record<ToastTone, { bg: string; border: string; color: string; icon: IconName }> = {
+  info:    { bg: "var(--info-subtle)",    border: "var(--brand-border)",   color: "var(--brand-active)", icon: "info" },
+  success: { bg: "var(--success-subtle)", border: "var(--success-border)", color: "var(--success)",      icon: "check-circle" },
+  warning: { bg: "var(--warning-subtle)", border: "var(--warning-border)", color: "var(--warning)",      icon: "warning" },
+  danger:  { bg: "var(--danger-subtle)",  border: "var(--error-border)",   color: "var(--danger)",       icon: "x-circle" },
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -88,11 +89,10 @@ export function Toast({ item, onDone }: { item: ToastItem; onDone: () => void })
           width: 22, height: 22, borderRadius: "50%",
           background: s.bg, color: s.color,
           display: "grid", placeItems: "center",
-          fontSize: 13, fontWeight: 700,
           flexShrink: 0,
         }}
       >
-        {s.icon}
+        <Icon name={s.icon} size={13} strokeWidth={2.2} decorative />
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{item.title}</p>
@@ -108,10 +108,11 @@ export function Toast({ item, onDone }: { item: ToastItem; onDone: () => void })
         onClick={onDone}
         style={{
           background: "transparent", border: "none",
-          color: "var(--text-tertiary)", fontSize: 16, lineHeight: 1, cursor: "pointer",
+          color: "var(--text-tertiary)", lineHeight: 1, cursor: "pointer",
+          display: "inline-flex", alignItems: "center",
         }}
       >
-        ✕
+        <Icon name="x" size={14} decorative />
       </button>
       <style jsx>{`
         @keyframes toast-in {

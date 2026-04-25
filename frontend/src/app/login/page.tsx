@@ -64,6 +64,12 @@ export default function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (mode === "register" && password.length < 8) {
+      setError("비밀번호는 8자 이상이어야 합니다.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -154,8 +160,8 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
               required
+              aria-describedby={mode === "register" ? "pw-hint" : undefined}
               style={{
                 border: "1px solid var(--border-default)",
                 background: "var(--bg-elevated)",
@@ -165,6 +171,19 @@ export default function LoginPage() {
                 fontSize: 14,
               }}
             />
+            {mode === "register" && (
+              <p
+                id="pw-hint"
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-tertiary)",
+                  lineHeight: 1.4,
+                  margin: 0,
+                }}
+              >
+                8자 이상의 비밀번호를 입력해 주세요.
+              </p>
+            )}
           </label>
 
           {mode === "register" && (
@@ -208,22 +227,6 @@ export default function LoginPage() {
                     <option value="master">master</option>
                   </select>
                 </label>
-              )}
-
-              {bootstrapped && (
-                <div
-                  style={{
-                    borderRadius: "var(--radius-lg)",
-                    border: "1px solid var(--border-subtle)",
-                    background: "var(--bg-elevated)",
-                    color: "var(--text-secondary)",
-                    fontSize: 12,
-                    padding: "10px 12px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  신규 가입 계정은 기본적으로 viewer 권한으로 생성됩니다. 권한 변경은 master만 가능합니다.
-                </div>
               )}
             </>
           )}

@@ -3,7 +3,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { getSettings, updateSettings } from "@/lib/api";
-import { Sheet, useTheme, type ThemeMode } from "@/components/ui";
+import { Sheet, useTheme, Icon, type ThemeMode, type IconName } from "@/components/ui";
 
 export type SettingsTab = "overview" | "appearance" | "llm" | "analysis" | "guru" | "kis";
 
@@ -23,18 +23,18 @@ const FAST_MODELS = [
 ];
 
 const EFFORT_OPTIONS = [
-  { value: "high", label: "High", desc: "깊은 추론\n최고 품질", icon: "🧠", color: "#3182F6" },
-  { value: "medium", label: "Medium", desc: "균형 분석\n속도 타협", icon: "⚖️", color: "#F5A623" },
-  { value: "low", label: "Low", desc: "빠른 판단\n저비용", icon: "⚡", color: "#2FCA73" },
+  { value: "high", label: "High", desc: "깊은 추론\n최고 품질", icon: "brain" as IconName, color: "#3182F6" },
+  { value: "medium", label: "Medium", desc: "균형 분석\n속도 타협", icon: "scale" as IconName, color: "#F5A623" },
+  { value: "low", label: "Low", desc: "빠른 판단\n저비용", icon: "bolt" as IconName, color: "#2FCA73" },
 ] as const;
 
-const TABS: Array<{ key: SettingsTab; label: string; icon: string; hint: string }> = [
-  { key: "overview", label: "개요", icon: "🧭", hint: "현재 상태와 빠른 진입" },
-  { key: "appearance", label: "외관", icon: "🎨", hint: "테마 (라이트/다크/시스템)" },
-  { key: "llm", label: "LLM", icon: "🧠", hint: "OpenAI 키와 모델" },
-  { key: "analysis", label: "분석", icon: "📊", hint: "토론 라운드/분석 강도" },
-  { key: "guru", label: "GURU", icon: "🧙", hint: "최종 정책 레이어" },
-  { key: "kis", label: "KIS", icon: "💳", hint: "실전/모의 + 인증정보" },
+const TABS: Array<{ key: SettingsTab; label: string; icon: IconName; hint: string }> = [
+  { key: "overview", label: "개요", icon: "compass", hint: "현재 상태와 빠른 진입" },
+  { key: "appearance", label: "외관", icon: "palette", hint: "테마 (라이트/다크/시스템)" },
+  { key: "llm", label: "LLM", icon: "brain", hint: "OpenAI 키와 모델" },
+  { key: "analysis", label: "분석", icon: "chart-bar", hint: "토론 라운드/분석 강도" },
+  { key: "guru", label: "GURU", icon: "sparkles", hint: "최종 정책 레이어" },
+  { key: "kis", label: "KIS", icon: "credit-card", hint: "실전/모의 + 인증정보" },
 ];
 
 const TAB_TITLE: Record<SettingsTab, string> = {
@@ -118,23 +118,37 @@ function HelpNote({ children }: { children: ReactNode }) {
   );
 }
 
-function StatusChip({ ok, label }: { ok: boolean; label: string }) {
+// Tone keys for status chips. We deliberately avoid using `--bear` (blue =
+// price-down in Korea) for a generic "off/missing" indicator because that
+// confuses users into thinking the setting is in a bad state when it is
+// merely unconfigured.
+type ChipTone = "on" | "off" | "warn" | "info";
+
+function StatusChip({ tone, label }: { tone: ChipTone; label: string }) {
+  const map = {
+    on:   { bg: "var(--success-subtle)", border: "var(--success-border)", color: "var(--success)", icon: "check-circle" as IconName },
+    off:  { bg: "var(--bg-overlay)",     border: "var(--border-subtle)",  color: "var(--text-tertiary)", icon: "info" as IconName },
+    warn: { bg: "var(--warning-subtle)", border: "var(--warning-border)", color: "var(--warning)", icon: "warning" as IconName },
+    info: { bg: "var(--brand-subtle)",   border: "var(--brand-border)",   color: "var(--brand)",   icon: "info" as IconName },
+  } as const;
+  const cfg = map[tone];
   return (
     <span
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 6,
-        fontSize: 10,
-        fontWeight: 700,
-        padding: "4px 10px",
+        gap: 5,
+        fontSize: 11,
+        fontWeight: 600,
+        padding: "4px 9px 4px 7px",
         borderRadius: 99,
-        background: ok ? "rgba(47,202,115,0.12)" : "rgba(240,68,82,0.12)",
-        border: `1px solid ${ok ? "rgba(47,202,115,0.35)" : "rgba(240,68,82,0.35)"}`,
-        color: ok ? "var(--success)" : "var(--bear)",
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        color: cfg.color,
+        whiteSpace: "nowrap",
       }}
     >
-      <span style={{ fontSize: 8 }}>●</span>
+      <Icon name={cfg.icon} size={12} strokeWidth={2} decorative />
       {label}
     </span>
   );
@@ -187,11 +201,13 @@ function ModelSelect({
             top: "50%",
             transform: "translateY(-50%)",
             color: "var(--text-tertiary)",
-            fontSize: 10,
             pointerEvents: "none",
+            display: "inline-flex",
           }}
         >
-          ▼
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </span>
       </div>
 
@@ -385,8 +401,9 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                         transition: "all 120ms",
                       }}
                     >
-                      <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 3 }}>
-                        {tab.icon} {tab.label}
+                      <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 3, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                        <Icon name={tab.icon} size={14} decorative />
+                        {tab.label}
                       </p>
                       <p style={{ fontSize: 10, color: active ? "var(--brand)" : "var(--text-tertiary)", lineHeight: 1.4 }}>
                         {tab.hint}
@@ -403,21 +420,21 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                       <div style={{ display: "grid", gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr", gap: 10 }}>
                         <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
                           <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>OpenAI 연결</p>
-                          <StatusChip ok={apiKeyStatus.set} label={apiKeyStatus.set ? `설정됨 ${apiKeyStatus.preview ? `(${apiKeyStatus.preview})` : ""}` : "미설정"} />
+                          <StatusChip tone={apiKeyStatus.set ? "on" : "off"} label={apiKeyStatus.set ? `설정됨 ${apiKeyStatus.preview ? `(${apiKeyStatus.preview})` : ""}` : "미설정"} />
                         </div>
 
                         <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
                           <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>KIS 인증 상태</p>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <StatusChip ok={kisKeyStatus.appKeySet} label="App Key" />
-                            <StatusChip ok={kisKeyStatus.secretSet} label="App Secret" />
-                            <StatusChip ok={Boolean(kisKeyStatus.accountNo)} label="계좌번호" />
+                            <StatusChip tone={kisKeyStatus.appKeySet ? "on" : "off"} label="App Key" />
+                            <StatusChip tone={kisKeyStatus.secretSet ? "on" : "off"} label="App Secret" />
+                            <StatusChip tone={kisKeyStatus.accountNo ? "on" : "off"} label="계좌번호" />
                           </div>
                         </div>
 
                         <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
                           <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>GURU 정책</p>
-                          <StatusChip ok={form.guru_enabled} label={form.guru_enabled ? "GURU ON" : "GURU OFF"} />
+                          <StatusChip tone={form.guru_enabled ? "on" : "off"} label={form.guru_enabled ? "GURU ON" : "GURU OFF"} />
                           <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6 }}>
                             승인 강제: {form.guru_require_user_confirmation ? "ON" : "OFF"}
                           </p>
@@ -425,7 +442,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
 
                         <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
                           <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>KIS 거래 모드</p>
-                          <StatusChip ok={form.kis_mock} label={form.kis_mock ? "모의투자" : "실전투자"} />
+                          <StatusChip tone={form.kis_mock ? "info" : "warn"} label={form.kis_mock ? "모의투자" : "실전투자"} />
                           <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6 }}>
                             토론 라운드: {form.max_debate_rounds}회
                           </p>
@@ -448,9 +465,13 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                               fontWeight: 600,
                               padding: "6px 11px",
                               cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
                             }}
                           >
-                            {x.icon} {x.label} 열기
+                            <Icon name={x.icon} size={12} decorative />
+                            {x.label} 열기
                           </button>
                         ))}
                       </div>
@@ -469,10 +490,10 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                       </p>
                       <div role="radiogroup" aria-label="테마 모드" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                         {([
-                          { key: "light", label: "라이트", icon: "☀️", desc: "환한 배경" },
-                          { key: "dark", label: "다크", icon: "🌙", desc: "어두운 배경" },
-                          { key: "system", label: "시스템", icon: "🖥️", desc: "OS 설정 따라감" },
-                        ] as Array<{ key: ThemeMode; label: string; icon: string; desc: string }>).map((opt) => {
+                          { key: "light", label: "라이트", icon: "sun" as IconName, desc: "환한 배경" },
+                          { key: "dark", label: "다크", icon: "moon" as IconName, desc: "어두운 배경" },
+                          { key: "system", label: "시스템", icon: "monitor" as IconName, desc: "OS 설정 따라감" },
+                        ] as Array<{ key: ThemeMode; label: string; icon: IconName; desc: string }>).map((opt) => {
                           const active = themeMode === opt.key;
                           return (
                             <button
@@ -496,7 +517,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                                 transition: "all 150ms",
                               }}
                             >
-                              <span style={{ fontSize: 20, lineHeight: 1 }}>{opt.icon}</span>
+                              <Icon name={opt.icon} size={20} decorative />
                               <span style={{ fontSize: 13, fontWeight: 700 }}>{opt.label}</span>
                               <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 500 }}>{opt.desc}</span>
                             </button>
@@ -517,7 +538,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                           gap: 8,
                         }}
                       >
-                        <span style={{ fontSize: 14 }}>{themeResolved === "dark" ? "🌙" : "☀️"}</span>
+                        <Icon name={themeResolved === "dark" ? "moon" : "sun"} size={14} decorative />
                         <span>
                           현재 적용:&nbsp;
                           <strong style={{ color: "var(--text-primary)" }}>
@@ -531,11 +552,17 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                     <Section title="컬러 컨벤션 (한국 시장)">
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                         <div style={{ padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--bull-subtle)", border: "1px solid var(--bull-border)" }}>
-                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bull)" }}>▲ 상승 — 빨강</p>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bull)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <Icon name="trend-up" size={12} strokeWidth={2.4} decorative />
+                            상승 — 빨강
+                          </p>
                           <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>한국 거래소 표준</p>
                         </div>
                         <div style={{ padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--bear-subtle)", border: "1px solid var(--bear-border)" }}>
-                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bear)" }}>▼ 하락 — 파랑</p>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bear)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <Icon name="trend-down" size={12} strokeWidth={2.4} decorative />
+                            하락 — 파랑
+                          </p>
                           <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>한국 거래소 표준</p>
                         </div>
                       </div>
@@ -548,7 +575,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                     <Section title="OpenAI 연결">
                       <Field label="API 키" description="모든 에이전트 LLM 호출에 사용됩니다. 기존 키를 유지하려면 비워두고 저장하세요.">
                         <div style={{ marginBottom: 8 }}>
-                          <StatusChip ok={apiKeyStatus.set} label={apiKeyStatus.set ? `설정됨 (${apiKeyStatus.preview})` : "미설정"} />
+                          <StatusChip tone={apiKeyStatus.set ? "on" : "off"} label={apiKeyStatus.set ? `설정됨 (${apiKeyStatus.preview})` : "미설정"} />
                         </div>
                         <div style={{ position: "relative" }}>
                           <input
@@ -581,10 +608,13 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                               border: "none",
                               color: "var(--text-tertiary)",
                               cursor: "pointer",
-                              fontSize: 14,
+                              padding: 0,
+                              display: "inline-flex",
+                              alignItems: "center",
                             }}
+                            aria-label={showKey ? "키 숨기기" : "키 보기"}
                           >
-                            {showKey ? "🙈" : "👁"}
+                            <Icon name={showKey ? "eye-off" : "eye"} size={15} decorative />
                           </button>
                         </div>
                         <HelpNote>
@@ -621,7 +651,9 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                                   textAlign: "center",
                                 }}
                               >
-                                <p style={{ fontSize: 18, marginBottom: 4 }}>{opt.icon}</p>
+                                <p style={{ marginBottom: 4, color: active ? opt.color : "var(--text-secondary)", display: "inline-flex" }}>
+                                  <Icon name={opt.icon} size={18} decorative />
+                                </p>
                                 <p style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: active ? opt.color : "var(--text-primary)" }}>{opt.label}</p>
                                 <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{opt.desc}</p>
                               </button>
@@ -939,7 +971,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                     <Section title="KIS 인증 정보">
                       <Field label="App Key" description="KIS OpenAPI 포털에서 발급받는 앱 키입니다. 변경 시에만 입력하세요.">
                         <div style={{ marginBottom: 8 }}>
-                          <StatusChip ok={kisKeyStatus.appKeySet} label={kisKeyStatus.appKeySet ? "설정됨" : "미설정"} />
+                          <StatusChip tone={kisKeyStatus.appKeySet ? "on" : "off"} label={kisKeyStatus.appKeySet ? "설정됨" : "미설정"} />
                         </div>
                         <input
                           type="text"
@@ -964,7 +996,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
 
                       <Field label="App Secret" description="KIS OpenAPI 포털에서 발급받는 시크릿 키입니다. 변경 시에만 입력하세요.">
                         <div style={{ marginBottom: 8 }}>
-                          <StatusChip ok={kisKeyStatus.secretSet} label={kisKeyStatus.secretSet ? "설정됨" : "미설정"} />
+                          <StatusChip tone={kisKeyStatus.secretSet ? "on" : "off"} label={kisKeyStatus.secretSet ? "설정됨" : "미설정"} />
                         </div>
                         <div style={{ position: "relative" }}>
                           <input
@@ -997,17 +1029,20 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                               border: "none",
                               color: "var(--text-tertiary)",
                               cursor: "pointer",
-                              fontSize: 14,
+                              padding: 0,
+                              display: "inline-flex",
+                              alignItems: "center",
                             }}
+                            aria-label={showKisSecret ? "시크릿 숨기기" : "시크릿 보기"}
                           >
-                            {showKisSecret ? "🙈" : "👁"}
+                            <Icon name={showKisSecret ? "eye-off" : "eye"} size={15} decorative />
                           </button>
                         </div>
                       </Field>
 
                       <Field label="계좌번호" description="예: 12345678-01 형식. 없으면 주문/잔고 조회가 실패합니다.">
                         <div style={{ marginBottom: 8 }}>
-                          <StatusChip ok={Boolean(kisKeyStatus.accountNo)} label={kisKeyStatus.accountNo || "미설정"} />
+                          <StatusChip tone={kisKeyStatus.accountNo ? "on" : "off"} label={kisKeyStatus.accountNo || "미설정"} />
                         </div>
                         <input
                           type="text"

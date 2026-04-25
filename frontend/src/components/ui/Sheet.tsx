@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect } from "react";
+import { Icon } from "./Icon";
 
 interface SheetProps {
   open: boolean;
@@ -95,12 +96,13 @@ export function Sheet({
               style={{
                 width: 32, height: 32, borderRadius: "var(--radius-sm)",
                 background: "transparent", border: "1px solid transparent",
-                color: "var(--text-secondary)", fontSize: 18, lineHeight: 1, cursor: "pointer",
+                color: "var(--text-secondary)", lineHeight: 1, cursor: "pointer",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-overlay)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
-              ✕
+              <Icon name="x" size={16} decorative />
             </button>
           </header>
         )}

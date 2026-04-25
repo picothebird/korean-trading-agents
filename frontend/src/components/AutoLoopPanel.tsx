@@ -11,7 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { getAutoLoopStatus, startAutoLoop, stopAutoLoop } from "@/lib/api";
-import { TabPills } from "@/components/ui";
+import { TabPills, Icon } from "@/components/ui";
 import type { AutoLoopStatus, ExecutionSessionMode, SupervisionLevel, TradeDecision } from "@/types";
 
 interface AutoLoopPanelProps {
@@ -356,9 +356,9 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
           value={innerTab}
           onChange={(v) => setInnerTab(v)}
           items={[
-            { value: "settings", label: "설정", icon: <span aria-hidden>⚙️</span> },
-            { value: "activity", label: "활동", icon: <span aria-hidden>📡</span> },
-            { value: "trades", label: "거래내역", icon: <span aria-hidden>📒</span> },
+            { value: "settings", label: "설정", icon: <Icon name="settings" size={13} decorative /> },
+            { value: "activity", label: "활동", icon: <Icon name="activity" size={13} decorative /> },
+            { value: "trades", label: "거래내역", icon: <Icon name="list" size={13} decorative /> },
           ]}
         />
       </div>

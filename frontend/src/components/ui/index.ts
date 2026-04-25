@@ -16,3 +16,5 @@ export { Button } from "./Button";
 export { Coachmark, OnboardingTour, type CoachStep } from "./Coachmark";
 export { BrandMark, BrandLockup } from "./BrandMark";
 export { ThemeProvider, useTheme, THEME_INIT_SCRIPT, type ThemeMode, type ResolvedTheme } from "./ThemeProvider";
+export { Icon, type IconName } from "./Icon";
+export { Tooltip, type TooltipProps } from "./Tooltip";

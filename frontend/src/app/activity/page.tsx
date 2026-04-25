@@ -39,7 +39,12 @@ export default function ActivityPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const latestActions = useMemo(() => logs.slice(0, 30), [logs]);
+  // Hide low-signal API call rows; users only care about meaningful actions.
+  const visibleLogs = useMemo(
+    () => logs.filter((l) => l.action_type !== "api_call"),
+    [logs],
+  );
+  const latestActions = useMemo(() => visibleLogs.slice(0, 30), [visibleLogs]);
   const latestTrades = useMemo(() => trades.slice(0, 30), [trades]);
 
   if (loading) {
@@ -124,7 +129,7 @@ export default function ActivityPage() {
 
         <section style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
           <article style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-xl)", background: "var(--bg-surface)", padding: 14 }}>
-            <h2 style={{ color: "var(--text-primary)", fontSize: 17, marginBottom: 10 }}>최근 활동 ({logs.length})</h2>
+            <h2 style={{ color: "var(--text-primary)", fontSize: 17, marginBottom: 10 }}>최근 활동 ({visibleLogs.length})</h2>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>

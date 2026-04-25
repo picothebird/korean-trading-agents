@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import { getStockChart } from "@/lib/api";
 import type { StockChartPoint } from "@/types";
-import { Empty } from "@/components/ui";
+import { Empty, Icon } from "@/components/ui";
 
 type Timeframe = "1m" | "3m" | "6m" | "1y" | "2y";
 
@@ -210,7 +210,7 @@ export function StockChartPanel({
       {!loading && error && (
         <div style={{ minHeight: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Empty
-            icon="⚠"
+            icon={<Icon name="warning" size={28} decorative />}
             title="차트를 불러오지 못했어요"
             body={error}
             compact
@@ -221,7 +221,7 @@ export function StockChartPanel({
       {!loading && !error && data.length === 0 && (
         <div style={{ minHeight: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Empty
-            icon="📈"
+            icon={<Icon name="trend-up" size={28} decorative />}
             title="차트 데이터가 아직 없어요"
             body="다른 기간을 선택하거나 잠시 뒤 다시 시도해주세요."
             compact

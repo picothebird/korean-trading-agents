@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { motion } from "framer-motion";
 import type { BacktestResult } from "@/types";
+import { Icon } from "@/components/ui";
 
 interface MetricProps {
   label: string;
@@ -324,7 +325,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
 
       {/* Disclaimer */}
       <p style={{ fontSize: 10, color: "var(--text-tertiary)", textAlign: "center", lineHeight: 1.6 }}>
-        ⚠ 과거 수익률은 미래를 보장하지 않습니다 · 투자 결정은 본인 책임
+        <Icon name="warning" size={11} decorative /> 과거 수익률은 미래를 보장하지 않습니다 · 투자 결정은 본인 책임
       </p>
     </div>
   );

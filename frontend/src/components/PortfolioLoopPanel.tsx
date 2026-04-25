@@ -7,7 +7,7 @@ import {
   startPortfolioLoop,
   stopPortfolioLoop,
 } from "@/lib/api";
-import { TabPills } from "@/components/ui";
+import { TabPills, Icon } from "@/components/ui";
 import type {
   AutoLoopLog,
   AutoLoopTradeRecord,
@@ -407,9 +407,9 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           value={innerTab}
           onChange={(v) => setInnerTab(v)}
           items={[
-            { value: "settings", label: "설정", icon: <span aria-hidden>⚙️</span> },
-            { value: "activity", label: "활동", icon: <span aria-hidden>📡</span> },
-            { value: "trades", label: "거래내역", icon: <span aria-hidden>📒</span> },
+            { value: "settings", label: "설정", icon: <Icon name="settings" size={13} decorative /> },
+            { value: "activity", label: "활동", icon: <Icon name="activity" size={13} decorative /> },
+            { value: "trades", label: "거래내역", icon: <Icon name="list" size={13} decorative /> },
           ]}
         />
       </div>

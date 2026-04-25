@@ -219,6 +219,18 @@
   --shadow-xl:  0 24px 56px rgba(0, 0, 0, 0.72), 0 4px 10px rgba(0, 0, 0, 0.45);
   --shadow-spotlight: 0 8px 24px rgba(77, 141, 239, 0.20);
   --shadow-focus: 0 0 0 3px rgba(77, 141, 239, 0.35);
+
+  /* ── Tooltip (high-contrast on both themes) ── */
+  --tooltip-bg:     #1A1E25;
+  --tooltip-fg:     #F4F6FA;
+  --tooltip-border: rgba(255, 255, 255, 0.12);
+}
+
+/* Tooltip vars on light theme: dark bubble for max contrast */
+:root[data-theme="light"] {
+  --tooltip-bg:     #1F2937;
+  --tooltip-fg:     #F8FAFC;
+  --tooltip-border: rgba(255, 255, 255, 0.10);
 }
 
 /* ─────────────────────────────────────────────

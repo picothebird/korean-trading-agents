@@ -12,7 +12,8 @@ import { PixelOffice } from "@/components/PixelOffice";
 import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
 import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
-import { TabPills, OnboardingTour, type CoachStep, BrandMark, BrandLockup } from "@/components/ui";
+import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip } from "@/components/ui";
+import { useRouter } from "next/navigation";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest,
@@ -61,28 +62,29 @@ function formatYearMonth(dateStr: string): string {
 
 function InfoTip({ tip, subtle = false }: { tip: string; subtle?: boolean }) {
   return (
-    <span
-      title={tip}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 14,
-        height: 14,
-        borderRadius: "50%",
-        border: `1px solid ${subtle ? "var(--border-subtle)" : "var(--border-default)"}`,
-        color: subtle ? "var(--text-tertiary)" : "var(--text-secondary)",
-        fontSize: 9,
-        fontWeight: 700,
-        lineHeight: 1,
-        cursor: "help",
-        userSelect: "none",
-        flexShrink: 0,
-      }}
-      aria-label={tip}
-    >
-      ?
-    </span>
+    <Tooltip content={tip}>
+      <button
+        type="button"
+        aria-label={tip}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 16,
+          height: 16,
+          borderRadius: "50%",
+          border: `1px solid ${subtle ? "var(--border-subtle)" : "var(--border-default)"}`,
+          color: subtle ? "var(--text-tertiary)" : "var(--text-secondary)",
+          background: "transparent",
+          padding: 0,
+          cursor: "help",
+          flexShrink: 0,
+          lineHeight: 0,
+        }}
+      >
+        <Icon name="info" size={11} strokeWidth={2} decorative />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -172,9 +174,13 @@ function StockPriceCard({
                 fontVariantNumeric: "tabular-nums",
                 marginTop: 5,
                 fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
               }}
             >
-              {isUp ? "▲" : "▼"} {Math.abs(info.change_pct).toFixed(2)}%
+              <Icon name={isUp ? "trend-up" : "trend-down"} size={12} strokeWidth={2.2} decorative />
+              {Math.abs(info.change_pct).toFixed(2)}%
             </p>
           </div>
 
@@ -349,7 +355,7 @@ function PipelineProgress({
                     flexShrink: 0,
                   }}
                 >
-                  {layer.complete ? "✓" : `${layer.done}`}
+                  {layer.complete ? <Icon name="check" size={12} strokeWidth={2.4} decorative /> : `${layer.done}`}
                 </motion.div>
                 <div style={{ flexShrink: 0 }}>
                   <p style={{ fontSize: 9, fontWeight: 700, whiteSpace: "nowrap", color: layer.complete ? "var(--success)" : isActive ? "var(--brand)" : "var(--text-tertiary)" }}>
@@ -380,7 +386,7 @@ function PipelineProgress({
             transition={{ type: "spring", stiffness: 400, damping: 20 }}
             style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 10, flexShrink: 0 }}
           >
-            <span style={{ fontSize: 12 }}>✅</span>
+            <Icon name="check-circle" size={12} decorative style={{ color: "var(--success)" }} />
             <span style={{ fontSize: 10, fontWeight: 700, color: "var(--success)", whiteSpace: "nowrap" }}>완료</span>
           </motion.div>
         )}
@@ -579,7 +585,7 @@ function HumanApprovalModal({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <span style={{ fontSize: 24 }}>⚠️</span>
+          <Icon name="warning" size={22} decorative style={{ color: "var(--warning)" }} />
           <div>
             <p style={{ fontSize: 14, fontWeight: 700, color: "var(--warning)" }}>인간 승인 필요</p>
             <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>고신뢰도 / 대규모 포지션 결정 (실주문은 매매 탭에서 승인)</p>
@@ -620,9 +626,14 @@ function HumanApprovalModal({
               fontSize: 11,
               fontWeight: 700,
               cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
             }}
           >
-            ⚙ 승인 정책 설정 열기
+            <Icon name="settings" size={12} decorative />
+            승인 정책 설정 열기
           </button>
         )}
 
@@ -683,9 +694,9 @@ function AnalysisEmptyState({ isRunning, activeCount }: { isRunning: boolean; ac
       <motion.span
         animate={{ rotate: isRunning ? [0, 10, -10, 0] : 0 }}
         transition={{ duration: 1.5, repeat: isRunning ? Infinity : 0 }}
-        style={{ fontSize: 36 }}
+        style={{ display: "inline-flex", color: "var(--brand)" }}
       >
-        {isRunning ? "🔍" : "🎯"}
+        <Icon name={isRunning ? "search" : "target"} size={36} strokeWidth={1.5} decorative />
       </motion.span>
       <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>
         {isRunning ? "에이전트들이 분석 중..." : "분석 시작을 눌러 AI 에이전트를 가동하세요"}
@@ -732,6 +743,7 @@ export default function Home() {
   const [favoriteStocks, setFavoriteStocks] = useState<SavedStock[]>([]);
   const [autoTradeRecords, setAutoTradeRecords] = useState<AutoTradeRecord[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -758,6 +770,13 @@ export default function Home() {
         setAuthReady(true);
       });
   }, []);
+
+  // Once auth check completes, send unauthenticated users straight to /login.
+  useEffect(() => {
+    if (authReady && !currentUser) {
+      router.replace("/login");
+    }
+  }, [authReady, currentUser, router]);
 
   // Load local stock preferences
   useEffect(() => {
@@ -1070,76 +1089,12 @@ export default function Home() {
           display: "grid",
           placeItems: "center",
           padding: 24,
-          background:
-            "radial-gradient(1200px 600px at -10% -10%, rgba(49,130,246,0.10), transparent 60%), radial-gradient(1000px 500px at 110% 20%, rgba(16,185,129,0.08), transparent 55%), var(--bg-canvas)",
+          background: "var(--bg-canvas)",
+          color: "var(--text-tertiary)",
+          fontSize: 13,
         }}
       >
-        <div
-          style={{
-            width: "min(720px, 100%)",
-            border: "1px solid var(--border-default)",
-            borderRadius: "var(--radius-2xl)",
-            padding: 28,
-            background: "var(--bg-surface)",
-            boxShadow: "var(--shadow-lg)",
-          }}
-        >
-          <BrandLockup size={44} />
-          <h1 style={{ marginTop: 18, fontSize: 34, lineHeight: 1.1, color: "var(--text-primary)" }}>
-            유저 등급 기반 AI 트레이딩 워크스페이스
-          </h1>
-          <p style={{ marginTop: 12, color: "var(--text-secondary)", lineHeight: 1.6, fontSize: 14 }}>
-            사용자별 권한과 전체 액션 로그를 기반으로 실전/모의 트레이딩을 안전하게 운영할 수 있습니다.
-            로그인 후 분석, 백테스트, 주문, 관리자 모니터링까지 통합 제어하세요.
-          </p>
-
-          {authError && (
-            <div
-              style={{
-                marginTop: 16,
-                borderRadius: "var(--radius-lg)",
-                border: "1px solid var(--error-border)",
-                background: "var(--error-subtle)",
-                padding: "10px 12px",
-                color: "var(--bear)",
-                fontSize: 12,
-              }}
-            >
-              {authError}
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" }}>
-            <a
-              href="/login"
-              style={{
-                textDecoration: "none",
-                borderRadius: "var(--radius-lg)",
-                padding: "11px 16px",
-                fontSize: 14,
-                fontWeight: 700,
-                background: "var(--brand)",
-                color: "#fff",
-              }}
-            >
-              로그인 / 회원가입
-            </a>
-            <a
-              href="/master"
-              style={{
-                textDecoration: "none",
-                borderRadius: "var(--radius-lg)",
-                padding: "11px 16px",
-                fontSize: 14,
-                fontWeight: 700,
-                border: "1px solid var(--border-default)",
-                color: "var(--text-secondary)",
-              }}
-            >
-              마스터 패널 보기
-            </a>
-          </div>
-        </div>
+        {authError ? "로그인 페이지로 이동합니다…" : "로그인 페이지로 이동 중…"}
       </div>
     );
   }
@@ -1205,11 +1160,29 @@ export default function Home() {
                 {currentUser.username || currentUser.email}
               </p>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
-                <a href="/activity" style={{ color: "var(--brand)", fontSize: 10, textDecoration: "none", fontWeight: 700 }}>
+                <a href="/activity" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--brand)", fontSize: 10, textDecoration: "none", fontWeight: 700 }}>
+                  <Icon name="activity" size={11} decorative />
                   활동 로그
                 </a>
                 {currentUser.role === "master" && (
-                  <a href="/master" style={{ color: "var(--brand)", fontSize: 10, textDecoration: "none", fontWeight: 700 }}>
+                  <a
+                    href="/master"
+                    title="마스터 콘솔"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      color: "var(--warning)",
+                      background: "var(--warning-subtle)",
+                      border: "1px solid var(--warning-border)",
+                      borderRadius: 99,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      textDecoration: "none",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <Icon name="shield" size={11} decorative />
                     마스터
                   </a>
                 )}
@@ -1298,7 +1271,17 @@ export default function Home() {
                   fontWeight: 600,
                 }}
               >
-                {isFavorite ? "★ 즐겨찾기 해제" : "☆ 즐겨찾기 추가"}
+                {isFavorite ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Icon name="star-filled" size={10} decorative />
+                    즐겨찾기 해제
+                  </span>
+                ) : (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Icon name="star" size={10} decorative />
+                    즐겨찾기 추가
+                  </span>
+                )}
               </button>
             </div>
 
@@ -1322,7 +1305,10 @@ export default function Home() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      ★ {name}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <Icon name="star-filled" size={10} decorative />
+                        {name}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -1408,15 +1394,15 @@ export default function Home() {
               value={tab}
               onChange={(v) => handleTabChange(v)}
               items={[
-                { value: "analysis", label: "분석", icon: <span aria-hidden>🔍</span>, badge: activeCount > 0 ? (
+                { value: "analysis", label: "분석", icon: <Icon name="search" size={14} decorative />, badge: activeCount > 0 ? (
                   <span style={{
                     fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
                     background: "var(--brand)", color: "var(--text-inverse)", lineHeight: 1.4, marginLeft: 2,
                   }}>{activeCount}</span>
                 ) : undefined },
-                { value: "backtest", label: "백테스트", icon: <span aria-hidden>📊</span> },
-                { value: "trading", label: "매매", icon: <span aria-hidden>💰</span> },
-                { value: "portfolio", label: "포트폴리오", icon: <span aria-hidden>🧺</span> },
+                { value: "backtest", label: "백테스트", icon: <Icon name="chart-bar" size={14} decorative /> },
+                { value: "trading", label: "매매", icon: <Icon name="wallet" size={14} decorative /> },
+                { value: "portfolio", label: "포트폴리오", icon: <Icon name="briefcase" size={14} decorative /> },
               ]}
             />
           </div>
@@ -1461,15 +1447,16 @@ export default function Home() {
                         <motion.span
                           animate={{ rotate: 360 }}
                           transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                          style={{ fontSize: 14 }}
+                          style={{ display: "inline-flex" }}
                         >
-                          ⚙️
+                          <Icon name="settings" size={14} decorative />
                         </motion.span>
                         분석 중...
                       </>
                     ) : (
                       <>
-                        🔍 분석 시작
+                        <Icon name="search" size={14} decorative />
+                        분석 시작
                         <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400 }}>Space</span>
                       </>
                     )}
@@ -1515,13 +1502,13 @@ export default function Home() {
                         border: "1px solid var(--error-border)",
                       }}
                     >
-                      <span style={{ fontSize: 14 }}>⚠️</span>
+                      <Icon name="warning" size={14} decorative style={{ color: "var(--bear)" }} />
                       <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{analysisError}</p>
                       <button
                         onClick={() => setAnalysisError(null)}
-                        style={{ fontSize: 14, background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 1 }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 0 }}
                       >
-                        ✕
+                        <Icon name="x" size={14} decorative />
                       </button>
                     </motion.div>
                   )}
@@ -1566,9 +1553,14 @@ export default function Home() {
                         fontWeight: 600,
                         cursor: "pointer",
                         transition: "all 150ms",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
                       }}
                     >
-                      💰 KIS 매매 탭에서 주문하기
+                      <Icon name="wallet" size={13} decorative />
+                      KIS 매매 탭에서 주문하기
                     </motion.button>
                   </>
                 ) : (
@@ -1663,14 +1655,14 @@ export default function Home() {
                           key: "ma" as const,
                           label: "MA 교차",
                           desc: "MA5와 MA20의 교차를 기준으로 매수/매도",
-                          icon: "📊",
+                          icon: "chart-bar" as const,
                           tip: "MA5가 MA20을 위로 돌파하면 매수, 아래로 이탈하면 매도로 해석하는 기본 추세 전략입니다.",
                         },
                         {
                           key: "agent" as const,
                           label: "AI 에이전트",
                           desc: "월별 LLM 판단 신호를 리밸런싱에 반영",
-                          icon: "🤖",
+                          icon: "robot" as const,
                           tip: "기술지표를 입력으로 AI가 매달 BUY/SELL/HOLD를 예측하고, 다음 거래일에 체결하는 방식입니다.",
                         },
                       ] as const
@@ -1680,7 +1672,6 @@ export default function Home() {
                         <button
                           key={key}
                           onClick={() => setBtMode(key)}
-                          title={tip}
                           style={{
                             flex: 1,
                             padding: "12px 10px",
@@ -1692,7 +1683,9 @@ export default function Home() {
                             transition: "all 150ms",
                           }}
                         >
-                          <p style={{ fontSize: 16, marginBottom: 4 }}>{icon}</p>
+                          <p style={{ marginBottom: 4, color: active ? "var(--brand)" : "var(--text-secondary)" }}>
+                            <Icon name={icon} size={18} decorative />
+                          </p>
                           <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
                             <p style={{ fontSize: 11, fontWeight: 700, color: active ? "var(--brand)" : "var(--text-primary)" }}>{label}</p>
                             <InfoTip tip={tip} subtle={!active} />
@@ -1842,9 +1835,9 @@ export default function Home() {
                     <motion.span
                       animate={{ rotate: 360 }}
                       transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      style={{ fontSize: 36 }}
+                      style={{ display: "inline-flex", color: "var(--brand)" }}
                     >
-                      {btMode === "agent" ? "🤖" : "⚙️"}
+                      <Icon name={btMode === "agent" ? "robot" : "settings"} size={36} strokeWidth={1.5} decorative />
                     </motion.span>
                     <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                       {btMode === "agent" ? "AI 에이전트 과거 판단 중..." : "시뮬레이션 실행 중..."}
@@ -1920,6 +1913,9 @@ export default function Home() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                       <span
                         style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
                           fontSize: 9,
                           fontWeight: 700,
                           padding: "3px 9px",
@@ -1928,7 +1924,8 @@ export default function Home() {
                           color: "var(--brand)",
                         }}
                       >
-                        {btMode === "agent" ? "🤖 AI 에이전트" : "📊 MA 교차"}
+                        <Icon name={btMode === "agent" ? "robot" : "chart-bar"} size={11} decorative />
+                        {btMode === "agent" ? "AI 에이전트" : "MA 교차"}
                       </span>
                       <button
                         onClick={() => { setBtResult(null); setBtProgress([]); setBtError(null); }}
@@ -1961,13 +1958,13 @@ export default function Home() {
                         border: "1px solid var(--error-border)",
                       }}
                     >
-                      <span style={{ fontSize: 14 }}>⚠️</span>
+                      <Icon name="warning" size={14} decorative style={{ color: "var(--bear)" }} />
                       <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{btError}</p>
                       <button
                         onClick={() => setBtError(null)}
-                        style={{ fontSize: 14, background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 1 }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 0 }}
                       >
-                        ✕
+                        <Icon name="x" size={14} decorative />
                       </button>
                     </motion.div>
                   )}
@@ -1985,7 +1982,9 @@ export default function Home() {
                       gap: 10,
                     }}
                   >
-                    <span style={{ fontSize: 36 }}>📈</span>
+                    <span style={{ display: "inline-flex", color: "var(--brand)" }}>
+                      <Icon name="trend-up" size={36} strokeWidth={1.5} decorative />
+                    </span>
                     <p style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
                       전략을 선택하고 백테스트 실행 버튼을 누르세요
                     </p>
@@ -2095,10 +2094,12 @@ export default function Home() {
               flexShrink: 0,
             }}
           >
-            ⚙️ 설정
+            <Icon name="settings" size={12} decorative />
+            설정
           </button>
-          <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-            ⚠ 투자 참고용. 실제 투자는 본인 책임.
+          <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <Icon name="warning" size={10} decorative />
+            투자 참고용. 실제 투자는 본인 책임.
           </p>
         </div>
       </aside>
@@ -2170,8 +2171,15 @@ export default function Home() {
               </motion.div>
             )}
             {!isRunning && thoughts.size > 0 && (
-              <span style={{ fontSize: 10, fontWeight: 600, color: decision ? "var(--success)" : "var(--text-tertiary)" }}>
-                {decision ? "✅ 분석 완료" : `${thoughts.size}/8 완료`}
+              <span style={{ fontSize: 10, fontWeight: 600, color: decision ? "var(--success)" : "var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                {decision ? (
+                  <>
+                    <Icon name="check-circle" size={12} decorative />
+                    분석 완료
+                  </>
+                ) : (
+                  `${thoughts.size}/8 완료`
+                )}
               </span>
             )}
           </div>
