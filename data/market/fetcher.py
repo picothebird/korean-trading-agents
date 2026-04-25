@@ -131,6 +131,38 @@ def search_stocks(query: str, limit: int = 10) -> list[dict]:
         return []
 
 
+def get_market_universe(limit: int = 200, market: str = "ALL") -> list[dict]:
+    """시장 스캔용 유니버스 목록을 반환한다.
+
+    market: "KOSPI" | "KOSDAQ" | "ALL"
+    """
+    market_key = (market or "ALL").strip().upper()
+    max_limit = max(1, min(int(limit or 1), 2_000))
+
+    try:
+        listing = _get_krx_listing()
+        if listing.empty:
+            return []
+
+        df = listing.copy()
+        if market_key in {"KOSPI", "KOSDAQ"}:
+            df = df[df.get("Market", "").astype(str).str.upper() == market_key]
+
+        if "Code" not in df.columns:
+            return []
+
+        rows: list[dict] = []
+        for _, row in df.head(max_limit).iterrows():
+            rows.append({
+                "code": str(row.get("Code", "") or ""),
+                "name": str(row.get("Name", "") or ""),
+                "market": str(row.get("Market", "") or ""),
+            })
+        return rows
+    except BaseException:
+        return []
+
+
 def get_stock_info(ticker: str) -> dict:
     """KRX 종목 기본 정보"""
     try:

@@ -15,6 +15,7 @@ const AGENT_META: Record<
   bear_researcher:     { name: "약세 연구원",       icon: "🐻", layer: "Layer 2 · 토론",     dotColor: "#2B7EF5" },
   risk_manager:        { name: "리스크 매니저",     icon: "🛡️", layer: "Layer 3 · 결정",     dotColor: "#F5A623" },
   portfolio_manager:   { name: "포트폴리오 매니저", icon: "👔", layer: "Layer 3 · 결정",     dotColor: "#3182F6" },
+  guru_agent:          { name: "GURU",              icon: "🧙", layer: "Layer 3 · 결정",     dotColor: "#7D6BFF" },
 };
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
@@ -39,7 +40,7 @@ const LAYER_DATA_ROLES: AgentRole[] = [
 ];
 
 const LAYER_DEBATE_ROLES: AgentRole[] = ["bull_researcher", "bear_researcher"];
-const LAYER_DECISION_ROLES: AgentRole[] = ["risk_manager", "portfolio_manager"];
+const LAYER_DECISION_ROLES: AgentRole[] = ["risk_manager", "portfolio_manager", "guru_agent"];
 
 function layerOfRole(role: AgentRole): "DATA" | "DEBATE" | "DECISION" {
   if (LAYER_DATA_ROLES.includes(role)) return "DATA";
@@ -204,7 +205,7 @@ export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
   const dataDone = LAYER_DATA_ROLES.filter((r) => latestByRole.get(r)?.status === "done").length;
   const debateDone = LAYER_DEBATE_ROLES.filter((r) => latestByRole.get(r)?.status === "done").length;
   const decisionDone = LAYER_DECISION_ROLES.filter((r) => latestByRole.get(r)?.status === "done").length;
-  const exchangeDone = ["risk_manager", "portfolio_manager"].filter(
+  const exchangeDone = ["risk_manager", "portfolio_manager", "guru_agent"].filter(
     (r) => latestByRole.get(r as AgentRole)?.status === "done"
   ).length;
 
@@ -212,7 +213,7 @@ export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
     { key: "DATA", label: "DATA", done: dataDone, total: LAYER_DATA_ROLES.length, color: "#58A6FF" },
     { key: "DEBATE", label: "DEBATE", done: debateDone, total: LAYER_DEBATE_ROLES.length, color: "#BC8CFF" },
     { key: "DECISION", label: "DECISION", done: decisionDone, total: LAYER_DECISION_ROLES.length, color: "#E3B341" },
-    { key: "EXCHANGE", label: "EXCHANGE", done: exchangeDone, total: 2, color: "#97F2C1" },
+    { key: "EXCHANGE", label: "EXCHANGE", done: exchangeDone, total: 3, color: "#97F2C1" },
   ];
 
   return (
@@ -355,7 +356,7 @@ interface AgentOfficeProps {
 const LAYERS: { label: string; roles: AgentRole[] }[] = [
   { label: "Layer 1 · 데이터 수집", roles: ["technical_analyst", "fundamental_analyst", "sentiment_analyst", "macro_analyst"] },
   { label: "Layer 2 · 강세 vs 약세 토론", roles: ["bull_researcher", "bear_researcher"] },
-  { label: "Layer 3 · 리스크 & 최종 결정", roles: ["risk_manager", "portfolio_manager"] },
+  { label: "Layer 3 · 리스크 & 최종 결정", roles: ["risk_manager", "portfolio_manager", "guru_agent"] },
 ];
 
 export function AgentOffice({ thoughts, activeAgents }: AgentOfficeProps) {

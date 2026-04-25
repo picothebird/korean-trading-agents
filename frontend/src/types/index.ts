@@ -8,7 +8,8 @@ export type AgentRole =
   | "bull_researcher"
   | "bear_researcher"
   | "risk_manager"
-  | "portfolio_manager";
+  | "portfolio_manager"
+  | "guru_agent";
 
 export type AgentStatus =
   | "idle"
@@ -43,6 +44,22 @@ export interface TradeDecision {
     requires_human_approval?: boolean;
     entry_strategy?: string;
     exit_strategy?: string;
+    guru?: {
+      enabled: boolean;
+      risk_profile: "defensive" | "balanced" | "aggressive" | string;
+      debate_enabled: boolean;
+      investment_principles: string;
+      min_confidence_to_act: number;
+      max_risk_level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | string;
+      max_position_pct: number;
+      require_user_confirmation: boolean;
+      llm_action: "BUY" | "SELL" | "HOLD" | string;
+      llm_confidence: number;
+      final_action: "BUY" | "SELL" | "HOLD" | string;
+      action_changed: boolean;
+      rules_applied: string[];
+      notes: string[];
+    };
   };
   timestamp: string;
 }
@@ -150,6 +167,14 @@ export interface UserSettings {
   fast_llm_model: string;
   reasoning_effort: "high" | "medium" | "low";
   max_debate_rounds: number;
+  guru_enabled: boolean;
+  guru_debate_enabled: boolean;
+  guru_require_user_confirmation: boolean;
+  guru_risk_profile: "defensive" | "balanced" | "aggressive";
+  guru_investment_principles: string;
+  guru_min_confidence_to_act: number;
+  guru_max_risk_level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  guru_max_position_pct: number;
   kis_mock: boolean;
   kis_app_key_set: boolean;
   kis_app_secret_set: boolean;
@@ -325,6 +350,119 @@ export interface AutoLoopStatus {
   latest_decision: TradeDecision | null;
   paper_account: AutoLoopPaperAccount | null;
   decision_history: AutoLoopDecisionHistoryPoint[];
+  trade_history: AutoLoopTradeRecord[];
+  logs: AutoLoopLog[];
+}
+
+// ── Portfolio Orchestration Loop ───────────────────────────────
+
+export type UniverseMarket = "ALL" | "KOSPI" | "KOSDAQ";
+export type MonitoringProfile = "balanced" | "momentum" | "defensive";
+
+export interface PortfolioLoopStartRequest {
+  name: string;
+  seed_tickers: string[];
+  preferred_tickers: string[];
+  excluded_tickers: string[];
+  interest_keywords: string[];
+  monitoring_profile: MonitoringProfile;
+  market_scan_enabled: boolean;
+  universe_market: UniverseMarket;
+  universe_limit: number;
+  candidate_count: number;
+  max_positions: number;
+  max_parallel_analyses: number;
+  cycle_interval_min: number;
+  min_confidence: number;
+  max_single_position_pct: number;
+  rebalance_threshold_pct: number;
+  paper_trade: boolean;
+  initial_cash: number;
+  fee_bps: number;
+  slippage_bps: number;
+  tax_bps: number;
+  execution_session_mode: ExecutionSessionMode;
+}
+
+export interface PortfolioLoopCandidate {
+  ticker: string;
+  name: string;
+  market: string;
+  score: number;
+  current_price: number;
+  change_pct: number;
+  rsi_14: number;
+  ma_gap_pct: number;
+  reason: string;
+}
+
+export interface PortfolioLoopDecision {
+  ticker: string;
+  action: "BUY" | "SELL" | "HOLD";
+  confidence: number;
+  risk_level: string;
+  requires_human_approval: boolean;
+  reasoning: string;
+  timestamp: string;
+}
+
+export interface PortfolioLoopAllocation {
+  ticker: string;
+  target_weight_pct: number;
+  current_weight_pct: number;
+  action: "BUY" | "SELL" | "HOLD";
+  confidence: number;
+  score: number;
+}
+
+export interface PortfolioLoopPosition {
+  ticker: string;
+  shares: number;
+  avg_buy_price: number;
+  market_price: number;
+  market_value: number;
+  unrealized_pnl: number;
+  weight_pct: number;
+}
+
+export interface PortfolioLoopAccount {
+  cash: number;
+  market_value: number;
+  total_equity: number;
+  realized_pnl: number;
+  total_fees: number;
+  total_taxes: number;
+  positions: PortfolioLoopPosition[];
+}
+
+export interface PortfolioLoopStatus {
+  loop_id: string;
+  name: string;
+  running: boolean;
+  cycle_running: boolean;
+  created_at: string;
+  started_at: string | null;
+  stopped_at: string | null;
+  last_run_at: string | null;
+  last_scan_at: string | null;
+  next_run_at: string | null;
+  current_session: string;
+  settings: PortfolioLoopStartRequest;
+  stats: {
+    cycle_count: number;
+    scan_count: number;
+    manual_scan_count: number;
+    analysis_count: number;
+    simulated_trades: number;
+    executed_trades: number;
+    failed_trades: number;
+    skipped_cycles: number;
+  };
+  account: PortfolioLoopAccount;
+  latest_candidates: PortfolioLoopCandidate[];
+  latest_decisions: PortfolioLoopDecision[];
+  target_allocations: PortfolioLoopAllocation[];
+  latest_quotes: Record<string, number>;
   trade_history: AutoLoopTradeRecord[];
   logs: AutoLoopLog[];
 }

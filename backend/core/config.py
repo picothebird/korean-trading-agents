@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     reasoning_effort: str = "high"   # "high" | "medium" | "low" (gpt-5/o-series 전용)
     max_debate_rounds: int = 2
 
+    # GURU 최종 결정 커스터마이징
+    guru_enabled: bool = False
+    guru_debate_enabled: bool = True
+    guru_require_user_confirmation: bool = False
+    guru_risk_profile: str = "balanced"  # defensive | balanced | aggressive
+    guru_investment_principles: str = ""
+    guru_min_confidence_to_act: float = 0.72
+    guru_max_risk_level: str = "HIGH"  # LOW | MEDIUM | HIGH | CRITICAL
+    guru_max_position_pct: float = 20.0
+
     # 서버
     host: str = "0.0.0.0"
     port: int = 8000

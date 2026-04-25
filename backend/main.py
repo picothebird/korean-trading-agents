@@ -32,6 +32,13 @@ from backend.services.auto_trading import (
     SupervisionLevel,
     ExecutionSessionMode,
 )
+from backend.services.portfolio_trading import (
+    portfolio_supervisor,
+    PortfolioLoopSettings,
+    UniverseMarket,
+    MonitoringProfile,
+    ExecutionSessionMode as PortfolioExecutionSessionMode,
+)
 from agents.orchestrator.orchestrator import run_analysis
 from backtesting.backtest import run_simple_backtest, run_agent_backtest, format_result_summary
 from data.market.fetcher import get_stock_info, get_technical_indicators, search_stocks, get_price_history
@@ -45,6 +52,7 @@ async def lifespan(app: FastAPI):
     print("🚀 Korean Trading Agents API 서버 시작")
     yield
     await auto_trading_supervisor.shutdown()
+    await portfolio_supervisor.shutdown()
     print("👋 서버 종료")
 
 
@@ -88,6 +96,14 @@ class SettingsUpdateRequest(BaseModel):
     kis_app_key: str = ""
     kis_app_secret: str = ""
     kis_account_no: str = ""
+    guru_enabled: bool = False
+    guru_debate_enabled: bool = True
+    guru_require_user_confirmation: bool = False
+    guru_risk_profile: Literal["defensive", "balanced", "aggressive"] = "balanced"
+    guru_investment_principles: str = Field(default="", max_length=1200)
+    guru_min_confidence_to_act: float = Field(default=0.72, ge=0.0, le=1.0)
+    guru_max_risk_level: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "HIGH"
+    guru_max_position_pct: float = Field(default=20.0, ge=1.0, le=100.0)
 
 
 class KisOrderRequest(BaseModel):
@@ -120,6 +136,31 @@ class AutoLoopStartRequest(BaseModel):
     supervision_level: Literal["strict", "balanced", "aggressive"] = "balanced"
     execution_session_mode: Literal["regular_only", "regular_and_after_hours"] = "regular_only"
     initial_cash: float = Field(default=10_000_000, ge=10_000)
+
+
+class PortfolioLoopStartRequest(BaseModel):
+    name: str = Field(default="portfolio", min_length=1, max_length=80)
+    seed_tickers: list[str] = Field(default_factory=list, max_length=60)
+    preferred_tickers: list[str] = Field(default_factory=list, max_length=60)
+    excluded_tickers: list[str] = Field(default_factory=list, max_length=200)
+    interest_keywords: list[str] = Field(default_factory=list, max_length=20)
+    monitoring_profile: Literal["balanced", "momentum", "defensive"] = "balanced"
+    market_scan_enabled: bool = True
+    universe_market: Literal["ALL", "KOSPI", "KOSDAQ"] = "ALL"
+    universe_limit: int = Field(default=60, ge=10, le=200)
+    candidate_count: int = Field(default=8, ge=1, le=30)
+    max_positions: int = Field(default=5, ge=1, le=20)
+    max_parallel_analyses: int = Field(default=3, ge=1, le=8)
+    cycle_interval_min: int = Field(default=20, ge=1, le=1440)
+    min_confidence: float = Field(default=0.70, ge=0.0, le=1.0)
+    max_single_position_pct: float = Field(default=25.0, ge=1.0, le=100.0)
+    rebalance_threshold_pct: float = Field(default=1.5, ge=0.0, le=20.0)
+    paper_trade: bool = True
+    initial_cash: float = Field(default=20_000_000, ge=10_000)
+    fee_bps: float = Field(default=1.5, ge=0.0, le=500.0)
+    slippage_bps: float = Field(default=3.0, ge=0.0, le=500.0)
+    tax_bps: float = Field(default=18.0, ge=0.0, le=1000.0)
+    execution_session_mode: Literal["regular_only", "regular_and_after_hours"] = "regular_only"
 
 
 # ── 실행 중인 세션 저장 (간단한 인메모리) ─────────────────
@@ -407,6 +448,14 @@ async def get_settings_api():
         "fast_llm_model": settings.fast_llm_model,
         "reasoning_effort": settings.reasoning_effort,
         "max_debate_rounds": settings.max_debate_rounds,
+        "guru_enabled": settings.guru_enabled,
+        "guru_debate_enabled": settings.guru_debate_enabled,
+        "guru_require_user_confirmation": settings.guru_require_user_confirmation,
+        "guru_risk_profile": settings.guru_risk_profile,
+        "guru_investment_principles": settings.guru_investment_principles,
+        "guru_min_confidence_to_act": settings.guru_min_confidence_to_act,
+        "guru_max_risk_level": settings.guru_max_risk_level,
+        "guru_max_position_pct": settings.guru_max_position_pct,
         "kis_mock": settings.kis_mock,
         "kis_app_key_set": bool(settings.kis_app_key),
         "kis_app_secret_set": bool(settings.kis_app_secret),
@@ -427,6 +476,14 @@ async def update_settings_api(req: SettingsUpdateRequest):
     object.__setattr__(settings, "fast_llm_model", req.fast_llm_model)
     object.__setattr__(settings, "reasoning_effort", req.reasoning_effort)
     object.__setattr__(settings, "max_debate_rounds", req.max_debate_rounds)
+    object.__setattr__(settings, "guru_enabled", req.guru_enabled)
+    object.__setattr__(settings, "guru_debate_enabled", req.guru_debate_enabled)
+    object.__setattr__(settings, "guru_require_user_confirmation", req.guru_require_user_confirmation)
+    object.__setattr__(settings, "guru_risk_profile", req.guru_risk_profile)
+    object.__setattr__(settings, "guru_investment_principles", req.guru_investment_principles)
+    object.__setattr__(settings, "guru_min_confidence_to_act", req.guru_min_confidence_to_act)
+    object.__setattr__(settings, "guru_max_risk_level", req.guru_max_risk_level)
+    object.__setattr__(settings, "guru_max_position_pct", req.guru_max_position_pct)
     object.__setattr__(settings, "kis_mock", req.kis_mock)
 
     # KIS 자격증명이 변경된 경우 토큰 캐시 무효화
@@ -449,6 +506,14 @@ async def update_settings_api(req: SettingsUpdateRequest):
         "fast_llm_model": req.fast_llm_model,
         "reasoning_effort": req.reasoning_effort,
         "max_debate_rounds": req.max_debate_rounds,
+        "guru_enabled": req.guru_enabled,
+        "guru_debate_enabled": req.guru_debate_enabled,
+        "guru_require_user_confirmation": req.guru_require_user_confirmation,
+        "guru_risk_profile": req.guru_risk_profile,
+        "guru_investment_principles": req.guru_investment_principles,
+        "guru_min_confidence_to_act": req.guru_min_confidence_to_act,
+        "guru_max_risk_level": req.guru_max_risk_level,
+        "guru_max_position_pct": req.guru_max_position_pct,
         "kis_mock": req.kis_mock,
         "kis_app_key": req.kis_app_key or None,
         "kis_app_secret": req.kis_app_secret or None,
@@ -505,6 +570,75 @@ async def auto_loop_list():
     """현재 생성된 자동매매 루프 목록"""
     loops = await auto_trading_supervisor.list_loops()
     return {"loops": loops}
+
+
+# ── 포트폴리오 오케스트레이션 루프 API ─────────────────────────
+@app.post("/api/portfolio-loop/start")
+async def start_portfolio_loop(req: PortfolioLoopStartRequest):
+    settings_obj = PortfolioLoopSettings(
+        name=req.name,
+        seed_tickers=req.seed_tickers,
+        preferred_tickers=req.preferred_tickers,
+        excluded_tickers=req.excluded_tickers,
+        interest_keywords=req.interest_keywords,
+        monitoring_profile=MonitoringProfile(req.monitoring_profile),
+        market_scan_enabled=req.market_scan_enabled,
+        universe_market=UniverseMarket(req.universe_market),
+        universe_limit=req.universe_limit,
+        candidate_count=req.candidate_count,
+        max_positions=req.max_positions,
+        max_parallel_analyses=req.max_parallel_analyses,
+        cycle_interval_min=req.cycle_interval_min,
+        min_confidence=req.min_confidence,
+        max_single_position_pct=req.max_single_position_pct,
+        rebalance_threshold_pct=req.rebalance_threshold_pct,
+        paper_trade=req.paper_trade,
+        initial_cash=req.initial_cash,
+        fee_bps=req.fee_bps,
+        slippage_bps=req.slippage_bps,
+        tax_bps=req.tax_bps,
+        execution_session_mode=PortfolioExecutionSessionMode(req.execution_session_mode),
+    )
+    rt = await portfolio_supervisor.start(settings_obj)
+    return {
+        "loop_id": rt.loop_id,
+        "status": "running",
+    }
+
+
+@app.post("/api/portfolio-loop/stop/{loop_id}")
+async def stop_portfolio_loop(loop_id: str):
+    ok = await portfolio_supervisor.stop(loop_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="포트폴리오 루프를 찾을 수 없습니다")
+    return {"loop_id": loop_id, "status": "stopped"}
+
+
+@app.get("/api/portfolio-loop/status/{loop_id}")
+async def portfolio_loop_status(loop_id: str):
+    status = await portfolio_supervisor.status(loop_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="포트폴리오 루프를 찾을 수 없습니다")
+    return status
+
+
+@app.get("/api/portfolio-loop/list")
+async def portfolio_loop_list():
+    loops = await portfolio_supervisor.list_loops()
+    return {"loops": loops}
+
+
+@app.post("/api/portfolio-loop/scan/{loop_id}")
+async def portfolio_loop_manual_scan(loop_id: str):
+    """유저 요청 시 즉시 시장 스캔 수행"""
+    try:
+        status = await portfolio_supervisor.manual_scan(loop_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    if status is None:
+        raise HTTPException(status_code=404, detail="포트폴리오 루프를 찾을 수 없습니다")
+    return status
 
 
 # ── KIS OpenAPI ─────────────────────────────────────────────────

@@ -313,7 +313,7 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
         {!balance && !balanceError && !balanceLoading && (
           <div style={{ padding: "20px", textAlign: "center" }}>
             <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-              "잔고 새로고침" 버튼을 눌러 잔고를 조회하세요
+              &quot;잔고 새로고침&quot; 버튼을 눌러 잔고를 조회하세요
             </p>
           </div>
         )}

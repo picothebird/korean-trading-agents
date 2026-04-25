@@ -26,6 +26,9 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
   const kelly = decision.agents_summary?.kelly_position_pct ?? decision.agents_summary?.position_size_pct ?? 0;
   const stopLossPct = decision.agents_summary?.stop_loss_pct;
   const needsApproval = decision.agents_summary?.requires_human_approval;
+  const guru = decision.agents_summary?.guru;
+  const guruRules = guru?.rules_applied ?? [];
+  const guruEnabled = Boolean(guru?.enabled);
 
   return (
     <AnimatePresence>
@@ -119,6 +122,36 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
                 </button>
               )}
             </motion.div>
+          )}
+
+          {guruEnabled && (
+            <div
+              style={{
+                background: "rgba(49,130,246,0.10)",
+                border: "1px solid rgba(49,130,246,0.28)",
+                borderRadius: "var(--radius-lg)",
+                padding: "10px 12px",
+                marginBottom: 12,
+              }}
+            >
+              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", marginBottom: 4 }}>
+                🧙 GURU 정책 레이어 적용
+              </p>
+              <p style={{ fontSize: 10, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                성향: {guru?.risk_profile} · 최소신뢰도: {Math.round((guru?.min_confidence_to_act ?? 0) * 100)}% ·
+                최대리스크: {guru?.max_risk_level} · 포지션상한: {guru?.max_position_pct}%
+              </p>
+              {guru?.action_changed && (
+                <p style={{ fontSize: 10, color: "var(--warning)", marginTop: 5 }}>
+                  GURU가 액션을 조정했습니다: {guru?.llm_action} → {guru?.final_action}
+                </p>
+              )}
+              {guruRules.length > 0 && (
+                <p style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 5 }}>
+                  룰 적용: {guruRules.slice(0, 2).join(" | ")}
+                </p>
+              )}
+            </div>
           )}
 
           {/* Agent vote consensus bar */}

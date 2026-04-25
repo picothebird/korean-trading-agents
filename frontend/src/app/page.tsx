@@ -11,6 +11,7 @@ import { KisPanel } from "@/components/KisPanel";
 import { PixelOffice } from "@/components/PixelOffice";
 import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
+import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest,
@@ -31,7 +32,7 @@ const FAVORITE_STOCKS_KEY = "kta_favorite_stocks_v1";
 type SavedStock = { code: string; name: string };
 type BacktestMode = "ma" | "agent";
 
-type Tab = "analysis" | "backtest" | "trading";
+type Tab = "analysis" | "backtest" | "trading" | "portfolio";
 const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.4 };
 
 // ── Utilities ─────────────────────────────────────────────────────
@@ -282,7 +283,7 @@ function StockPriceCard({
 const PIPELINE_LAYERS = [
   { name: "L1", full: "데이터 수집", roles: ["technical_analyst", "fundamental_analyst", "sentiment_analyst", "macro_analyst"] as AgentRole[], total: 4 },
   { name: "L2", full: "토론", roles: ["bull_researcher", "bear_researcher"] as AgentRole[], total: 2 },
-  { name: "L3", full: "결정", roles: ["risk_manager", "portfolio_manager"] as AgentRole[], total: 2 },
+  { name: "L3", full: "결정", roles: ["risk_manager", "portfolio_manager", "guru_agent"] as AgentRole[], total: 3 },
 ] as const;
 
 function PipelineProgress({
@@ -413,6 +414,7 @@ function TickerSearchInput({
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery(companyName ? `${companyName} (${ticker})` : ticker);
   }, [companyName, ticker]);
 
@@ -1200,8 +1202,10 @@ export default function Home() {
               flexShrink: 0,
             }}
           >
-            {(["analysis", "backtest", "trading"] as Tab[]).map((t) => {
+            {(["analysis", "backtest", "trading", "portfolio"] as Tab[]).map((t) => {
               const active = tab === t;
+              const tabIcon = t === "analysis" ? "🔍" : t === "backtest" ? "📊" : t === "trading" ? "💰" : "🧺";
+              const tabLabel = t === "analysis" ? "분석" : t === "backtest" ? "백테스트" : t === "trading" ? "매매" : "포트폴리오";
               return (
                 <button
                   key={t}
@@ -1224,8 +1228,8 @@ export default function Home() {
                     position: "relative",
                   }}
                 >
-                  <span>{t === "analysis" ? "🔍" : t === "backtest" ? "📊" : "💰"}</span>
-                  <span>{t === "analysis" ? "분석" : t === "backtest" ? "백테스트" : "매매"}</span>
+                  <span>{tabIcon}</span>
+                  <span>{tabLabel}</span>
                   {t === "analysis" && activeCount > 0 && (
                     <span
                       style={{
@@ -1801,6 +1805,33 @@ export default function Home() {
                 transition={SPRING}
               >
                 <KisPanel prefillTicker={kisOrderTicker || ticker} />
+              </motion.div>
+            )}
+
+            {tab === "portfolio" && (
+              <motion.div
+                key="portfolio"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={SPRING}
+              >
+                <PortfolioLoopPanel
+                  ticker={ticker}
+                  onTradeRecorded={(trade) => {
+                    setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
+                    setLogs((prev) => [
+                      ...prev.slice(-99),
+                      {
+                        agent_id: "portfolio_loop",
+                        role: "portfolio_manager",
+                        status: "done",
+                        content: `포트폴리오 거래: ${trade.ticker} ${trade.side} ${trade.qty}주 (${trade.status})`,
+                        timestamp: new Date().toISOString(),
+                      },
+                    ]);
+                  }}
+                />
               </motion.div>
             )}
           </AnimatePresence>

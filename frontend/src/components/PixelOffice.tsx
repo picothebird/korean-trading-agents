@@ -31,6 +31,7 @@ const AGENTS: Record<AgentRole, AgentMeta> = {
   bear_researcher:     { x: 510, y: 320, label: "약세 연구원",      layer: 2, accent: "#2B7EF5", hair: "#060606", shirt: "#0c1e56", pants: "#04040c", desk: false },
   risk_manager:        { x: 430, y: 250, label: "리스크 매니저",    layer: 3, accent: "#F5A623", hair: "#140808", shirt: "#6e4e00", pants: "#0c0c0c", desk: true },
   portfolio_manager:   { x: 510, y: 110, label: "포트폴리오 매니저", layer: 3, accent: "#3182F6", hair: "#585858", shirt: "#bcc4cc", pants: "#1e1e2e", desk: false },
+  guru_agent:          { x: 560, y: 220, label: "GURU",            layer: 3, accent: "#7D6BFF", hair: "#f2f2f2", shirt: "#3f2c8f", pants: "#17192e", desk: true },
 };
 
 const LAYER_1_ROLES: AgentRole[] = [
@@ -41,7 +42,7 @@ const LAYER_1_ROLES: AgentRole[] = [
 ];
 
 const LAYER_2_ROLES: AgentRole[] = ["bull_researcher", "bear_researcher"];
-const LAYER_3_ROLES: AgentRole[] = ["risk_manager", "portfolio_manager"];
+const LAYER_3_ROLES: AgentRole[] = ["risk_manager", "portfolio_manager", "guru_agent"];
 
 const TILE = 20;
 const TILE_CENTER_OFFSET = 10;
@@ -166,6 +167,14 @@ const ROLE_SCENE_TARGETS: Record<AgentRole, RoleSceneTargets> = {
     decide: snapPoint(490, 250),
     execute: snapPoint(510, 110),
   },
+  guru_agent: {
+    home: snapPoint(560, 220),
+    investigate: snapPoint(520, 280),
+    debate: snapPoint(530, 330),
+    report: snapPoint(530, 280),
+    decide: snapPoint(530, 230),
+    execute: snapPoint(530, 120),
+  },
 };
 
 function getZoneFromPoint(p: Point): SceneZone {
@@ -235,7 +244,7 @@ function getTargetForStatus(role: AgentRole, status: string): { key: keyof RoleS
     return { key: "decide", point: roleTargets.decide };
   }
   if (status === "done") {
-    if (role === "portfolio_manager" || role === "risk_manager") {
+    if (role === "portfolio_manager" || role === "risk_manager" || role === "guru_agent") {
       return { key: "execute", point: roleTargets.execute };
     }
     return { key: "report", point: roleTargets.report };
@@ -738,7 +747,7 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
   thoughtsRef.current = thoughts;
   activeRef.current = activeAgents;
 
-  const render = useCallback(() => {
+  const render = useCallback(function tick() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -819,7 +828,7 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
       drawLabel(ctx, actor.x, actor.y, meta.label, meta.accent, status);
     }
 
-    rafRef.current = requestAnimationFrame(render);
+    rafRef.current = requestAnimationFrame(tick);
   }, []);
 
   useEffect(() => {

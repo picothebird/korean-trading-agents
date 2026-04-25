@@ -129,6 +129,14 @@ export async function updateSettings(data: {
   fast_llm_model: string;
   reasoning_effort: "high" | "medium" | "low";
   max_debate_rounds: number;
+  guru_enabled: boolean;
+  guru_debate_enabled: boolean;
+  guru_require_user_confirmation: boolean;
+  guru_risk_profile: "defensive" | "balanced" | "aggressive";
+  guru_investment_principles: string;
+  guru_min_confidence_to_act: number;
+  guru_max_risk_level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  guru_max_position_pct: number;
   kis_mock: boolean;
   kis_app_key?: string;
   kis_app_secret?: string;
@@ -256,6 +264,63 @@ export async function listAutoLoops(): Promise<{ loops: import("@/types").AutoLo
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "자동 루프 목록 조회 실패" }));
     throw new Error(err.detail ?? "자동 루프 목록 조회 실패");
+  }
+  return res.json();
+}
+
+// ── Portfolio Orchestration Loop ───────────────────────────────
+
+export async function startPortfolioLoop(
+  req: import("@/types").PortfolioLoopStartRequest
+): Promise<{ loop_id: string; status: string }> {
+  const res = await fetch(`${BASE_URL}/api/portfolio-loop/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "포트폴리오 루프 시작 실패" }));
+    throw new Error(err.detail ?? "포트폴리오 루프 시작 실패");
+  }
+  return res.json();
+}
+
+export async function stopPortfolioLoop(loopId: string): Promise<{ loop_id: string; status: string }> {
+  const res = await fetch(`${BASE_URL}/api/portfolio-loop/stop/${encodeURIComponent(loopId)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "포트폴리오 루프 중지 실패" }));
+    throw new Error(err.detail ?? "포트폴리오 루프 중지 실패");
+  }
+  return res.json();
+}
+
+export async function getPortfolioLoopStatus(loopId: string): Promise<import("@/types").PortfolioLoopStatus> {
+  const res = await fetch(`${BASE_URL}/api/portfolio-loop/status/${encodeURIComponent(loopId)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "포트폴리오 루프 상태 조회 실패" }));
+    throw new Error(err.detail ?? "포트폴리오 루프 상태 조회 실패");
+  }
+  return res.json();
+}
+
+export async function listPortfolioLoops(): Promise<{ loops: import("@/types").PortfolioLoopStatus[] }> {
+  const res = await fetch(`${BASE_URL}/api/portfolio-loop/list`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "포트폴리오 루프 목록 조회 실패" }));
+    throw new Error(err.detail ?? "포트폴리오 루프 목록 조회 실패");
+  }
+  return res.json();
+}
+
+export async function scanPortfolioLoop(loopId: string): Promise<import("@/types").PortfolioLoopStatus> {
+  const res = await fetch(`${BASE_URL}/api/portfolio-loop/scan/${encodeURIComponent(loopId)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "포트폴리오 수동 스캔 실패" }));
+    throw new Error(err.detail ?? "포트폴리오 수동 스캔 실패");
   }
   return res.json();
 }

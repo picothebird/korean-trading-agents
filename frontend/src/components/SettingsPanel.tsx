@@ -127,6 +127,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     fast_llm_model: "gpt-5.4-mini",
     reasoning_effort: "high" as "high" | "medium" | "low",
     max_debate_rounds: 2,
+    guru_enabled: false,
+    guru_debate_enabled: true,
+    guru_require_user_confirmation: false,
+    guru_risk_profile: "balanced" as "defensive" | "balanced" | "aggressive",
+    guru_investment_principles: "",
+    guru_min_confidence_to_act: 0.72,
+    guru_max_risk_level: "HIGH" as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+    guru_max_position_pct: 20,
     kis_mock: true,
     kis_app_key: "",
     kis_app_secret: "",
@@ -156,6 +164,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           fast_llm_model: s.fast_llm_model,
           reasoning_effort: s.reasoning_effort,
           max_debate_rounds: s.max_debate_rounds,
+          guru_enabled: s.guru_enabled ?? false,
+          guru_debate_enabled: s.guru_debate_enabled ?? true,
+          guru_require_user_confirmation: s.guru_require_user_confirmation ?? false,
+          guru_risk_profile: s.guru_risk_profile ?? "balanced",
+          guru_investment_principles: s.guru_investment_principles ?? "",
+          guru_min_confidence_to_act: s.guru_min_confidence_to_act ?? 0.72,
+          guru_max_risk_level: s.guru_max_risk_level ?? "HIGH",
+          guru_max_position_pct: s.guru_max_position_pct ?? 20,
           kis_mock: s.kis_mock,
           kis_account_no: s.kis_account_no ?? "",
         }));
@@ -454,6 +470,186 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                           borderRadius: "50%", background: "#fff",
                         }}
                       />
+                    </button>
+                  </div>
+                </Field>
+              </Section>
+
+              {/* ── GURU 커스텀 레이어 ── */}
+              <Section title="GURU 최종 결정 레이어">
+                <Field
+                  label="GURU 레이어 활성화"
+                  description="포트폴리오 매니저의 초안 결정을 사용자 투자 철학 + 룰베이스 정책으로 한 번 더 검토합니다."
+                >
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "12px 14px", borderRadius: 10,
+                    background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+                  }}>
+                    <div>
+                      <p style={{
+                        fontSize: 12, fontWeight: 700,
+                        color: form.guru_enabled ? "var(--brand)" : "var(--text-secondary)",
+                      }}>
+                        {form.guru_enabled ? "🧙 GURU ON" : "GURU OFF"}
+                      </p>
+                      <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
+                        ON일 때만 GURU 토론/룰 기반 오버라이드가 적용됩니다.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => set("guru_enabled", !form.guru_enabled)}
+                      style={{
+                        width: 48, height: 26, borderRadius: 99, flexShrink: 0,
+                        background: form.guru_enabled ? "var(--brand)" : "#555",
+                        border: "none", cursor: "pointer", position: "relative",
+                        transition: "background 200ms",
+                      }}
+                    >
+                      <motion.div
+                        animate={{ x: form.guru_enabled ? 24 : 2 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        style={{
+                          position: "absolute", top: 3, width: 20, height: 20,
+                          borderRadius: "50%", background: "#fff",
+                        }}
+                      />
+                    </button>
+                  </div>
+                </Field>
+
+                <Field
+                  label="투자 성향 / 리스크 성향"
+                  description="GURU의 기본 해석 프레임입니다."
+                >
+                  <select
+                    value={form.guru_risk_profile}
+                    onChange={(e) => set("guru_risk_profile", e.target.value as "defensive" | "balanced" | "aggressive")}
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 8,
+                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                      color: "var(--text-primary)", fontSize: 12, outline: "none",
+                    }}
+                  >
+                    <option value="defensive">Defensive · 손실 방어 우선</option>
+                    <option value="balanced">Balanced · 위험/수익 균형</option>
+                    <option value="aggressive">Aggressive · 기회 포착 우선</option>
+                  </select>
+                </Field>
+
+                <Field
+                  label="투자 철학 메모"
+                  description="예: 손절 엄수, FOMO 금지, 포지션 분할, 특정 섹터 선호/회피"
+                >
+                  <textarea
+                    value={form.guru_investment_principles}
+                    onChange={(e) => set("guru_investment_principles", e.target.value.slice(0, 1200))}
+                    rows={4}
+                    placeholder="나만의 투자 원칙을 적어두면 GURU가 최종 결정 시 반영합니다."
+                    style={{
+                      width: "100%", padding: "9px 12px", borderRadius: 8,
+                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                      color: "var(--text-primary)", fontSize: 12, outline: "none",
+                      boxSizing: "border-box", resize: "vertical", lineHeight: 1.6,
+                    }}
+                  />
+                </Field>
+
+                <Field
+                  label="룰베이스 임계값"
+                  description="신뢰도/리스크/포지션 한계로 GURU가 자동 HOLD 또는 포지션 축소를 적용합니다."
+                >
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최소 행동 신뢰도 (%)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={Math.round(form.guru_min_confidence_to_act * 100)}
+                        onChange={(e) => {
+                          const v = Number(e.target.value || 0);
+                          set("guru_min_confidence_to_act", Math.max(0, Math.min(1, v / 100)));
+                        }}
+                        style={{
+                          width: "100%", padding: "8px 10px", borderRadius: 8,
+                          background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                          color: "var(--text-primary)", fontSize: 12, outline: "none", boxSizing: "border-box",
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최대 포지션 (%)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={0.5}
+                        value={form.guru_max_position_pct}
+                        onChange={(e) => set("guru_max_position_pct", Math.max(1, Math.min(100, Number(e.target.value || 1))))}
+                        style={{
+                          width: "100%", padding: "8px 10px", borderRadius: 8,
+                          background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                          color: "var(--text-primary)", fontSize: 12, outline: "none", boxSizing: "border-box",
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1 / -1" }}>
+                      <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>허용 최대 리스크 레벨</span>
+                      <select
+                        value={form.guru_max_risk_level}
+                        onChange={(e) => set("guru_max_risk_level", e.target.value as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL")}
+                        style={{
+                          width: "100%", padding: "8px 10px", borderRadius: 8,
+                          background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+                          color: "var(--text-primary)", fontSize: 12, outline: "none",
+                        }}
+                      >
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="CRITICAL">CRITICAL</option>
+                      </select>
+                    </label>
+                  </div>
+                </Field>
+
+                <Field
+                  label="GURU 동작 옵션"
+                  description="토론 기반 보정 여부와 사용자 최종 승인 강제를 선택합니다."
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <button
+                      onClick={() => set("guru_debate_enabled", !form.guru_debate_enabled)}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        width: "100%", padding: "10px 12px", borderRadius: 10,
+                        border: "1px solid var(--border-default)", background: "var(--bg-elevated)",
+                        color: "var(--text-primary)", cursor: "pointer", textAlign: "left",
+                      }}
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 600 }}>GURU 토론(LLM) 사용</span>
+                      <span style={{ fontSize: 10, color: form.guru_debate_enabled ? "var(--success)" : "var(--text-tertiary)" }}>
+                        {form.guru_debate_enabled ? "ON" : "OFF"}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => set("guru_require_user_confirmation", !form.guru_require_user_confirmation)}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        width: "100%", padding: "10px 12px", borderRadius: 10,
+                        border: "1px solid var(--border-default)", background: "var(--bg-elevated)",
+                        color: "var(--text-primary)", cursor: "pointer", textAlign: "left",
+                      }}
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 600 }}>BUY/SELL 시 사용자 최종 실행 승인 강제</span>
+                      <span style={{ fontSize: 10, color: form.guru_require_user_confirmation ? "var(--warning)" : "var(--text-tertiary)" }}>
+                        {form.guru_require_user_confirmation ? "ON" : "OFF"}
+                      </span>
                     </button>
                   </div>
                 </Field>
