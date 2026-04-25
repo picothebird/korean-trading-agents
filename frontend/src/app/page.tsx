@@ -17,6 +17,7 @@ import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip, Dia
 import { useRouter } from "next/navigation";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
+  listAnalysisHistory, getAnalysisSession, type AnalysisHistoryItem,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest, cancelAgentBacktest,
   listAgentBacktestHistory, getAgentBacktestResult,
   getAccessToken, clearAccessToken, getMe,
@@ -776,6 +777,10 @@ export default function Home() {
   const [btCancelling, setBtCancelling] = useState(false);
   const [btHistory, setBtHistory] = useState<import("@/lib/api").AgentBacktestHistoryItem[]>([]);
   const [btHistoryLoading, setBtHistoryLoading] = useState(false);
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [analysisHistoryLoading, setAnalysisHistoryLoading] = useState(false);
+  // 진행 중인 분석 세션 ID (복구 + 표시용)
+  const [, setActiveAnalysisSessionId] = useState<string | null>(null);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
   const [approvalModal, setApprovalModal] = useState(false);
@@ -923,6 +928,8 @@ export default function Home() {
     setLogs([]);
     try {
       const { session_id } = await startAnalysis(ticker);
+      setActiveAnalysisSessionId(session_id);
+      try { localStorage.setItem("kta_active_analysis_session_v1", JSON.stringify({ id: session_id, ticker, ts: Date.now() })); } catch {}
       const cleanup = streamAnalysis(
         session_id,
         (thought) => {
@@ -942,6 +949,8 @@ export default function Home() {
         () => {
           setIsRunning(false);
           setActiveAgents(new Set());
+          setActiveAnalysisSessionId(null);
+          try { localStorage.removeItem("kta_active_analysis_session_v1"); } catch {}
         },
         (errMsg) => {
           setAnalysisError(errMsg);
@@ -1012,6 +1021,7 @@ export default function Home() {
           decision_interval_days: Math.floor(normalizedInterval),
         });
         setBtSessionId(session_id);
+        try { localStorage.setItem("kta_active_agent_backtest_session_v1", JSON.stringify({ id: session_id, ticker, ts: Date.now() })); } catch {}
         const cleanup = streamAgentBacktest(
           session_id,
           (evt) => {
@@ -1030,7 +1040,7 @@ export default function Home() {
             }
           },
           (result) => { setBtResult(result); },
-          () => { setBtLoading(false); setBtSessionId(null); setBtCancelling(false); },
+          () => { setBtLoading(false); setBtSessionId(null); setBtCancelling(false); try { localStorage.removeItem("kta_active_agent_backtest_session_v1"); } catch {} },
           (errMsg) => { setBtError(errMsg); }
         );
         btCleanupRef.current = cleanup;
@@ -1101,6 +1111,130 @@ export default function Home() {
       setBtError("이력의 결과 데이터를 불러오지 못했어요.");
     }
   }, []);
+
+  // 분석 이력 fetch
+  const refreshAnalysisHistory = useCallback(async () => {
+    if (!currentUser) return;
+    setAnalysisHistoryLoading(true);
+    try {
+      const items = await listAnalysisHistory(20);
+      setAnalysisHistory(items);
+    } catch {
+      // ignore
+    } finally {
+      setAnalysisHistoryLoading(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (tab === "analysis" && currentUser) {
+      refreshAnalysisHistory();
+    }
+  }, [tab, currentUser, refreshAnalysisHistory]);
+
+  useEffect(() => {
+    if (decision) refreshAnalysisHistory();
+  }, [decision, refreshAnalysisHistory]);
+
+  // ── 진행 중 작업 자동 복구 ────────────────────────────────
+  // 페이지 마운트(또는 로그인 후) 시 localStorage에 저장된 진행 중 세션이 있으면
+  // SSE 재연결로 진행 상태를 이어 받고, 끝났으면 결과를 직접 불러와서 화면에 보여줌.
+  const recoveredOnceRef = useRef(false);
+  useEffect(() => {
+    if (!currentUser || recoveredOnceRef.current) return;
+    recoveredOnceRef.current = true;
+
+    // Analysis 복구
+    try {
+      const raw = localStorage.getItem("kta_active_analysis_session_v1");
+      if (raw) {
+        const saved = JSON.parse(raw) as { id: string; ticker?: string; ts?: number };
+        if (saved?.id) {
+          (async () => {
+            const detail = await getAnalysisSession(saved.id);
+            if (!detail) {
+              localStorage.removeItem("kta_active_analysis_session_v1");
+              return;
+            }
+            if (detail.status === "running") {
+              // 진행 중이면 SSE 재연결
+              setIsRunning(true);
+              setActiveAnalysisSessionId(saved.id);
+              const cleanup = streamAnalysis(
+                saved.id,
+                (thought) => {
+                  setThoughts((prev) => new Map(prev).set(thought.role as AgentRole, thought));
+                  setActiveAgents((prev) => {
+                    const next = new Set(prev);
+                    if (thought.status === "done" || thought.status === "idle") next.delete(thought.role as AgentRole);
+                    else next.add(thought.role as AgentRole);
+                    return next;
+                  });
+                  setLogs((prev) => [...prev.slice(-99), thought]);
+                },
+                (dec) => { setDecision(dec); },
+                () => {
+                  setIsRunning(false);
+                  setActiveAgents(new Set());
+                  setActiveAnalysisSessionId(null);
+                  try { localStorage.removeItem("kta_active_analysis_session_v1"); } catch {}
+                },
+                (errMsg) => { setAnalysisError(errMsg); }
+              );
+              analysisCleanupRef.current = cleanup;
+            } else if (detail.status === "done" && detail.result?.decision) {
+              // 끝난 상태면 결과만 복원
+              setDecision(detail.result.decision);
+              localStorage.removeItem("kta_active_analysis_session_v1");
+            } else {
+              localStorage.removeItem("kta_active_analysis_session_v1");
+            }
+          })();
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Agent backtest 복구
+    try {
+      const raw = localStorage.getItem("kta_active_agent_backtest_session_v1");
+      if (raw) {
+        const saved = JSON.parse(raw) as { id: string; ticker?: string; ts?: number };
+        if (saved?.id) {
+          (async () => {
+            const result = await getAgentBacktestResult(saved.id);
+            if (result) {
+              // 이미 끝난 결과 — 바로 보여주기
+              setBtResult(result);
+              localStorage.removeItem("kta_active_agent_backtest_session_v1");
+              return;
+            }
+            // 진행 중이면 SSE 재연결
+            setBtLoading(true);
+            setBtSessionId(saved.id);
+            const cleanup = streamAgentBacktest(
+              saved.id,
+              (evt) => {
+                if (evt.metadata?.step && evt.metadata?.total) {
+                  const meta = evt.metadata;
+                  setBtProgress((prev) => [...prev, {
+                    date: meta.date ?? "",
+                    signal: meta.signal ?? "HOLD",
+                    confidence: meta.confidence ?? 0.5,
+                    step: meta.step!,
+                    total: meta.total!,
+                  }]);
+                }
+              },
+              (result) => { setBtResult(result); },
+              () => { setBtLoading(false); setBtSessionId(null); setBtCancelling(false); try { localStorage.removeItem("kta_active_agent_backtest_session_v1"); } catch {} },
+              (errMsg) => { setBtError(errMsg); }
+            );
+            btCleanupRef.current = cleanup;
+          })();
+        }
+      }
+    } catch { /* ignore */ }
+  }, [currentUser]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1481,6 +1615,12 @@ export default function Home() {
                 { value: "portfolio", label: "포트폴리오", icon: <Icon name="briefcase" size={14} decorative /> },
               ]}
             />
+            <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6, lineHeight: 1.5, textAlign: "center" }}>
+              {tab === "analysis" && "🔎 종목 하나를 골라 9명의 AI 에이전트가 회의록 형식으로 매수/매도 판단을 내립니다."}
+              {tab === "backtest" && "📊 과거 데이터로 'MA 규칙' 또는 'AI 에이전트' 전략이 어떤 결과를 냈을지 시뮬레이션해봅니다."}
+              {tab === "trading" && "💼 KIS 증권 API와 연결해 실제(또는 모의) 주문을 보내고, 자동 매매 루프를 운영합니다."}
+              {tab === "portfolio" && "🗂 여러 종목을 동시에 모니터링하며 자동 종목 선정 + 분배 매매를 돌립니다."}
+            </p>
           </div>
 
           {/* ── Tab content ─────────────────────────────────── */}
@@ -1635,12 +1775,94 @@ export default function Home() {
                     </motion.button>
                   </>
                 ) : (
-                  <AnalysisEmptyState
-                    isRunning={isRunning}
-                    activeCount={activeCount}
-                    hasThoughts={thoughts.size > 0}
-                    hadError={!!analysisError}
-                  />
+                  <>
+                    <AnalysisEmptyState
+                      isRunning={isRunning}
+                      activeCount={activeCount}
+                      hasThoughts={thoughts.size > 0}
+                      hadError={!!analysisError}
+                    />
+                    {!isRunning && analysisHistory.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: 12,
+                          background: "var(--bg-elevated)",
+                          borderRadius: "var(--radius-xl)",
+                          border: "1px solid var(--border-subtle)",
+                          padding: "12px 14px",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <Icon name="clock" size={12} decorative /> 최근 분석 이력
+                          </p>
+                          <button
+                            onClick={refreshAnalysisHistory}
+                            disabled={analysisHistoryLoading}
+                            style={{ fontSize: 10, color: "var(--text-tertiary)", background: "none", border: "none", cursor: analysisHistoryLoading ? "wait" : "pointer" }}
+                          >
+                            {analysisHistoryLoading ? "갱신 중…" : "새로고침"}
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {analysisHistory.slice(0, 10).map((item) => {
+                            const action = item.summary?.action ?? "";
+                            const conf = item.summary?.confidence;
+                            const isDone = item.status === "done";
+                            const actionColor = action === "BUY" ? "var(--bull)" : action === "SELL" ? "var(--bear)" : "var(--text-secondary)";
+                            return (
+                              <button
+                                key={item.session_id}
+                                onClick={async () => {
+                                  if (!isDone) return;
+                                  const detail = await getAnalysisSession(item.session_id);
+                                  if (detail?.result?.decision) {
+                                    setDecision(detail.result.decision);
+                                  }
+                                }}
+                                disabled={!isDone}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "60px 1fr auto",
+                                  gap: 8,
+                                  alignItems: "center",
+                                  padding: "8px 10px",
+                                  background: "var(--bg-surface)",
+                                  border: "1px solid var(--border-default)",
+                                  borderRadius: "var(--radius-md)",
+                                  cursor: isDone ? "pointer" : "not-allowed",
+                                  opacity: isDone ? 1 : 0.6,
+                                  textAlign: "left",
+                                }}
+                              >
+                                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
+                                  {item.ticker}
+                                </span>
+                                <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
+                                  {(item.created_at ?? "").slice(0, 16).replace("T", " ")}
+                                  {item.status === "running" && " · 진행 중"}
+                                  {item.status === "error" && ` · 오류${item.error ? `: ${item.error.slice(0, 30)}` : ""}`}
+                                </span>
+                                {isDone && action && (
+                                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                                    <span style={{ fontSize: 11, fontWeight: 800, color: actionColor }}>{action}</span>
+                                    {typeof conf === "number" && (
+                                      <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                                        신뢰도 {(conf * 100).toFixed(0)}%
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 8, lineHeight: 1.5 }}>
+                          💡 분석 도중 페이지를 떠나도 백엔드는 끝까지 계산을 마치고 결과를 저장해요. 다시 돌아오면 여기에서 확인하고 클릭해 회의록을 다시 볼 수 있습니다.
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </motion.div>
             )}

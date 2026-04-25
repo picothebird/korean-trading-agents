@@ -247,6 +247,42 @@ export async function getAgentBacktestResult(sessionId: string): Promise<import(
   return (data?.result as import("@/types").BacktestResult) ?? null;
 }
 
+// ── 분석 이력/복원 ────────────────────────────────────────
+export interface AnalysisHistoryItem {
+  session_id: string;
+  ticker: string;
+  status: "running" | "done" | "error" | string;
+  created_at: string | null;
+  updated_at: string | null;
+  error: string | null;
+  summary: {
+    action?: string | null;
+    confidence?: number | null;
+    risk_level?: string | null;
+  };
+}
+
+export async function listAnalysisHistory(limit = 20): Promise<AnalysisHistoryItem[]> {
+  const res = await apiFetch(`${BASE_URL}/api/analyze/history?limit=${limit}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data?.items) ? (data.items as AnalysisHistoryItem[]) : [];
+}
+
+export interface AnalysisSessionDetail {
+  session_id: string;
+  ticker: string;
+  status: string;
+  result?: { decision?: import("@/types").TradeDecision | null } | null;
+  error?: string | null;
+}
+
+export async function getAnalysisSession(sessionId: string): Promise<AnalysisSessionDetail | null> {
+  const res = await apiFetch(`${BASE_URL}/api/analyze/result/${sessionId}`);
+  if (!res.ok) return null;
+  return (await res.json()) as AnalysisSessionDetail;
+}
+
 export function streamAgentBacktest(
   sessionId: string,
   onProgress: (event: import("@/types").BacktestProgress) => void,

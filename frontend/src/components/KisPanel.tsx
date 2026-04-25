@@ -19,7 +19,7 @@ import type {
   KisOrderRequest,
   KisOrderApproval,
 } from "@/types";
-import { Icon } from "@/components/ui";
+import { Icon, Tooltip } from "@/components/ui";
 
 const SPRING = { type: "spring" as const, stiffness: 340, damping: 30 };
 
@@ -608,9 +608,19 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
 
           {/* 주문 방식 */}
           <div>
-            <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, display: "block", marginBottom: 6 }}>
-              주문 방식
-            </label>
+            <Tooltip
+              content={
+                <span>
+                  <strong>시장가</strong>: 지금 시장에 있는 가장 가까운 호가로 즉시 체결되는 주문이에요. 빠르게 사고/팔 수 있지만 갑자기 호가가 비어있으면 예상보다 비싸거나 싸게 체결될 수 있어요.<br/><br/>
+                  <strong>지정가</strong>: &apos;이 가격이 되면 사겠다/팔겠다&apos;고 가격을 직접 정하는 주문이에요. 원하는 가격으로 거래할 수 있지만 그 가격에 도달하지 않으면 체결이 안 될 수 있어요.
+                </span>
+              }
+              maxWidth={320}
+            >
+              <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 6, borderBottom: "1px dotted var(--text-tertiary)", cursor: "help" }}>
+                ℹ 주문 방식
+              </label>
+            </Tooltip>
             <div style={{ display: "flex", gap: 8 }}>
               {(["01", "00"] as const).map((type) => (
                 <button
@@ -630,6 +640,11 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                 </button>
               ))}
             </div>
+            <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6, lineHeight: 1.5 }}>
+              {orderType === "01"
+                ? "💡 지금 즉시 체결됩니다. 가격은 시장이 정해요. 빠르지만 슬리피지(예상가 대비 차이)가 발생할 수 있어요."
+                : "💡 아래 '가격'에 적은 값에 호가가 도달하면 체결됩니다. 미체결 가능성이 있어요."}
+            </p>
           </div>
 
           {/* 수량 + 가격 */}

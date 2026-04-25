@@ -169,7 +169,7 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
       >
         <p style={{ fontSize: 12, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4, display: "inline-flex", alignItems: "center", gap: 6 }}>
           <Icon name={mode === "agent" ? "robot" : "chart-bar"} size={14} decorative />
-          여기서 말하는 '{strategyName}'이란?
+          여기서 말하는 &apos;{strategyName}&apos;이란?
         </p>
         <p>{strategyExplain}</p>
       </div>

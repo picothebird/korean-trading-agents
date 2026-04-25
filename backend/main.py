@@ -721,6 +721,43 @@ async def list_agent_backtest_history(request: Request, limit: int = 20):
     return {"items": items}
 
 
+@app.get("/api/analyze/history")
+async def list_analysis_history(request: Request, limit: int = 20):
+    """현재 사용자의 최근 AI 분석 이력 (최신순). 페이지를 떠나도 진행 중/완료된 분석을 다시 볼 수 있도록."""
+    user = await require_user(request)
+    db = _require_mongo_db()
+    owner_id = _to_object_id_safe(_user_id_str(user))
+    if owner_id is None:
+        return {"items": []}
+    safe_limit = max(1, min(int(limit or 20), 100))
+    cursor = (
+        db[RUNTIME_SESSION_COLLECTION]
+        .find({"owner_user_id": owner_id, "session_type": SESSION_TYPE_ANALYSIS})
+        .sort("created_at", -1)
+        .limit(safe_limit)
+    )
+
+    items: list[dict[str, Any]] = []
+    async for row in cursor:
+        s = serialize_runtime_session(row)
+        result = s.get("result") or {}
+        decision = (result.get("decision") or {}) if isinstance(result, dict) else {}
+        items.append({
+            "session_id": s.get("session_id"),
+            "ticker": s.get("ticker"),
+            "status": s.get("status"),
+            "created_at": s.get("created_at"),
+            "updated_at": s.get("updated_at"),
+            "error": s.get("error"),
+            "summary": {
+                "action": decision.get("action") if isinstance(decision, dict) else None,
+                "confidence": decision.get("confidence") if isinstance(decision, dict) else None,
+                "risk_level": decision.get("risk_level") if isinstance(decision, dict) else None,
+            },
+        })
+    return {"items": items}
+
+
 # ── 설정 API ────────────────────────────────────────────
 @app.get("/api/settings")
 async def get_settings_api(request: Request):

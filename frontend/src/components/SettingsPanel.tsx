@@ -858,7 +858,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                     </Section>
 
                     <Section title="정책">
-                      <Field label="투자 성향" description="GURU가 결정을 해석하는 기본 프레임입니다.">
+                      <Field label="투자 성향" description="GURU가 최종 결정을 해석할 때 기본적으로 어떤 렌즈를 썰지 정하는 설정. Defensive는 년장명·탐주·탁구제에 근처 이끌고 Aggressive는 점프 의용궁이 세직니다. 명확한 입장이 없으면 Balanced 권장.">
                         <select
                           value={form.guru_risk_profile}
                           onChange={(e) => setField("guru_risk_profile", e.target.value as "defensive" | "balanced" | "aggressive")}
@@ -901,10 +901,11 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                         />
                       </Field>
 
-                      <Field label="룰 임계값" description="신뢰도·리스크·포지션 상한으로 자동 HOLD/축소를 적용합니다.">
+                      <Field label="룰 임계값" description="이 세 값이 AI의 결정을 '구속'합니다. 신뢰도가 기준 미만이면 도면 BUY/SELL 신호여도 강제로 HOLD로 바뀌고, 포지션이 상한을 넘어서면 자동으로 쇼이고, 렌즈가 허용 레벨을 초과하면 거부됩니다.">
                         <div style={{ display: "grid", gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr", gap: 8 }}>
                           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최소 행동 신뢰도 (%)</span>
+                            <span style={{ fontSize: 9, color: "var(--text-quaternary)" }}>이 미만이면 강제로 HOLD. 권장: 60~75</span>
                             <input
                               type="number"
                               min={0}
@@ -931,6 +932,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
 
                           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최대 포지션 (%)</span>
+                            <span style={{ fontSize: 9, color: "var(--text-quaternary)" }}>한 종목에 전체 자산의 최대 몇 % 투입할지. 넘으면 자동 축소.</span>
                             <input
                               type="number"
                               min={1}
@@ -954,6 +956,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
 
                           <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: isCompact ? "auto" : "1 / -1" }}>
                             <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>허용 최대 리스크 레벨</span>
+                            <span style={{ fontSize: 9, color: "var(--text-quaternary)" }}>AI가 평가한 렌즈가 이 레벨을 넘으면 거래 거부. LOW=안정, CRITICAL=대부분 허용.</span>
                             <select
                               value={form.guru_max_risk_level}
                               onChange={(e) => setField("guru_max_risk_level", e.target.value as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL")}
@@ -968,10 +971,10 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                                 outline: "none",
                               }}
                             >
-                              <option value="LOW">LOW</option>
-                              <option value="MEDIUM">MEDIUM</option>
-                              <option value="HIGH">HIGH</option>
-                              <option value="CRITICAL">CRITICAL</option>
+                              <option value="LOW">LOW · 안전한 결정만 허용</option>
+                              <option value="MEDIUM">MEDIUM · 적당한 렌즈까지 허용</option>
+                              <option value="HIGH">HIGH · 높은 렌즈도 허용</option>
+                              <option value="CRITICAL">CRITICAL · 제한 없이 허용</option>
                             </select>
                           </label>
                         </div>

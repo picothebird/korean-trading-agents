@@ -160,10 +160,12 @@ interface CharacterConfig {
 
 ### 0-ter.7 단계별 마일스톤 (사용자 OK 즉시 착수)
 
-> 모든 단계가 끝까지 진행됨을 전제로 한 일정. 각 마일스톤 PR로 끊되, *중간 다운그레이드 없이* 풀 아키텍처를 향해 직진.
+> 모든 단계가 끝까지 진행됨을 전제로 한 일정. 각 마일스톤 PR로 끊되, *중간 다운그레이드 없이* 풀 아키텍처를 향해 직진.  
+> **MS-A는 풀 마이그레이션과 별개로 즉시 가치를 내는 정보설계 정리** — 시각 개편(MS0~)과 병렬/선행 가능.
 
 | MS | 산출물 | 검증 기준 |
 | --- | --- | --- |
+| **MS-A — 정보설계 정리 (Information Architecture Cleanup)** | §0-quater 참조. 우측 패널의 중복 카운터 제거·라벨 통일·off-by-one 버그·영문 라벨 한글화·백엔드 metadata 신호 표준화 | 사용자 입장에서 같은 숫자가 화면에 1번만 보이고, 모든 라벨이 일관 |
 | **MS0 — 부트스트랩** | Phaser 3 + zustand 의존성 추가, `transpilePackages`, dynamic import, 빈 `OfficeScene`이 라이트 토큰 배경에서 렌더 | `<PixelOffice>` 자리에 검은 화면 대신 빈 캔버스 표시, SSR 에러 0 |
 | **MS1 — 에셋 파이프라인** | Kenney Top-Down + LimeZu Lite 다운로드, TexturePacker 아틀라스 빌드 스크립트, `PreloadScene` 로딩바 | 모든 아틀라스 한 번에 로드 ≤ 1.5s on 3G fast |
 | **MS2 — 디폴트 맵** | LDtk로 `default-office` (60×40 타일, 9 데스크 zone) 제작, JSON export, 런타임 로더, 충돌 레이어 적용 | 맵이 정상 렌더, 카메라 팬 가능, 9 데스크 마커 표시 |
@@ -228,6 +230,422 @@ interface CharacterConfig {
 5. **MS0 시작 시점**: 즉시 vs 위 1~4 결정 후
 
 위 5개에 답이 오면 MS0부터 순차 PR로 들어갑니다. 각 MS 종료 시 데모 GIF + 체크리스트로 검증.
+
+---
+
+## 0-quater. 정보설계 정리 — 현재 우측 패널 감사 & 개편안 (MS-A 상세) ⭐
+
+> 사용자 디렉티브 (2026-04-26 추가): *"기존에 구성된 내용들이 뭘 목적으로 했는지·다른 부분과 어떻게 연계되는지 다시 확인해서, 과도하게 중복된 정보·이상한 한글화·`0/4` 같은 알아볼 필요 없는 카운터를 정리·개편하라."*
+
+이 섹션은 **MS-A**(시각 풀 마이그레이션과 별개·선행 가능). 기존 우측 패널을 끝까지 살려 두는 동안에도 **사용자 혼란의 80%가 사라짐**.
+
+### 0-quater.1 현재 구조 (감사 결과)
+
+우측 패널 = `<main data-tour="console">` (frontend/src/app/page.tsx 약 L2040–2090). 상하 50:50 분할.
+- **상단**: `<PixelOffice>` (픽셀 캔버스) — 시각적 사무실 애니메이션
+- **하단**: `<ActivityFeed>` (실시간 로그)
+- **헤더**: 타이틀 "에이전트 컨트롤룸" + `DATA · DEBATE · DECISION` 배지 + 상태 텍스트(`분석 중 · n개 활성` / `n/8 완료`) + 설정 버튼
+- **서브탭 없음** — 단일 고정 뷰
+
+데이터 백본: 백엔드 SSE → `thoughts: Map<AgentRole, AgentThought>`, `activeAgents: Set<AgentRole>`, `logs: AgentThought[]`, `decision`, `isRunning`. 9개 `AgentRole` 존재(technical/fundamental/sentiment/macro/bull/bear/risk/portfolio/guru), 6개 `AgentStatus`(idle/thinking/analyzing/debating/deciding/done).
+
+### 0-quater.2 발견된 문제 (Top 11 — 우선순위 순)
+
+| # | 문제 | 위치 | 심각도 | 카테고리 |
+| --- | --- | --- | --- | --- |
+| 1 | **Off-by-one 버그**: 헤더에 `n/8 완료` 표시되지만 실제 에이전트는 9명 | page.tsx:2084 | 🔴 High | 정확성 |
+| 2 | **3중 중복 카운터**: 같은 완료율 데이터가 (a) Flow Cards 그리드, (b) Layer 섹션 배지, (c) 헤더 상태 라인 — **3 곳에서 동시 표시** | AgentOffice + page.tsx | 🔴 High | 중복 |
+| 3 | **무의미한 `0/4` 카운터**: 레이어가 idle 상태일 때 "0/4" 표시. "대기 중"과 동일한 의미인데 숫자로 표시되어 행동 유발 정보 0 | page.tsx:735–765 | 🔴 High | 노이즈 |
+| 4 | **영문 라벨 무차별 사용**: `DATA · DEBATE · DECISION · EXCHANGE`가 헤더·Flow Cards·Activity Log·픽셀 캔버스(`RESEARCH FLOOR`, `MEETING ROOM`, `INVESTIGATE→DEBATE→REPORT→DECIDE→EXCHANGE`)에 혼용 | 다수 | 🔴 High | 일관성 |
+| 5 | **취약한 정규식 시맨틱 배지**: 활동 로그에 `BULL/BEAR/RISK/완료` 배지를 *content 정규식 매칭*으로 부여 → "약세 증권사 보고서" 같은 문장에 BEAR 오탐 | AgentOffice.tsx:332–340 | 🟠 Med | 신뢰성 |
+| 6 | **Key points 무음 절단**: `key_points`가 4개 이상이어도 앞 3개만 보여주고 "+1 더" 표시 0 → 사용자는 누락 사실 모름 | AgentOffice.tsx:110–120 | 🟠 Med | 데이터 손실 |
+| 7 | **"분석 중 · n개 활성"의 모호함**: "활성"이 실행 중인지·참여 중인지 불명. 어떤 에이전트가 활성인지도 표시 0 | page.tsx:2078 | 🟠 Med | 모호함 |
+| 8 | **혼합 표기 "Layer 1 · 데이터 수집"**: "Layer"는 영어 / 나머지는 한글 → 비기술 사용자에게 어색 | AgentOffice.tsx:376 | 🟠 Med | 일관성 |
+| 9 | **상태 enum vs 한글 라벨 불일치**: 백엔드 `idle/thinking/analyzing/debating/deciding/done` ↔ 프론트 `대기/분석 중/토론 중/결정 중/완료` (5개로 축약) → 매핑 레이어가 별도 존재. 백엔드 추가 시 무음 누락 위험 | AgentOffice.tsx:60–65 | 🟡 Low | 유지보수 |
+| 10 | **line-clamp 비일관**: 일반 status는 3줄, debating 만 6줄 — 문서화 0, 사용자가 "왜 갑자기 길어졌지?" | AgentOffice.tsx:101 | 🟡 Low | 일관성 |
+| 11 | **픽셀 캐릭터에 이름표 없음**: 9 캐릭터가 움직여도 "누가 누구인지" 카드와 매칭 어려움 | PixelOffice.tsx | 🟡 Low | 가독성 |
+
+### 0-quater.3 개편 원칙 (정보설계)
+
+1. **DRY (1 정보 = 1 표시 위치)** — 같은 완료율은 화면에 단 한 번. 다른 곳에서 필요하면 *링크* 또는 *마우스오버*.
+2. **숫자가 아닌 행동/상태로** — "0/4"는 사용자에게 의미 없음. "대기 중", "준비됨", "완료" 같은 *상태 어휘* 사용. 숫자는 1단계 깊이로 들어갔을 때만.
+3. **한글 우선·영어는 약어/식별자만** — 사용자 노출 라벨은 100% 한글. 영어는 (a) 백엔드 식별자(`technical_analyst`), (b) 데이터 표(컬럼 헤더), (c) 약어(L1/L2/L3) 정도만 허용.
+4. **신호는 백엔드 metadata로** — BULL/BEAR/RISK 같은 시맨틱 분류는 LLM 또는 룰 기반으로 백엔드에서 확정해 `thought.metadata.signal`로 내려줌. 프론트 정규식 폐기.
+5. **숨김은 명시적으로** — 절단(truncate)이 일어나면 항상 "+N 더" 또는 펼치기 버튼.
+6. **백엔드 enum이 진실의 원천(SSOT)** — 상태/역할 한글 라벨은 *공유 라벨 테이블*(`frontend/src/lib/agentLabels.ts`)에서 단일 매핑. 백엔드에 enum 추가 시 lint 경고로 누락 감지.
+
+### 0-quater.4 개편 후 우측 패널 정보 구조
+
+```
+┌─ 우측 패널 (data-tour="console")
+│
+├─ 헤더 (50px)
+│  ├─ "에이전트 컨트롤룸"
+│  ├─ 상태 칩 (단 1개):
+│  │    • 대기 중           (isRunning=false, decision=null)
+│  │    • 분석 진행 중       (isRunning=true)            ← 진행률은 아래 PipelineBar에만
+│  │    • 분석 완료          (decision !== null)
+│  └─ 액션: [일시정지] [설정]
+│
+├─ PipelineBar (32px) — 1단계/2단계/3단계 가로 진행 바
+│  └─ "1단계 데이터 수집  ●●●●  2단계 토론  ○○  3단계 결정·실행  ○○○"
+│     (점은 각 레이어의 에이전트 수, 채워진 점 = 완료)
+│     ※ 마우스오버 시 어떤 에이전트가 완료/진행 중인지 툴팁
+│
+├─ 서브탭 (필요 시 추가)
+│  [ 사무실 시각 ]  [ 활동 로그 ]  [ 통계 ]
+│   ────────       (default)        (option)
+│
+├─ 본문 — 선택 탭에 따라
+│  ├─ 사무실 시각 → <PixelOffice>  (※ MS0~ 풀 마이그레이션 대상)
+│  ├─ 활동 로그   → <ActivityFeed> (정리된 ver.)
+│  └─ 통계       → 분석 횟수·평균 지속시간·결정 분포 (옵션, 후순위)
+│
+└─ (footer 없음)
+```
+
+### 0-quater.5 라벨 통일 테이블 (Source of Truth)
+
+신규 파일 `frontend/src/lib/agentLabels.ts`로 중앙화:
+
+```ts
+// AgentRole (백엔드 SSOT) → 한글 단일 라벨
+export const AGENT_LABEL: Record<AgentRole, string> = {
+  technical_analyst: "기술적 분석",
+  fundamental_analyst: "펀더멘털 분석",
+  sentiment_analyst: "감성 분석",
+  macro_analyst: "거시 분석",
+  bull_researcher: "강세 리서처",
+  bear_researcher: "약세 리서처",
+  risk_manager: "리스크 매니저",
+  portfolio_manager: "포트폴리오 매니저",
+  guru_agent: "구루 에이전트",
+};
+
+// AgentStatus → 한글 단일 라벨
+export const STATUS_LABEL: Record<AgentStatus, string> = {
+  idle: "대기",
+  thinking: "검토 중",
+  analyzing: "분석 중",
+  debating: "토론 중",
+  deciding: "결정 중",
+  done: "완료",
+};
+
+// 레이어 (1/2/3) — Layer→단계
+export const LAYER_LABEL = ["1단계 · 데이터 수집", "2단계 · 강세 vs 약세 토론", "3단계 · 리스크 & 결정"];
+export const LAYER_SHORT = ["1단계", "2단계", "3단계"];
+
+// 시맨틱 신호 (백엔드 metadata.signal) — 영문 enum + 한글 표시
+export const SIGNAL_LABEL = {
+  bull: { ko: "매수 신호", color: "var(--bull)" },
+  bear: { ko: "매도 신호", color: "var(--bear)" },
+  risk: { ko: "리스크 경고", color: "var(--warn)" },
+  done: { ko: "결론", color: "var(--text-secondary)" },
+};
+```
+
+ESLint 룰(권장): `agentLabels.ts` 외부에서 한글 에이전트 이름·상태 문자열을 *직접 작성*하면 경고. 새로운 enum 멤버가 백엔드에 추가되면 TypeScript exhaustive check로 컴파일 에러 발생.
+
+### 0-quater.6 백엔드 측 변경 (signal metadata 표준화)
+
+**현재**: 프론트가 `thought.content` 정규식으로 BULL/BEAR/RISK 추정 → 오탐.  
+**개편**: 백엔드에서 thought emit 시 `metadata.signal` 필드를 **항상** 채움.
+
+```python
+# backend/core/events.py 예시 (실제 위치는 코드 확인 후 적용)
+@dataclass
+class AgentThought:
+    agent_id: str
+    role: AgentRole
+    status: AgentStatus
+    content: str
+    timestamp: datetime
+    metadata: dict  # {"signal": "bull"|"bear"|"risk"|"done"|None,
+                    #  "key_points": [...], "confidence": float, ...}
+```
+
+각 에이전트가 thought를 생성할 때 (또는 thought 생성 직후 후처리에서) signal 결정:
+- `bull_researcher` → 항상 `"bull"`
+- `bear_researcher` → 항상 `"bear"`
+- `risk_manager`이 `risk_score >= threshold`이면 `"risk"`
+- 마지막 `portfolio_manager` thought → `"done"`
+- 그 외 → `None` (배지 표시 안 함)
+
+→ 프론트 정규식 함수(`getSemanticBadge`) **삭제**.
+
+### 0-quater.7 우측 패널 헤더 — Before/After
+
+**Before (현재)**:
+```
+[로고] 에이전트 컨트롤룸  [DATA · DEBATE · DECISION]   ●  분석 중 · 5개 활성       [설정]
+                                                       또는 3/8 완료
+```
+
+**After**:
+```
+[로고] 에이전트 컨트롤룸                                [● 분석 진행 중]      [⏸] [⚙]
+       ── 진행률 행 (별도 줄, PipelineBar) ──
+       1단계 ●●●●  2단계 ●○  3단계 ○○○         (마우스오버 시 상세)
+```
+
+- `DATA · DEBATE · DECISION` 배지 제거 (PipelineBar로 흡수)
+- `n개 활성` / `n/8 완료` 텍스트 제거 (PipelineBar의 채워진 점이 동일 정보)
+- 상태 칩은 단순 3-state (`대기 중` / `분석 진행 중` / `분석 완료`)
+
+### 0-quater.8 Flow Cards 그리드 — 제거
+
+`AgentOffice.tsx:230–250`의 4컬럼 Flow Cards (`DATA 2/4 50% / DEBATE 1/2 50% / DECISION 0/3 0% / EXCHANGE 0/3 0%`):
+- **삭제**. 동일 정보가 PipelineBar(헤더)와 Layer 섹션 배지에 이미 표시됨.
+- "EXCHANGE"는 9 에이전트 + 3 레이어 모델과도 정합 안 됨 (실제로는 `portfolio_manager`의 결정 단계 = 3단계에 흡수).
+
+### 0-quater.9 Layer 섹션 배지 — 정리
+
+- "Layer 1 · 데이터 수집" → "**1단계 · 데이터 수집**" (혼합 표기 제거)
+- 우측 카운터 `2 / 4` → 모든 에이전트 완료 시 `완료` 배지 (체크 아이콘), 진행 중이면 비표시. 부분 카운트는 PipelineBar에서만.
+- 즉 Layer 섹션은 *카운터*가 아니라 *상태 칩*만 표시.
+
+### 0-quater.10 활동 로그 — 정리
+
+| 항목 | Before | After |
+| --- | --- | --- |
+| Lane 배지 | `[DATA] [DEBATE] [DECISION]` (영문) | `[1단계] [2단계] [3단계]` 또는 색상 점만 |
+| 시맨틱 배지 | 정규식 추출 `BULL/BEAR/RISK/완료` | 백엔드 `metadata.signal` 기반 `매수 신호/매도 신호/리스크 경고/결론` |
+| 본문 절단 | 일반 3줄, debating 6줄 (불일치) | 일관 4줄 + 클릭 시 펼쳐서 전체 |
+| key_points | 앞 3개만 무음 절단 | 앞 3개 + "+N 더" 칩 (클릭 시 모달) |
+| 타임스탬프 | `15:23:45` | `15:23:45` (유지, 명확) |
+
+### 0-quater.11 픽셀 캔버스 (현 PixelOffice) — MS-A 시점 빠른 정리
+
+> MS0~ 풀 마이그레이션 전까지의 **임시 정비**. 코드 구조는 그대로 두고 라벨/색만 수정.
+
+- 캔버스 내 영문 룸 라벨 (`RESEARCH FLOOR`, `EXCHANGE`, `MEETING ROOM`, `INVESTIGATE→DEBATE→REPORT→DECIDE→EXCHANGE`) → **모두 한글 한 줄로 교체** 또는 제거.
+- 각 캐릭터 머리 위에 **에이전트 이름표** (Galmuri11 또는 현재 폰트로 임시) — 캐릭터-카드 매칭 가독성 ↑.
+- 다크 CRT 오버레이/`VT323`/scanline은 MS0에서 풀 정리 예정이라 MS-A에서는 *유지*. (시각 풀 개편은 v3 본편)
+
+### 0-quater.12 MS-A 작업 체크리스트 (즉시 가능, 시각 마이그레이션과 독립)
+
+- [ ] **A1**. `frontend/src/lib/agentLabels.ts` 신설 — `AGENT_LABEL`, `STATUS_LABEL`, `LAYER_LABEL`, `SIGNAL_LABEL` 정의
+- [ ] **A2**. `AgentOffice.tsx`/`PixelOffice.tsx`/`page.tsx`의 하드코딩 한글 라벨을 `agentLabels.ts` 참조로 일괄 교체
+- [ ] **A3**. 헤더 상태 칩 단순화 (`대기 중` / `분석 진행 중` / `분석 완료` 3-state)
+- [ ] **A4**. 헤더의 `n/8 완료` 제거 (off-by-one 버그 해결)
+- [ ] **A5**. `DATA · DEBATE · DECISION` 배지 제거
+- [ ] **A6**. 헤더 하단에 `<PipelineBar>` 컴포넌트 신규 — 1·2·3단계 점 표시
+- [ ] **A7**. `AgentOffice.tsx`의 Flow Cards 그리드 (4컬럼 `DATA/DEBATE/DECISION/EXCHANGE`) 삭제
+- [ ] **A8**. Layer 섹션 헤더 "Layer N" → "N단계", 우측 카운터 → 완료 시만 `완료` 칩
+- [ ] **A9**. 활동 로그 Lane 배지 영문 → 한글(`1/2/3단계`)
+- [ ] **A10**. **백엔드**: `AgentThought.metadata.signal` 표준화 (bull/bear/risk/done/None) — `backend/core/events.py` 또는 각 에이전트 emit 위치
+- [ ] **A11**. `AgentOffice.tsx`의 `getSemanticBadge` 정규식 함수 삭제, `metadata.signal` 직접 사용
+- [ ] **A12**. `key_points` 절단 시 `+N 더` 칩 추가 + 클릭 시 모달
+- [ ] **A13**. line-clamp 통일(4줄) + 클릭 펼치기
+- [ ] **A14**. 픽셀 캔버스 영문 룸 라벨 → 한글 즉시 교체 (MS0 전 임시 정비)
+- [ ] **A15**. 캐릭터 머리 위 이름표 추가 (PixelOffice 내 `drawLabel` 활용)
+- [ ] **A16**. ESLint 룰 또는 README 가이드 — "에이전트/상태 한글 라벨은 `agentLabels.ts`에서만"
+
+### 0-quater.13 MS-A 완료 후 사용자 시점 효과
+
+- **숫자 노이즈 제거**: `2/4 50%`, `0/4`, `n/8` 같은 의미 없는 카운터가 사라지고 진행률은 *시각적 점*으로만 표현.
+- **언어 일관**: 사용자 노출 라벨이 100% 한글. 영문은 약어(L1/L2/L3) 또는 식별자만.
+- **신호 신뢰성**: BULL/BEAR/RISK 배지가 LLM 메타데이터 기반 → 오탐 0.
+- **숨김 투명**: 절단된 모든 정보가 "+N 더"로 표시·펼치기 가능.
+- **유지보수성**: 백엔드에 새 에이전트/상태 추가 시 컴파일 에러로 누락 감지.
+
+### 0-quater.14 v3 본편(MS0~MS11)과의 관계
+
+- **MS-A는 선행 가능**: 데이터 라벨·중복 제거·signal 표준화는 Phaser 마이그레이션과 무관. 따라서 *시각 개편 시작 전*에 정리해두면 MS0~ 작업이 더 깨끗한 데이터 위에서 시작 가능.
+- **MS-A는 보존 가능**: 풀 마이그레이션 후에도 `agentLabels.ts`/`metadata.signal`/`PipelineBar`는 그대로 사용 (Phaser 안의 말풍선·미니맵·HUD가 모두 같은 SSOT 참조).
+- **MS-A는 폴백 강화**: 저사양 시 `AgentOffice.tsx` 카드 뷰가 폴백인데, 그 뷰 자체가 MS-A로 이미 깔끔해져 있으므로 폴백 품질도 동시 ↑.
+
+### 0-quater.15 사용자 결정 (MS-A 착수 전)
+
+§0-ter.12의 5개 결정 위에 추가:
+
+6. **MS-A를 v3 본편(MS0~)보다 먼저 진행** OK? (권장: Yes — 결과가 즉시 가시적, 위험 0)
+7. **백엔드 `metadata.signal` 표준화** 변경 OK? (변경 영향: 각 에이전트 emit 1줄 추가, 기존 정규식 함수 제거)
+8. **헤더에서 "DATA · DEBATE · DECISION" 배지를 PipelineBar로 대체** OK? (디자인 변경)
+9. **활동 로그 Lane 배지 한글화** OK? (`[DATA]`→`[1단계]` 식)
+
+답이 오면 MS-A부터 들어갑니다 (1~2일 PR 예상).
+
+---
+
+## 0-quinquies. 하단 활동 로그(ActivityFeed) 전면 재설계 — MS-B ⭐
+
+> 사용자 디렉티브 (2026-04-26 추가): *"하단의 별로인 대화로그도 개선하려는 상황에 맞춰 아예 싹 갈아엎는 거 맞나? 계획에 포함되어 있나?"*  
+> **답: 포함되어 있고, 부분 정리(MS-A §0-quater.10)가 아니라 전면 재설계로 격상한다 — MS-B.**
+
+§0-quater에서는 *라벨/배지 정리* 수준으로 가볍게 다뤘지만, 사용자가 "별로다"라고 짚은 만큼 **컴포넌트 자체를 폐기·재구성**합니다.
+
+### 0-quinquies.1 현재 ActivityFeed의 본질적 문제
+
+현재 `AgentOffice.tsx`의 `ActivityFeed`(L195~) 감사 결과 — 라벨링 문제(§0-quater)에 더해 **구조적 문제 8가지**:
+
+| # | 문제 | 본질 |
+| --- | --- | --- |
+| 1 | **상단 4컬럼 Flow Cards 그리드** (`DATA 2/4 50% / DEBATE / DECISION / EXCHANGE`) | 중복 카운터 — 헤더 PipelineBar와 100% 겹침 |
+| 2 | **40개 단순 슬라이스 (`logs.slice(-40)`)**, 필터·검색·일시정지 0 | "스크롤만 끝없이" UX. 사용자가 특정 에이전트/레이어/시간만 보고 싶어도 불가 |
+| 3 | **다크 CRT 톤** (`rgba(13,15,24,0.9)`, `rgba(12,14,22,0.72)`) | 라이트 디자인 시스템과 충돌. `--bg-canvas` 크림톤 위에 검정 카드 |
+| 4 | **자동 스크롤만 있고 정지/되감기 없음** (`logEndRef` scrollIntoView) | 사용자가 위로 스크롤해도 새 로그가 강제로 끝으로 끌어내림 — 읽기 불가 |
+| 5 | **content `line-clamp-3` 무음 절단**, "더보기" 0 | 핵심 사고가 잘려서 표시. 펼칠 방법 없음 |
+| 6 | **각 로그 카드가 평평한 시간순 나열** | "에이전트 A → B로 갔다가 다시 A" 같은 *대화/응답 관계* 표현 0 |
+| 7 | **타임스탬프만 있고 상대 시간 없음** (`15:23:45`) | "방금 전", "2분 전" 같은 사용자 친화 표현 0 — 분석 시작 후 5분/30분 후 다시 봐도 어떤 시점인지 감 안 옴 |
+| 8 | **로그 export·복사·공유 0** | 사용자가 "이 분석 사고 흐름을 저장하거나 누구에게 보여주기" 불가 |
+
+→ 단순히 라벨만 바꿔서는 본질이 안 바뀜. **컴포넌트 자체를 새 모듈(`<AgentTimeline>`)로 교체**.
+
+### 0-quinquies.2 새 모듈 — `<AgentTimeline>` 설계
+
+신규 위치: `frontend/src/components/agent-timeline/`  
+구조:
+```
+agent-timeline/
+├── AgentTimeline.tsx              # 컨테이너 + 상태/필터/페이지네이션
+├── TimelineToolbar.tsx            # 검색 + 필터 + 일시정지 + 익스포트
+├── TimelineList.tsx               # 가상 스크롤 리스트 (react-virtuoso)
+├── TimelineEntry.tsx              # 단일 로그 카드 (확장 가능)
+├── TimelineGroup.tsx              # 같은 에이전트 연속 발화 묶음
+├── TimelineEmpty.tsx              # 빈 상태
+└── useTimeline.ts                 # zustand 셀렉터 + 필터 로직
+```
+
+### 0-quinquies.3 정보 계층 (Information Hierarchy)
+
+3단계 줌 레벨 — 사용자가 토글:
+
+1. **요약 모드 (Summary)** — 디폴트
+   - 같은 에이전트의 연속 발화는 **그룹화** (TimelineGroup)
+   - 각 그룹의 첫 줄 + "+N개의 추가 사고" 펼치기
+   - 신호 배지(매수/매도/리스크) 한 줄로
+2. **표준 모드 (Standard)**
+   - 각 thought 개별 카드
+   - content 4줄까지 표시 + "더보기" 펼치기
+3. **상세 모드 (Detailed)**
+   - thought 전체 + key_points + metadata(confidence·signal·duration) + 재실행 버튼
+
+상태는 zustand `officeStore.timelineMode` 저장 → 사용자별 영구.
+
+### 0-quinquies.4 툴바 (Toolbar) — 신규
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🔍 [검색...]  [에이전트▾]  [단계▾]  [신호▾]  ⏸ 정지  ⋯    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **검색**: content full-text (debounce 200ms), 한글 매칭
+- **에이전트 필터**: 9 에이전트 멀티 선택 (drop-down checkbox)
+- **단계 필터**: 1단계/2단계/3단계 멀티 선택
+- **신호 필터**: 매수/매도/리스크/결론 (백엔드 `metadata.signal`)
+- **일시정지**: 자동 스크롤 + 신규 추가 일시정지. 정지 중 들어온 로그는 상단 "▼ N개의 새 로그" 알림 칩으로 표시
+- **⋯ 더보기 메뉴**: 클립보드 복사 / Markdown export / JSON export / 결정과 함께 공유 토큰 생성 (백엔드 §0-ter.6 API 재활용)
+
+### 0-quinquies.5 카드 디자인 (라이트 톤)
+
+```
+┌─ TimelineEntry ─────────────────────────────────────────┐
+│ ●(역할 색)  기술적 분석          [1단계] [매수 신호]    │  ← 메타 줄
+│ 15:23:45 · 방금 전                                      │  ← 시간 (절대+상대)
+│ ─────────────────────────────────────────────────────── │
+│ 코스피 200 일봉이 50일 이평을 상향 돌파했고                │  ← content (4줄)
+│ 거래량은 평균 대비 1.8배 증가했습니다. 단기 모멘텀이…      │
+│ [더보기]                                                │  ← 펼치기
+│ ─────────────────────────────────────────────────────── │
+│ ▸ 핵심 근거                                             │  ← key_points (접힘)
+│   · RSI 58, 과매수 아님                                 │     클릭 시 펼침
+│   · 외인 5일 순매수 +1,200억                             │
+│   +2개 더 보기                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+- 배경 `var(--bg-card)` (라이트 크림톤), 테두리 `var(--border-default)`
+- 좌측 색 막대(2px)가 에이전트 색상 — 한눈에 누구인지 인식
+- 시간: `15:23:45 · 방금 전` (상대 시간 1분/5분/1시간 단위로 갱신)
+- 신호 배지: 백엔드 `metadata.signal` 기반 (정규식 폐기)
+- "더보기" 클릭 → 카드 인라인 확장 (모달 X — 컨텍스트 유지)
+
+### 0-quinquies.6 그룹화 (Summary 모드)
+
+같은 에이전트의 연속 thought (예: `analyzing` → `analyzing` → `done`)는 시각적으로 1개 그룹으로 묶음:
+
+```
+┌─ TimelineGroup (기술적 분석, 3개 thought, 1분 12초) ────┐
+│ ●  기술적 분석          [1단계]   [매수 신호]   ✓ 완료  │
+│ 15:22:33 ~ 15:23:45                                     │
+│ ─────────────────────────────────────────────────────── │
+│ 코스피 200이 50일 이평 상향 돌파, 거래량 1.8배 증가…       │  ← 마지막 done 발화 요약
+│ ▸ 3개의 사고 과정 보기                                  │  ← 클릭 시 그룹 펼쳐서 모두 표시
+└──────────────────────────────────────────────────────────┘
+```
+
+### 0-quinquies.7 가상 스크롤 + 페이지네이션
+
+- **react-virtuoso** (MIT, 5 KB gz) 도입 — 1000+ 로그도 60fps 유지
+- 스크롤 위치 추적: 사용자가 *수동 스크롤로 위로 가면* 자동 스크롤 *자동 정지* + 하단에 "▼ 최신으로" 떠있음
+- 새 로그 도착 시 정지 상태면 카운터만 증가, 정지 풀면 부드럽게 점프
+
+### 0-quinquies.8 백엔드 연계 (필요 변경)
+
+- §0-ter.6 (office_layouts API)와 별개 — `AgentThought.metadata`에 다음 표준 필드 추가 (§0-quater.6 위에 누적):
+  - `signal: "bull"|"bear"|"risk"|"done"|null`
+  - `key_points: string[]`
+  - `duration_ms?: number` — 이 thought 생성에 걸린 시간 (Detailed 모드 표시)
+  - `confidence?: number` — 0~1
+- 신규 엔드포인트 (선택, MS-B Phase 2):
+  - `GET /api/analysis/{session_id}/thoughts?role=&layer=&signal=&q=&cursor=` — 서버 사이드 필터·검색·페이지네이션 (현재 SSE+클라 필터로도 OK, 1k+ 로그 시 필요)
+  - `POST /api/analysis/{session_id}/share` — 공유 토큰 발급 (전체 thought + 결정 묶음)
+
+### 0-quinquies.9 접근성
+
+- 키보드: `↑/↓` 카드 이동, `Enter` 펼치기, `/` 검색 포커스, `Space` 일시정지
+- 스크린 리더: 새 thought 도착 시 `aria-live="polite"` 알림 (도착 빈도 너무 잦으면 throttle)
+- reduced-motion: 그룹 펼침 애니메이션 제거, 새 카드 페이드만
+
+### 0-quinquies.10 MS-B 작업 체크리스트
+
+- [ ] **B1**. 의존성 추가: `react-virtuoso` (MIT, 5 KB gz)
+- [ ] **B2**. `frontend/src/store/officeStore.ts`에 timeline 상태 슬라이스 (mode/filters/paused/scrollPos)
+- [ ] **B3**. `agent-timeline/` 디렉터리 + 6개 컴포넌트 스켈레톤
+- [ ] **B4**. `<TimelineToolbar>` — 검색·필터·일시정지·익스포트 메뉴
+- [ ] **B5**. `<TimelineList>` — 가상 스크롤, 자동→수동 스크롤 전환
+- [ ] **B6**. `<TimelineEntry>` 라이트 톤 디자인, 인라인 확장
+- [ ] **B7**. `<TimelineGroup>` 같은 에이전트 연속 발화 그룹화 (Summary 모드)
+- [ ] **B8**. 줌 모드 토글 (Summary/Standard/Detailed) + zustand 영구화
+- [ ] **B9**. 상대 시간 ("방금 전" / "2분 전") 1분 단위 갱신
+- [ ] **B10**. 익스포트: Markdown / JSON / 클립보드 복사
+- [ ] **B11**. 백엔드 `metadata.duration_ms`, `confidence` 추가 (§0-quater.6의 signal/key_points 위에)
+- [ ] **B12**. (옵션) 서버사이드 필터 엔드포인트
+- [ ] **B13**. 공유 토큰 API + 공유 URL 페이지 (`/replay/{token}`)
+- [ ] **B14**. 키보드 단축키 + 스크린 리더 라이브 리전
+- [ ] **B15**. 기존 `ActivityFeed` 컴포넌트 제거, `page.tsx`에서 `<AgentTimeline>`로 교체
+- [ ] **B16**. e2e: 로그 100개 발화 후 필터·일시정지·익스포트 정상 동작
+
+### 0-quinquies.11 마일스톤 표 갱신 (MS-A · MS-B 신규 행)
+
+| MS | 산출물 | 검증 기준 |
+| --- | --- | --- |
+| **MS-A — 정보설계 정리** (§0-quater) | 라벨 SSOT, off-by-one 수정, 중복 카운터 제거, signal metadata 표준화 | 같은 숫자 화면에 1번만, 라벨 100% 한글, 정규식 배지 0 |
+| **MS-B — 활동 로그 전면 재설계** (§0-quinquies) | `<AgentTimeline>` 신규 (가상 스크롤·필터·검색·일시정지·익스포트·그룹화·줌 모드) | 1000개 로그 60fps, 사용자가 특정 에이전트/단계/신호로 필터링 가능, Markdown 익스포트 |
+| **MS0 — 부트스트랩** | (기존) | (기존) |
+| ... | ... | ... |
+
+→ MS-A · MS-B는 시각 풀 마이그레이션(MS0~)과 **독립**. 둘 다 끝나면 풀 마이그레이션 시작 시 깔끔한 정보·로그 토대 위에서 작업 가능.
+
+### 0-quinquies.12 v3 본편(MS0~)과의 통합 시점
+
+- MS-B의 `<AgentTimeline>`은 **풀 마이그레이션 후에도 그대로 사용**. Phaser 캔버스 옆/아래의 React HUD 영역에 그대로 마운트.
+- §0-ter.7의 본문 영역 서브탭 `[ 사무실 시각 ] [ 활동 로그 ] [ 통계 ]`에서 "활동 로그"가 바로 이 `<AgentTimeline>`임.
+- 즉 **MS-B = 활동 로그의 최종 형태**. v3 풀 마이그레이션 시 추가 작업 없음.
+
+### 0-quinquies.13 사용자 결정 (MS-B 착수 전)
+
+§0-ter.12, §0-quater.15 위에 추가:
+
+10. **활동 로그를 `ActivityFeed` 폐기 + `<AgentTimeline>` 신규로 교체** OK? (= 부분 정리가 아닌 전면 재설계)
+11. **react-virtuoso 도입** OK? (5 KB gz, MIT, 가상 스크롤)
+12. **줌 모드 3단계(Summary/Standard/Detailed)** UX OK? (단순화 원하면 Standard만 가능)
+13. **공유 토큰 + 리플레이 페이지(`/replay/{token}`)** 백엔드 추가 OK? (선택, 후순위)
+
+답이 오면 MS-A → MS-B 순서로 들어갑니다 (각 1~2일 PR).
 
 ---
 
