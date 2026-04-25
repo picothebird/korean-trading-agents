@@ -415,34 +415,34 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
       </div>
 
       {innerTab === "settings" && (<>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>루프 이름</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>루프 이름</span>
           <input
             type="text"
             value={settings.name}
             onChange={(e) => setSettings((prev) => ({ ...prev, name: e.target.value }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>시드 종목(콤마/공백 구분)</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>시드 종목(콤마/공백 구분)</span>
           <input
             type="text"
             value={settings.seedTickersText}
             onChange={(e) => setSettings((prev) => ({ ...prev, seedTickersText: e.target.value }))}
             placeholder="005930,000660"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>모니터링 프로파일</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>모니터링 프로파일</span>
           <select
             value={settings.monitoringProfile}
             onChange={(e) => setSettings((prev) => ({ ...prev, monitoringProfile: e.target.value as MonitoringProfile }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           >
             <option value="balanced">균형형</option>
             <option value="momentum">모멘텀형</option>
@@ -450,101 +450,101 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           </select>
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 3" }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>선호 종목</span>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>선호 종목</span>
           <input
             type="text"
             value={settings.preferredTickersText}
             onChange={(e) => setSettings((prev) => ({ ...prev, preferredTickersText: e.target.value }))}
             placeholder="005930,000660"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>제외 종목</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>제외 종목</span>
           <input
             type="text"
             value={settings.excludedTickersText}
             onChange={(e) => setSettings((prev) => ({ ...prev, excludedTickersText: e.target.value }))}
             placeholder="042660,005490"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>관심 키워드</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>관심 키워드</span>
           <input
             type="text"
             value={settings.interestKeywordsText}
             onChange={(e) => setSettings((prev) => ({ ...prev, interestKeywordsText: e.target.value }))}
             placeholder="반도체,AI,배당"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>주기(분)</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>주기(분)</span>
           <input
             type="number"
             min={1}
             max={1440}
             value={settings.cycleIntervalMin}
             onChange={(e) => setSettings((prev) => ({ ...prev, cycleIntervalMin: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>유니버스</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>유니버스</span>
           <input
             type="number"
             min={10}
             max={200}
             value={settings.universeLimit}
             onChange={(e) => setSettings((prev) => ({ ...prev, universeLimit: Number(e.target.value || 10) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>후보 수</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>후보 수</span>
           <input
             type="number"
             min={1}
             max={30}
             value={settings.candidateCount}
             onChange={(e) => setSettings((prev) => ({ ...prev, candidateCount: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>최대 보유 수</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>최대 보유 수</span>
           <input
             type="number"
             min={1}
             max={20}
             value={settings.maxPositions}
             onChange={(e) => setSettings((prev) => ({ ...prev, maxPositions: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>병렬 분석 수</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>병렬 분석 수</span>
           <input
             type="number"
             min={1}
             max={8}
             value={settings.maxParallelAnalyses}
             onChange={(e) => setSettings((prev) => ({ ...prev, maxParallelAnalyses: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>최소 신뢰도</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>최소 신뢰도</span>
           <input
             type="number"
             min={0}
@@ -552,24 +552,24 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
             step={0.01}
             value={settings.minConfidence}
             onChange={(e) => setSettings((prev) => ({ ...prev, minConfidence: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>종목당 최대비중(%)</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>종목당 최대비중(%)</span>
           <input
             type="number"
             min={1}
             max={100}
             value={settings.maxSinglePositionPct}
             onChange={(e) => setSettings((prev) => ({ ...prev, maxSinglePositionPct: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>리밸런싱 임계치(%)</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>리밸런싱 임계치(%)</span>
           <input
             type="number"
             min={0}
@@ -577,16 +577,16 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
             step={0.1}
             value={settings.rebalanceThresholdPct}
             onChange={(e) => setSettings((prev) => ({ ...prev, rebalanceThresholdPct: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>마켓</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>마켓</span>
           <select
             value={settings.universeMarket}
             onChange={(e) => setSettings((prev) => ({ ...prev, universeMarket: e.target.value as UniverseMarket }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           >
             <option value="ALL">전체</option>
             <option value="KOSPI">KOSPI</option>
@@ -595,11 +595,11 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>세션 모델</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>세션 모델</span>
           <select
             value={settings.executionSessionMode}
             onChange={(e) => setSettings((prev) => ({ ...prev, executionSessionMode: e.target.value as ExecutionSessionMode }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           >
             <option value="regular_only">정규장 전용</option>
             <option value="regular_and_after_hours">정규+시간외</option>
@@ -607,18 +607,18 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>초기 자본</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>초기 자본</span>
           <input
             type="number"
             min={10000}
             value={settings.initialCash}
             onChange={(e) => setSettings((prev) => ({ ...prev, initialCash: Number(e.target.value || 10000) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>수수료(bps)</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>수수료 (bps · 1bp = 0.01%)</span>
           <input
             type="number"
             min={0}
@@ -626,32 +626,35 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
             step={0.1}
             value={settings.feeBps}
             onChange={(e) => setSettings((prev) => ({ ...prev, feeBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
+          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>권장: 1~3 bps</span>
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>슬리피지(bps)</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>슬리피지 (bps)</span>
           <input
             type="number"
             min={0}
             max={500}
             value={settings.slippageBps}
             onChange={(e) => setSettings((prev) => ({ ...prev, slippageBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
+          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>주문 가격과 체결 가격 차이. 권장 2~5 bps</span>
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>거래세(bps)</span>
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>거래세 (bps)</span>
           <input
             type="number"
             min={0}
             max={1000}
             value={settings.taxBps}
             onChange={(e) => setSettings((prev) => ({ ...prev, taxBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
           />
+          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>매도 시 부과. 국내 기본 18 bps (0.18%)</span>
         </label>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -660,7 +663,7 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
             checked={settings.marketScanEnabled}
             onChange={(e) => setSettings((prev) => ({ ...prev, marketScanEnabled: e.target.checked }))}
           />
-          <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>시장 스캔 사용</span>
+          <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>시장 스캔 사용</span>
         </label>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -669,7 +672,7 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
             checked={settings.paperTrade}
             onChange={(e) => setSettings((prev) => ({ ...prev, paperTrade: e.target.checked }))}
           />
-          <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>모의 거래</span>
+          <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>모의 거래</span>
         </label>
       </div>
       </>)}

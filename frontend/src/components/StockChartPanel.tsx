@@ -288,11 +288,33 @@ export function StockChartPanel({
             </ResponsiveContainer>
           </div>
 
-          <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 6 }}>
-            검정 종가 · 파랑 MA20 · 회색 MA60 · 동그라미 표시: 예측 / 체결 포인트
-          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginTop: 8, fontSize: 11, color: "var(--text-secondary)" }}>
+            <LegendSwatch color="var(--text-primary)" label="종가" kind="line" />
+            <LegendSwatch color="var(--brand)" label="20일 평균" kind="line" />
+            <LegendSwatch color="var(--text-tertiary)" label="60일 평균" kind="dashed" />
+            <LegendSwatch color="var(--bull)" label="예측·체결" kind="dot" />
+          </div>
         </>
       )}
     </div>
+  );
+}
+
+function LegendSwatch({ color, label, kind }: { color: string; label: string; kind: "line" | "dashed" | "dot" }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      {kind === "dot" ? (
+        <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
+      ) : kind === "dashed" ? (
+        <svg width={22} height={6} aria-hidden style={{ flexShrink: 0 }}>
+          <line x1={1} y1={3} x2={21} y2={3} stroke={color} strokeWidth={2} strokeDasharray="3 3" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <svg width={22} height={6} aria-hidden style={{ flexShrink: 0 }}>
+          <line x1={1} y1={3} x2={21} y2={3} stroke={color} strokeWidth={2.4} strokeLinecap="round" />
+        </svg>
+      )}
+      <span>{label}</span>
+    </span>
   );
 }

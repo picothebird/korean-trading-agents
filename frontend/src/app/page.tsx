@@ -923,7 +923,7 @@ export default function Home() {
     const end = new Date(btEndDate);
 
     if (!btStartDate || !btEndDate || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      setBtError("백테스트 기간을 올바르게 입력하세요.");
+      setBtError("시뮬레이션 기간을 올바르게 입력하세요.");
       return;
     }
     if (start >= end) {
@@ -954,7 +954,7 @@ export default function Home() {
         });
         setBtResult(result);
       } catch (e: unknown) {
-        setBtError(e instanceof Error ? e.message : "백테스트 실패. 종목 데이터를 확인하세요.");
+        setBtError(e instanceof Error ? e.message : "시뮬레이션 실패. 종목 데이터를 확인하세요.");
       } finally {
         setBtLoading(false);
       }
@@ -990,7 +990,7 @@ export default function Home() {
         );
         btCleanupRef.current = cleanup;
       } catch (e: unknown) {
-        setBtError(e instanceof Error ? e.message : "AI 백테스트 요청 실패.");
+        setBtError(e instanceof Error ? e.message : "AI 시뮬레이션 요청 실패.");
         setBtLoading(false);
       }
     }
@@ -1114,7 +1114,7 @@ export default function Home() {
       <OnboardingTour
         steps={[
           { selector: '[data-tour="search"]', title: "1. 종목을 골라요", body: "관심 있는 한국 주식의 이름이나 6자리 코드로 검색하면 가격·차트가 바로 표시돼요.", placement: "bottom" },
-          { selector: '[data-tour="tab-nav"]', title: "2. 작업을 선택해요", body: "분석은 AI 에이전트 9명이 함께 검토하고, 백테스트·매매·포트폴리오로 자유롭게 전환할 수 있어요.", placement: "bottom" },
+          { selector: '[data-tour="tab-nav"]', title: "2. 작업을 선택해요", body: "분석은 AI 에이전트 9명이 함께 검토하고, 시뮬레이션·매매·포트폴리오로 자유롭게 전환할 수 있어요.", placement: "bottom" },
           { selector: '[data-tour="console"]', title: "3. AI가 일하는 모습을 봐요", body: "오른쪽에서 에이전트들의 실시간 사고와 결정을 확인할 수 있어요. 분석을 시작하면 자동으로 활성화돼요.", placement: "left" },
         ] satisfies CoachStep[]}
       />
@@ -1400,7 +1400,7 @@ export default function Home() {
                     background: "var(--brand)", color: "var(--text-inverse)", lineHeight: 1.4, marginLeft: 2,
                   }}>{activeCount}</span>
                 ) : undefined },
-                { value: "backtest", label: "백테스트", icon: <Icon name="chart-bar" size={14} decorative /> },
+                { value: "backtest", label: "시뮬레이션", icon: <Icon name="chart-bar" size={14} decorative /> },
                 { value: "trading", label: "매매", icon: <Icon name="wallet" size={14} decorative /> },
                 { value: "portfolio", label: "포트폴리오", icon: <Icon name="briefcase" size={14} decorative /> },
               ]}
@@ -1653,17 +1653,17 @@ export default function Home() {
                       [
                         {
                           key: "ma" as const,
-                          label: "MA 교차",
-                          desc: "MA5와 MA20의 교차를 기준으로 매수/매도",
+                          label: "MA 교차 전략",
+                          desc: "5일 평균이 20일 평균을 위로 뚫으면 매수 · 아래로 뚫으면 매도",
                           icon: "chart-bar" as const,
-                          tip: "MA5가 MA20을 위로 돌파하면 매수, 아래로 이탈하면 매도로 해석하는 기본 추세 전략입니다.",
+                          tip: "기술적 추세 추종 전략입니다. LLM 사용 없이 과거 가격만으로 동작하므로 빠르고 비용이 발생하지 않습니다.",
                         },
                         {
                           key: "agent" as const,
-                          label: "AI 에이전트",
-                          desc: "월별 LLM 판단 신호를 리밸런싱에 반영",
+                          label: "AI 에이전트 전략",
+                          desc: "매달 AI가 종목을 분석해 매수/매도/보유 신호를 내고 그 다음 거래일에 체결",
                           icon: "robot" as const,
-                          tip: "기술지표를 입력으로 AI가 매달 BUY/SELL/HOLD를 예측하고, 다음 거래일에 체결하는 방식입니다.",
+                          tip: "설정한 기간을 월 단위로 쪼개서, 매번 기술지표·재무·뉴스 요약을 LLM에 넘겨 BUY/SELL/HOLD 결정을 받습니다. 실제 LLM 호출이 일어나므로 소액의 API 비용이 발생합니다.",
                         },
                       ] as const
                     ).map(({ key, label, desc, icon, tip }) => {
@@ -1683,16 +1683,16 @@ export default function Home() {
                             transition: "all 150ms",
                           }}
                         >
-                          <p style={{ marginBottom: 4, color: active ? "var(--brand)" : "var(--text-secondary)" }}>
-                            <Icon name={icon} size={18} decorative />
+                          <p style={{ marginBottom: 6, color: active ? "var(--brand)" : "var(--text-secondary)" }}>
+                            <Icon name={icon} size={20} decorative />
                           </p>
-                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: active ? "var(--brand)" : "var(--text-primary)" }}>{label}</p>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                            <p style={{ fontSize: 13, fontWeight: 700, color: active ? "var(--brand)" : "var(--text-primary)" }}>{label}</p>
                             <InfoTip tip={tip} subtle={!active} />
                           </div>
-                          <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.4 }}>{desc}</p>
+                          <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>{desc}</p>
                           {key === "agent" && (
-                            <p style={{ fontSize: 8, color: "var(--brand)", marginTop: 3, fontWeight: 600 }}>
+                            <p style={{ fontSize: 10, color: "var(--brand)", marginTop: 4, fontWeight: 600 }}>
                               gpt-5.4-mini · ~24회/월
                             </p>
                           )}
@@ -1715,15 +1715,15 @@ export default function Home() {
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          백테스트 설정
+                        <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          시뮬레이션 설정
                         </p>
                         <InfoTip tip="원하는 기간/초기자본을 넣어 동일 전략을 다양한 시장 구간에서 비교할 수 있습니다." subtle />
                       </div>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>시작일</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>시작일</span>
                           <input
                             type="date"
                             value={btStartDate}
@@ -1733,14 +1733,14 @@ export default function Home() {
                               border: "1px solid var(--border-default)",
                               background: "var(--bg-input)",
                               color: "var(--text-primary)",
-                              padding: "7px 8px",
-                              fontSize: 11,
+                              padding: "9px 10px",
+                              fontSize: 13,
                             }}
                           />
                         </label>
 
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>종료일</span>
+                        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>종료일</span>
                           <input
                             type="date"
                             value={btEndDate}
@@ -1750,15 +1750,15 @@ export default function Home() {
                               border: "1px solid var(--border-default)",
                               background: "var(--bg-input)",
                               color: "var(--text-primary)",
-                              padding: "7px 8px",
-                              fontSize: 11,
+                              padding: "9px 10px",
+                              fontSize: 13,
                             }}
                           />
                         </label>
                       </div>
 
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>초기 자본 (원)</span>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>초기 자본 (원)</span>
                         <input
                           type="number"
                           min={100000}
@@ -1770,16 +1770,17 @@ export default function Home() {
                             border: "1px solid var(--border-default)",
                             background: "var(--bg-input)",
                             color: "var(--text-primary)",
-                            padding: "7px 8px",
-                            fontSize: 11,
+                            padding: "9px 10px",
+                            fontSize: 13,
                           }}
                         />
+                        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>예: 10,000,000원 = 천만원</span>
                       </label>
 
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={{ fontSize: 9, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
                           판단 주기 (거래일)
-                          <InfoTip tip="백테스트에서 매수/매도 판단을 몇 거래일 간격으로 수행할지 설정합니다. 값이 작을수록 더 자주 판단합니다." subtle />
+                          <InfoTip tip="며칠마다 한 번씩 매수/매도 여부를 판단할지 정합니다. 1로 두면 매일, 5로 두면 5거래일마다 한 번 판단해요. 값이 작을수록 자주 거래합니다." subtle />
                         </span>
                         <input
                           type="number"
@@ -1792,13 +1793,14 @@ export default function Home() {
                             border: "1px solid var(--border-default)",
                             background: "var(--bg-input)",
                             color: "var(--text-primary)",
-                            padding: "7px 8px",
-                            fontSize: 11,
+                            padding: "9px 10px",
+                            fontSize: 13,
                           }}
                         />
+                        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>1 = 매일 판단 · 5 = 일주일에 한 번 · 20 = 한 달에 한 번</span>
                       </label>
 
-                      <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                      <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
                         현재 설정: {backtestSummaryText}
                       </p>
                     </div>
@@ -1824,7 +1826,7 @@ export default function Home() {
                       transition: "all 200ms",
                     }}
                   >
-                    {btLoading ? "실행 중..." : "백테스트 실행"}
+                    {btLoading ? "실행 중..." : "시뮬레이션 실행"}
                     {!btLoading && <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}>Space</span>}
                   </motion.button>
                 )}
@@ -1839,8 +1841,8 @@ export default function Home() {
                     >
                       <Icon name={btMode === "agent" ? "robot" : "settings"} size={36} strokeWidth={1.5} decorative />
                     </motion.span>
-                    <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                      {btMode === "agent" ? "AI 에이전트 과거 판단 중..." : "시뮬레이션 실행 중..."}
+                    <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                      {btMode === "agent" ? "AI 에이전트가 과거 시점마다 판단하는 중…" : "시뮬레이션을 실행 중…"}
                     </p>
 
                     {btMode === "agent" && btProgress.length > 0 && (
@@ -1924,8 +1926,8 @@ export default function Home() {
                           color: "var(--brand)",
                         }}
                       >
-                        <Icon name={btMode === "agent" ? "robot" : "chart-bar"} size={11} decorative />
-                        {btMode === "agent" ? "AI 에이전트" : "MA 교차"}
+                        <Icon name={btMode === "agent" ? "robot" : "chart-bar"} size={12} decorative />
+                        {btMode === "agent" ? "AI 에이전트 전략" : "MA 교차 전략"}
                       </span>
                       <button
                         onClick={() => { setBtResult(null); setBtProgress([]); setBtError(null); }}
@@ -1986,7 +1988,7 @@ export default function Home() {
                       <Icon name="trend-up" size={36} strokeWidth={1.5} decorative />
                     </span>
                     <p style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
-                      전략을 선택하고 백테스트 실행 버튼을 누르세요
+                      전략을 선택하고 시뮬레이션 실행 버튼을 누르세요
                     </p>
                     <p style={{ fontSize: 10, color: "var(--text-tertiary)", textAlign: "center" }}>
                       {backtestSummaryText}

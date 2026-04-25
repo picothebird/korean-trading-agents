@@ -11,7 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { getAutoLoopStatus, startAutoLoop, stopAutoLoop } from "@/lib/api";
-import { TabPills, Icon } from "@/components/ui";
+import { TabPills, Icon, Tooltip as Hint } from "@/components/ui";
 import type { AutoLoopStatus, ExecutionSessionMode, SupervisionLevel, TradeDecision } from "@/types";
 
 interface AutoLoopPanelProps {
@@ -364,151 +364,217 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
       </div>
 
       {innerTab === "settings" && (<>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>판단 주기(분)</span>
-          <input
-            type="number"
-            min={1}
-            max={240}
-            value={settings.intervalMin}
-            onChange={(e) => setSettings((prev) => ({ ...prev, intervalMin: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>최소 신뢰도(%)</span>
-          <input
-            type="number"
-            min={40}
-            max={100}
-            value={Math.round(settings.minConfidence * 100)}
-            onChange={(e) => setSettings((prev) => ({ ...prev, minConfidence: Math.min(1, Math.max(0.4, Number(e.target.value || 72) / 100)) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>주문 수량(주)</span>
-          <input
-            type="number"
-            min={1}
-            max={100000}
-            value={settings.orderQty}
-            onChange={(e) => setSettings((prev) => ({ ...prev, orderQty: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>수수료(bps)</span>
-          <input
-            type="number"
-            min={0}
-            max={300}
-            step={0.1}
-            value={settings.feeBps}
-            onChange={(e) => setSettings((prev) => ({ ...prev, feeBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>슬리피지(bps)</span>
-          <input
-            type="number"
-            min={0}
-            max={200}
-            value={settings.slippageBps}
-            onChange={(e) => setSettings((prev) => ({ ...prev, slippageBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>매도세(bps)</span>
-          <input
-            type="number"
-            min={0}
-            max={1000}
-            value={settings.taxBps}
-            onChange={(e) => setSettings((prev) => ({ ...prev, taxBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>최대 비중(%)</span>
-          <input
-            type="number"
-            min={1}
-            max={100}
-            value={settings.maxPositionPct}
-            onChange={(e) => setSettings((prev) => ({ ...prev, maxPositionPct: Number(e.target.value || 25) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>슈퍼바이즈</span>
-          <select
-            value={settings.supervisionLevel}
-            onChange={(e) => setSettings((prev) => ({ ...prev, supervisionLevel: e.target.value as SupervisionLevel }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+      {/* ── 섹션 1: 판단 주기와 신뢰도 ──────────────────────── */}
+      <SettingsSection
+        title="판단 기준"
+        desc="얼마나 자주 사고팔지 결정할지, 얼마나 확신이 있어야 거래할지 정합니다."
+      >
+        <FieldRow>
+          <FieldCell
+            label="판단 주기 (분)"
+            hint="몇 분마다 한 번씩 매수/매도 판단을 새로 할지 정합니다. 5로 두면 5분마다 판단해요."
+            example="권장: 5~30분"
           >
-            <option value="strict">엄격(고위험 차단)</option>
-            <option value="balanced">균형(기본)</option>
-            <option value="aggressive">공격(완화)</option>
-          </select>
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>세션 모델</span>
-          <select
-            value={settings.executionSessionMode}
-            onChange={(e) => setSettings((prev) => ({ ...prev, executionSessionMode: e.target.value as ExecutionSessionMode }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
+            <input
+              type="number"
+              min={1}
+              max={240}
+              value={settings.intervalMin}
+              onChange={(e) => setSettings((prev) => ({ ...prev, intervalMin: Number(e.target.value || 1) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+          <FieldCell
+            label="최소 신뢰도 (%)"
+            hint="AI가 이 확신도 이상일 때만 주문을 냅니다. 70%면 어지간히 확실한 신호만 거래해요."
+            example="권장: 65~80%"
           >
-            <option value="regular_only">정규장 전용</option>
-            <option value="regular_and_after_hours">정규+시간외(모의 우선)</option>
-          </select>
-        </label>
+            <input
+              type="number"
+              min={40}
+              max={100}
+              value={Math.round(settings.minConfidence * 100)}
+              onChange={(e) => setSettings((prev) => ({ ...prev, minConfidence: Math.min(1, Math.max(0.4, Number(e.target.value || 72) / 100)) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>모의 초기자본</span>
-          <input
-            type="number"
-            min={10000}
-            max={100000000000}
-            value={settings.initialCash}
-            onChange={(e) => setSettings((prev) => ({ ...prev, initialCash: Number(e.target.value || 10000000) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "6px 8px", fontSize: 11 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>실행 방식</span>
-          <button
-            onClick={() => setSettings((prev) => ({ ...prev, paperTrade: !prev.paperTrade }))}
-            style={{
-              borderRadius: "var(--radius-md)",
-              border: settings.paperTrade ? "1px solid var(--warning-border)" : "1px solid var(--error-border)",
-              background: settings.paperTrade ? "var(--warning-subtle)" : "var(--error-subtle)",
-              color: settings.paperTrade ? "var(--warning)" : "var(--error)",
-              padding: "6px 8px",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+      {/* ── 섹션 2: 주문 크기 / 비중 한도 ──────────────────── */}
+      <SettingsSection
+        title="주문 크기"
+        desc="한 번에 얼마만큼 거래하고, 한 종목에 자산을 어디까지 투입할지 정합니다."
+      >
+        <FieldRow>
+          <FieldCell
+            label="주문 수량 (주)"
+            hint="한 번 매수 또는 매도할 때 거래할 주식 수입니다."
+            example="예: 10주"
           >
-            {settings.paperTrade ? "모의" : "실전"}
-          </button>
-        </label>
-      </div>
+            <input
+              type="number"
+              min={1}
+              max={100000}
+              value={settings.orderQty}
+              onChange={(e) => setSettings((prev) => ({ ...prev, orderQty: Number(e.target.value || 1) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+          <FieldCell
+            label="최대 비중 (%)"
+            hint="이 종목이 전체 자산에서 차지할 수 있는 최대 비율. 25%면 한 종목에 자산의 1/4 이상 투입하지 않아요."
+            example="권장: 20~30%"
+          >
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={settings.maxPositionPct}
+              onChange={(e) => setSettings((prev) => ({ ...prev, maxPositionPct: Number(e.target.value || 25) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
 
-      <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 10, lineHeight: 1.5 }}>
-        루프: 서버에서 분석 → 감독 규칙/신뢰도 체크 → 부분 매수/매도 주문 → 로그/이력/계좌 상태 업데이트를 반복합니다.
+      {/* ── 섹션 3: 거래 비용 (bps) ─────────────────────────── */}
+      <SettingsSection
+        title="거래 비용"
+        desc={
+          <>
+            거래마다 빠지는 수수료/슬리피지/세금 비율입니다.{" "}
+            <strong style={{ color: "var(--text-secondary)" }}>1bp = 0.01%</strong>이며, 100bp가 1% 입니다.
+          </>
+        }
+      >
+        <FieldRow>
+          <FieldCell
+            label="수수료 (bps)"
+            hint="증권사에 내는 매매 수수료 비율. 1.5bps = 0.015%. 일반 키움/한투 모의투자 환경 기본값입니다."
+            example="권장: 1~3 bps"
+          >
+            <input
+              type="number"
+              min={0}
+              max={300}
+              step={0.1}
+              value={settings.feeBps}
+              onChange={(e) => setSettings((prev) => ({ ...prev, feeBps: Number(e.target.value || 0) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+          <FieldCell
+            label="슬리피지 (bps)"
+            hint="원하는 가격과 실제 체결 가격의 차이. 호가 흔들림으로 손해 보는 부분을 미리 가정합니다."
+            example="권장: 2~5 bps"
+          >
+            <input
+              type="number"
+              min={0}
+              max={200}
+              value={settings.slippageBps}
+              onChange={(e) => setSettings((prev) => ({ ...prev, slippageBps: Number(e.target.value || 0) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+        </FieldRow>
+        <FieldRow>
+          <FieldCell
+            label="매도세 (bps)"
+            hint="매도 시 부과되는 거래세 (증권거래세 + 농어촌특별세). 한국 주식 기준 약 18bps(0.18%)입니다."
+            example="국내 기본: 18 bps"
+          >
+            <input
+              type="number"
+              min={0}
+              max={1000}
+              value={settings.taxBps}
+              onChange={(e) => setSettings((prev) => ({ ...prev, taxBps: Number(e.target.value || 0) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+          <FieldCell label="" hint="" example="" empty />
+        </FieldRow>
+      </SettingsSection>
+
+      {/* ── 섹션 4: 실행 환경 ─────────────────────────────── */}
+      <SettingsSection
+        title="실행 환경"
+        desc="실제 주문을 낼지 시뮬레이션만 돌릴지, 어떤 시간대에 동작할지 결정합니다."
+      >
+        <FieldRow>
+          <FieldCell
+            label="실행 방식"
+            hint="모의: 실제 주문 없이 가상 체결만 기록 · 실전: KIS 연동으로 실제 주문 발송"
+            example=""
+          >
+            <button
+              onClick={() => setSettings((prev) => ({ ...prev, paperTrade: !prev.paperTrade }))}
+              style={{
+                borderRadius: "var(--radius-md)",
+                border: settings.paperTrade ? "1px solid var(--warning-border)" : "1px solid var(--error-border)",
+                background: settings.paperTrade ? "var(--warning-subtle)" : "var(--error-subtle)",
+                color: settings.paperTrade ? "var(--warning)" : "var(--error)",
+                padding: "9px 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {settings.paperTrade ? "모의 매매" : "실전 매매"}
+            </button>
+          </FieldCell>
+          <FieldCell
+            label="감독 강도"
+            hint="엄격: 위험 신호가 조금만 보여도 차단 · 균형: 기본 권장 · 공격: 가능한 많이 거래"
+            example=""
+          >
+            <select
+              value={settings.supervisionLevel}
+              onChange={(e) => setSettings((prev) => ({ ...prev, supervisionLevel: e.target.value as SupervisionLevel }))}
+              style={inputStyle}
+            >
+              <option value="strict">엄격 (고위험 차단)</option>
+              <option value="balanced">균형 (기본 권장)</option>
+              <option value="aggressive">공격 (완화)</option>
+            </select>
+          </FieldCell>
+        </FieldRow>
+        <FieldRow>
+          <FieldCell
+            label="거래 시간대"
+            hint="정규장 전용: 09:00~15:30만 거래 · 정규+시간외: 시간외 단일가도 시도(모의 우선)"
+            example=""
+          >
+            <select
+              value={settings.executionSessionMode}
+              onChange={(e) => setSettings((prev) => ({ ...prev, executionSessionMode: e.target.value as ExecutionSessionMode }))}
+              style={inputStyle}
+            >
+              <option value="regular_only">정규장 전용</option>
+              <option value="regular_and_after_hours">정규 + 시간외</option>
+            </select>
+          </FieldCell>
+          <FieldCell
+            label="모의 초기 자본 (원)"
+            hint="모의 매매로 돌릴 때의 시작 자본금. 실전 매매에는 영향이 없습니다."
+            example="예: 10,000,000원"
+          >
+            <input
+              type="number"
+              min={10000}
+              max={100000000000}
+              value={settings.initialCash}
+              onChange={(e) => setSettings((prev) => ({ ...prev, initialCash: Number(e.target.value || 10000000) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
+
+      <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4, marginBottom: 10, lineHeight: 1.6 }}>
+        루프 동작: 서버에서 {settings.intervalMin}분마다 분석 → 감독 규칙/신뢰도 체크 → 주문 또는 보류 → 로그/계좌 업데이트를 반복합니다.
       </p>
       </>)}
 
@@ -645,5 +711,97 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         </div>
       )}
     </div>
+  );
+}
+
+// ── Settings layout primitives ───────────────────────────────────
+const inputStyle: React.CSSProperties = {
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border-default)",
+  background: "var(--bg-input)",
+  color: "var(--text-primary)",
+  padding: "9px 10px",
+  fontSize: 13,
+  width: "100%",
+  fontFamily: "inherit",
+};
+
+function SettingsSection({
+  title,
+  desc,
+  children,
+}: {
+  title: string;
+  desc?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      style={{
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: "var(--radius-lg)",
+        padding: "14px 16px",
+        marginBottom: 14,
+      }}
+    >
+      <header style={{ marginBottom: 12 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 3 }}>{title}</p>
+        {desc && (
+          <p style={{ fontSize: 11.5, color: "var(--text-tertiary)", lineHeight: 1.55 }}>{desc}</p>
+        )}
+      </header>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{children}</div>
+    </section>
+  );
+}
+
+function FieldRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>{children}</div>
+  );
+}
+
+function FieldCell({
+  label,
+  hint,
+  example,
+  children,
+  empty,
+}: {
+  label: string;
+  hint: string;
+  example: string;
+  children?: React.ReactNode;
+  empty?: boolean;
+}) {
+  if (empty) return <div aria-hidden />;
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>
+        {label}
+        {hint && (
+          <Hint content={hint} maxWidth={260}>
+            <button
+              type="button"
+              aria-label="설명 보기"
+              style={{
+                width: 16, height: 16, borderRadius: "50%",
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-surface)",
+                color: "var(--text-tertiary)",
+                cursor: "help",
+                padding: 0,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Icon name="info" size={10} decorative />
+            </button>
+          </Hint>
+        )}
+      </span>
+      {children}
+      {example && <span style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>{example}</span>}
+    </label>
   );
 }

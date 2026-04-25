@@ -45,22 +45,31 @@ export function Tooltip({
 }: TooltipProps) {
   const id = useId();
   const triggerRef = useRef<HTMLElement | null>(null);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number; place: "top" | "bottom" } | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; place: "top" | "bottom"; arrowOffset: number } | null>(null);
 
   const compute = useCallback(() => {
     const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const margin = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     let place: "top" | "bottom" = placement;
+    // Flip if not enough room above; or for bottom if not enough below
     if (placement === "top" && rect.top < 56) place = "bottom";
-    // Use viewport coords; tooltip uses position:fixed so it escapes overflow.
+    if (placement === "bottom" && vh - rect.bottom < 80) place = "top";
     const top = place === "top" ? rect.top - margin : rect.bottom + margin;
-    const left = rect.left + rect.width / 2;
-    setCoords({ top, left, place });
-  }, [placement]);
+    // Estimate bubble width using maxWidth as upper bound; clamp center to viewport
+    const halfW = Math.min(maxWidth, 320) / 2;
+    const desired = rect.left + rect.width / 2;
+    const edgePad = 10;
+    const left = Math.max(halfW + edgePad, Math.min(vw - halfW - edgePad, desired));
+    const arrowOffset = desired - left; // relative to bubble center, used if needed
+    setCoords({ top, left, place, arrowOffset });
+  }, [placement, maxWidth]);
 
   const show = useCallback(() => {
     if (disabled) return;
@@ -140,11 +149,11 @@ export function Tooltip({
         background: "var(--tooltip-bg, #111418)",
         color: "var(--tooltip-fg, #f5f7fa)",
         border: "1px solid var(--tooltip-border, rgba(255,255,255,0.08))",
-        boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-        padding: "7px 10px",
-        borderRadius: 8,
-        fontSize: 12,
-        lineHeight: 1.45,
+        boxShadow: "0 10px 28px rgba(0,0,0,0.22)",
+        padding: "9px 12px",
+        borderRadius: 10,
+        fontSize: 13,
+        lineHeight: 1.5,
         fontWeight: 500,
         letterSpacing: "-0.005em",
         pointerEvents: "none",
@@ -158,7 +167,7 @@ export function Tooltip({
     <>
       {trigger}
       {open && coords && (
-        <div id={id} role="tooltip" style={bubbleStyle}>
+        <div ref={bubbleRef} id={id} role="tooltip" style={bubbleStyle}>
           {content}
         </div>
       )}
