@@ -402,7 +402,16 @@ async def master_activity(
     request: Request,
     limit: int = Query(default=200, ge=1, le=1000),
     user_id: str = Query(default=""),
+    category: str = Query(default=""),
+    exclude_noise: bool = Query(default=True),
 ):
+    """전체 액션 로그.
+
+    운영 화면에서 의미 있는 이벤트만 보기 쉽게 하기 위해 기본값으로
+    `action_type == "api_call"` 노이즈를 제외한다 (`exclude_noise=true`).
+    또한 응답에 전체 개수(`total`)와 노이즈 제외 개수(`total_excluding_noise`)를
+    함께 반환해 silent truncation을 방지한다.
+    """
     db = await _ensure_db()
     await require_master(request)
 
@@ -412,10 +421,37 @@ async def master_activity(
             q["user_id"] = ObjectId(user_id.strip())
         except Exception:
             raise HTTPException(status_code=422, detail="잘못된 user_id")
+    if category.strip():
+        q["category"] = category.strip()
+    if exclude_noise:
+        q["action_type"] = {"$ne": "api_call"}
 
     cursor = db.activity_logs.find(q).sort("created_at", -1).limit(limit)
     items = [serialize_doc(doc) async for doc in cursor]
-    return {"items": items}
+
+    # 운영자가 표시 건수를 정확히 인지할 수 있도록 합계 메타를 함께 반환.
+    base_filter: dict[str, Any] = {}
+    if user_id.strip():
+        base_filter["user_id"] = q["user_id"]
+    if category.strip():
+        base_filter["category"] = category.strip()
+
+    total_all = await db.activity_logs.count_documents(base_filter)
+    noise_filter = dict(base_filter)
+    noise_filter["action_type"] = {"$ne": "api_call"}
+    total_excluding_noise = await db.activity_logs.count_documents(noise_filter)
+
+    return {
+        "items": items,
+        "total": total_all,
+        "total_excluding_noise": total_excluding_noise,
+        "applied": {
+            "limit": limit,
+            "user_id": user_id.strip() or None,
+            "category": category.strip() or None,
+            "exclude_noise": exclude_noise,
+        },
+    }
 
 
 @router.get("/master/trades")
@@ -436,7 +472,20 @@ async def master_trades(
 
     cursor = db.user_trades.find(q).sort("created_at", -1).limit(limit)
     items = [serialize_doc(doc) async for doc in cursor]
-    return {"items": items}
+
+    base_filter: dict[str, Any] = {}
+    if user_id.strip():
+        base_filter["user_id"] = q["user_id"]
+    total_all = await db.user_trades.count_documents(base_filter)
+
+    return {
+        "items": items,
+        "total": total_all,
+        "applied": {
+            "limit": limit,
+            "user_id": user_id.strip() or None,
+        },
+    }
 
 
 # ── Invite codes ────────────────────────────────────────────────

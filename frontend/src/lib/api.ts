@@ -718,11 +718,20 @@ export async function updateMasterUserDisabled(
 }
 
 export async function getMasterActivity(
-  params?: { limit?: number; userId?: string }
-): Promise<{ items: import("@/types").ActivityLogItem[] }> {
+  params?: { limit?: number; userId?: string; category?: string; excludeNoise?: boolean }
+): Promise<{
+  items: import("@/types").ActivityLogItem[];
+  total?: number;
+  total_excluding_noise?: number;
+  applied?: Record<string, unknown>;
+}> {
   const q = new URLSearchParams();
   q.set("limit", String(params?.limit ?? 200));
   if (params?.userId) q.set("user_id", params.userId);
+  if (params?.category) q.set("category", params.category);
+  if (typeof params?.excludeNoise === "boolean") {
+    q.set("exclude_noise", params.excludeNoise ? "true" : "false");
+  }
 
   const res = await apiFetch(`${BASE_URL}/api/master/activity?${q.toString()}`);
   if (!res.ok) {
@@ -734,7 +743,11 @@ export async function getMasterActivity(
 
 export async function getMasterTrades(
   params?: { limit?: number; userId?: string }
-): Promise<{ items: import("@/types").UserTradeItem[] }> {
+): Promise<{
+  items: import("@/types").UserTradeItem[];
+  total?: number;
+  applied?: Record<string, unknown>;
+}> {
   const q = new URLSearchParams();
   q.set("limit", String(params?.limit ?? 200));
   if (params?.userId) q.set("user_id", params.userId);

@@ -132,6 +132,9 @@
 - [ ] 통합 E2E 시나리오(실제 OpenAI/KIS 실호출) 수동 검증: 환경 키 필요로 미실행
 
 ## 7) 잔여 리스크 / 후속 권장
-- [ ] 자동/포트폴리오 루프의 실행 상태는 프로세스 메모리(`AutoTradingSupervisor._loops`, `PortfolioSupervisor._loops`) 기반이며 재시작 시 복원되지 않음
-- [ ] 자동 테스트(pytest, API integration test) 부재
-- [ ] KIS 주문 사전검증(시장가/지정가 price 규칙) 세분화 여지
+- [ ] 자동/포트폴리오 루프의 실행 상태는 프로세스 메모리(`AutoTradingSupervisor._loops`, `PortfolioSupervisor._loops`) 기반이며 재시작 시 복원되지 않음 → `PRE_PRODUCTION_CHECKLIST.md §2-C1` 로 격상
+- [ ] 자동 테스트(pytest, API integration test) 부재 → `PRE_PRODUCTION_CHECKLIST.md §3-T1/T2`
+- [ ] KIS 주문 사전검증(시장가/지정가 price 규칙) 세분화 여지 → `PRE_PRODUCTION_CHECKLIST.md §2-K1`
+
+## 8) 후속 종합 점검 (2026-04-26)
+본 문서의 9개 ISSUE 는 모두 ✅ 처리 완료. 프로덕션 출시 전 추가 점검에서 발견된 백엔드 이슈(인증 쿠키 / rate limit / 암호화 키 / 루프 영속화 / TTL / SSE 누수 / orchestrator 부분 실패 / KIS 멱등성 등)는 `docs/PRE_PRODUCTION_CHECKLIST.md` 에 통합되었다.

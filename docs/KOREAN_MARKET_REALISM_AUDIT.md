@@ -140,3 +140,7 @@ Primary references used in this pass:
 - Current repository code paths (listed above)
 
 Because some official portal pages are dynamic and hard to scrape reliably in this environment, this audit labels confidence by each factor and keeps all numeric assumptions explicit/configurable.
+
+## 8) 후속 처리 매핑 (2026-04-26 추가)
+- §5 Remaining Gaps + 신규 발견 항목(휴장일/반일장/T+2/lot_size/주문취소/VI 등)은 `docs/PRE_PRODUCTION_CHECKLIST.md` §2-M / §3-M / §4-M 로 우선순위·QA 시나리오와 함께 정리됨.
+- 본 문서는 "수치 가정·누수 통제" 기준 문서로 유지하고, 실제 출시 전 처리 항목은 PRE_PRODUCTION_CHECKLIST.md 를 단일 진실원으로 사용한다.

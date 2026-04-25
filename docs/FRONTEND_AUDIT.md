@@ -283,3 +283,6 @@
 - 상태: 문서의 핵심 이슈 12건 반영 완료
 - 빌드: `frontend`에서 `npm run build` 통과
 - 비고: CSS `@import` 순서 경고 1건은 기존 전역 스타일 이슈로 기능 수정 범위 밖
+
+## 9) 후속 종합 점검 (2026-04-26)
+본 문서의 12개 픽스는 모두 ✅. 추가 프로덕션 점검에서 발견된 신규 14건 (fetch timeout / 주문 입력 경계 / 실거래 게이트 모달 / localStorage quota / polling cleanup / API key 마스킹 / 옵셔널 체이닝 / SSE race / 모바일 반응형 / 접근성 등) 은 `docs/PRE_PRODUCTION_CHECKLIST.md` §3-F / §4-U 로 이관.

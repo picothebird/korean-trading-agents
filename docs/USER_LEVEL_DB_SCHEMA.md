@@ -253,17 +253,20 @@ Candidate fields:
 - `master` routes are explicitly guarded in `user_system` router.
 
 ## Production Hardening Checklist
-1. Move session tokens from localStorage to secure cookies (`HttpOnly`, `Secure`, `SameSite=Lax|Strict`) if possible.
-2. Add rate limiting for login/register endpoints.
-3. Add account lockout or exponential backoff for repeated failed login attempts.
-4. Rotate encryption keys and define key-management policy.
+> 2026-04-26 기준: 8개 항목 모두 미처리 상태로 확인됨. 처리 우선순위·구현 가이드는 `docs/PRE_PRODUCTION_CHECKLIST.md` 의 매핑 컬럼 참고.
+
+1. ⬜ Move session tokens from localStorage to secure cookies (`HttpOnly`, `Secure`, `SameSite=Lax|Strict`). → CHECKLIST §2-A1 (CRITICAL)
+2. ⬜ Add rate limiting for login/register endpoints. → CHECKLIST §2-A2 (CRITICAL)
+3. ⬜ Add account lockout or exponential backoff for repeated failed login attempts. → CHECKLIST §2-A3 (CRITICAL)
+4. ⚠️ Rotate encryption keys and define key-management policy. → CHECKLIST §2-A4 (CRITICAL)
   - `order_approvals.kis_runtime` is encrypted at rest.
   - `user_settings` secrets are encrypted at rest via `secrets_enc`.
   - 운영 환경에서는 `DATA_ENCRYPTION_KEY`를 명시 설정하고 주기적 로테이션 절차를 운영한다.
-5. Add structured log export pipeline (SIEM or long-term archive).
-6. Add retention policy for `activity_logs` and `user_trades`.
-7. Add full-text or secondary analytics indexes only after workload observation.
-8. Add integration tests for role-based access boundaries.
+  - 현재 `data_encryption_key=""` 기본값 + `app_secret_key="dev-secret-change-me"` 폴백 → 출시 전 필수화 + 부팅 검증 필요.
+5. ⬜ Add structured log export pipeline (SIEM or long-term archive). → CHECKLIST §3-O1 / §4-O5
+6. ⬜ Add retention policy for `activity_logs` and `user_trades`. → CHECKLIST §2-D1 (CRITICAL)
+7. ✅ Add full-text or secondary analytics indexes only after workload observation. (의도적 보류, 유지)
+8. ⬜ Add integration tests for role-based access boundaries. → CHECKLIST §3-T2
 
 ## Migration Notes (In-Memory to DB)
 - Per-user runtime settings are now read/write from `user_settings` collection and injected into LLM/KIS execution context.
