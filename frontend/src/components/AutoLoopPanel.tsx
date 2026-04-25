@@ -70,12 +70,6 @@ export interface AutoTradeRecord {
 const SETTINGS_KEY = "kta_auto_loop_settings_v1";
 const LOOP_ID_KEY = "kta_auto_loop_id_v1";
 
-function actionToScore(action: "BUY" | "SELL" | "HOLD"): number {
-  if (action === "BUY") return 1;
-  if (action === "SELL") return -1;
-  return 0;
-}
-
 function LevelDot({ level }: { level: LoopLog["level"] }) {
   const color =
     level === "success"

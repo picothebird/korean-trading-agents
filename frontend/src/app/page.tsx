@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators, AppUser } from "@/types";
-import { ActivityFeed } from "@/components/AgentOffice";
 import { AgentTimeline } from "@/components/agent-timeline";
 import { AgentInspector } from "@/components/AgentInspector";
 import { AskModal } from "@/components/AskModal";
