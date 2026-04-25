@@ -23,6 +23,7 @@ import {
 } from "./defaultOfficeMap";
 import { AgentActor } from "./AgentActor";
 import { DESK_POSITIONS } from "./deskPositions";
+import { createDeskProps, type DeskPropsHandle } from "./DeskProps";
 
 export const OFFICE_SCENE_KEY = "OfficeScene";
 
@@ -51,6 +52,7 @@ export class OfficeScene extends Phaser.Scene {
   private mapLayer?: Phaser.GameObjects.Container;
   private bgRect?: Phaser.GameObjects.Rectangle;
   private actors: Map<AgentRole, AgentActor> = new Map();
+  private deskProps: DeskPropsHandle[] = [];
   private pendingSnapshots: Map<AgentRole, ThoughtSnapshot> | null = null;
   private lastSeen: Map<AgentRole, string> = new Map(); // role → 마지막 적용 timestamp
   private clickHandler: ((role: AgentRole) => void) | null = null;
@@ -102,7 +104,7 @@ export class OfficeScene extends Phaser.Scene {
     this.bootText = this.add.text(
       width / 2,
       height - 24,
-      `MS6 픽셀 캐릭터 OK · 휠 줌 / 드래그 팬 · 액터 클릭 → 패널`,
+      `MS7 디오라마 OK · 픽셀 캐릭터 + 책상/모니터/화분 prop · 휠 줌 / 드래그 팬`,
       {
         fontFamily: "Pretendard, system-ui, sans-serif",
         fontSize: "12px",
@@ -148,6 +150,8 @@ export class OfficeScene extends Phaser.Scene {
       const desk = DESK_POSITIONS[role];
       const x = desk.col * SCREEN_TILE + SCREEN_TILE / 2;
       const y = desk.row * SCREEN_TILE + SCREEN_TILE / 2;
+      // MS7 디오라마 — 책상/모니터/화분 prop을 캐릭터보다 먼저 배치 (depth -1/-2)
+      this.deskProps.push(createDeskProps(this, x, y));
       const actor = new AgentActor(this, x, y, role);
       actor.onPointerDown(() => {
         if (this.clickHandler) this.clickHandler(role);
