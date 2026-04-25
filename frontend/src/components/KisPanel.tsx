@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   getKisStatus,
   getKisBalance,
+  getKisPrice,
   getSettings,
   placeKisOrder,
   requestKisOrderApproval,
@@ -698,6 +699,50 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   outline: "none", boxSizing: "border-box",
                 }}
               />
+              {/* 빠른 수량 칩 (K2) */}
+              <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
+                {[1, 5, 10, 50].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setOrderQty(String(n))}
+                    style={{
+                      padding: "3px 8px", borderRadius: 99,
+                      border: "1px solid var(--border-default)",
+                      background: "var(--bg-surface)", color: "var(--text-secondary)",
+                      fontSize: 10, fontWeight: 700, cursor: "pointer",
+                    }}
+                  >
+                    {n}주
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const p = await getKisPrice(orderTicker);
+                      const cash = balance?.cash ?? 0;
+                      if (orderSide === "buy") {
+                        if (!p.current_price || cash <= 0) return;
+                        const maxQty = Math.floor((cash * 0.25) / p.current_price);
+                        if (maxQty >= 1) setOrderQty(String(maxQty));
+                      } else {
+                        const held = balance?.holdings?.find((h) => h.ticker === orderTicker);
+                        if (held?.qty && held.qty > 0) setOrderQty(String(held.qty));
+                      }
+                    } catch { /* ignore */ }
+                  }}
+                  title={orderSide === "buy" ? "보유 현금의 25% 한도로 매수 수량 자동 계산" : "현재 보유 수량 전체 매도"}
+                  style={{
+                    padding: "3px 8px", borderRadius: 99,
+                    border: "1px solid var(--brand-border)",
+                    background: "var(--brand-subtle)", color: "var(--brand-active)",
+                    fontSize: 10, fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  {orderSide === "buy" ? "🪄 25%" : "🪄 보유전량"}
+                </button>
+              </div>
             </div>
             <div>
               <label style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 600, display: "block", marginBottom: 6 }}>
@@ -719,6 +764,37 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   cursor: orderType === "01" ? "not-allowed" : "text",
                 }}
               />
+              {/* 빠른 가격 칩 (K4) — 지정가일 때만 표시 */}
+              {orderType === "00" && (
+                <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
+                  {[
+                    { label: "현재가", delta: 0 },
+                    { label: "-1%", delta: -0.01 },
+                    { label: "-2%", delta: -0.02 },
+                    { label: "+1%", delta: 0.01 },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const r = await getKisPrice(orderTicker);
+                          const px = Math.round(r.current_price * (1 + p.delta));
+                          if (px > 0) setOrderPrice(String(px));
+                        } catch { /* ignore */ }
+                      }}
+                      style={{
+                        padding: "3px 8px", borderRadius: 99,
+                        border: "1px solid var(--border-default)",
+                        background: "var(--bg-surface)", color: "var(--text-secondary)",
+                        fontSize: 10, fontWeight: 700, cursor: "pointer",
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

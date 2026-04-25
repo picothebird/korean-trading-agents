@@ -222,6 +222,59 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
         </div>
       </details>
 
+      {/* 신호등 평가 (B2) — Sharpe / Calmar / MDD 종합 등급 */}
+      {(() => {
+        const grade = (val: number, good: number, bad: number, reverse = false) => {
+          if (reverse) {
+            if (val <= bad) return { label: "나쁨", color: "var(--bear)", bg: "var(--bear-subtle)" };
+            if (val <= good) return { label: "보통", color: "var(--warning)", bg: "var(--warning-subtle)" };
+            return { label: "좋음", color: "var(--success)", bg: "var(--success-subtle)" };
+          }
+          if (val >= good) return { label: "좋음", color: "var(--success)", bg: "var(--success-subtle)" };
+          if (val >= bad) return { label: "보통", color: "var(--warning)", bg: "var(--warning-subtle)" };
+          return { label: "나쁨", color: "var(--bear)", bg: "var(--bear-subtle)" };
+        };
+        const sharpeG = grade(m.sharpe_ratio, 1.0, 0.3);
+        const calmarG = grade(m.calmar_ratio, 1.0, 0.5);
+        const mddG = grade(m.max_drawdown, -10, -25, true);
+        const items = [
+          { name: "샤프 비율", val: m.sharpe_ratio.toFixed(2), g: sharpeG, hint: "1.0 ↑ 좋음 · 0.3 ↑ 보통 · 그 미만 나쁨" },
+          { name: "칼마 비율", val: m.calmar_ratio.toFixed(2), g: calmarG, hint: "1.0 ↑ 좋음 · 0.5 ↑ 보통 · 그 미만 나쁨" },
+          { name: "최대 낙폭", val: `${m.max_drawdown.toFixed(1)}%`, g: mddG, hint: "-10% 이내 좋음 · -25% 이내 보통 · 그 이하 나쁨" },
+        ];
+        return (
+          <div style={{
+            padding: "10px 12px",
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-lg)",
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 8,
+          }}>
+            {items.map((it) => (
+              <div key={it.name} title={it.hint} style={{
+                padding: "8px 10px",
+                background: "var(--bg-surface)",
+                borderRadius: "var(--radius-md)",
+                border: `1px solid ${it.g.color}`,
+              }}>
+                <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>{it.name}</p>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "var(--text-primary)" }}>{it.val}</span>
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 99,
+                    background: it.g.bg, color: it.g.color,
+                  }}>
+                    {it.g.label}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Headline KPIs (3 large) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <Metric

@@ -1988,6 +1988,43 @@ export default function Home() {
                         <InfoTip tip="원하는 기간/초기자본을 넣어 동일 전략을 다양한 시장 구간에서 비교할 수 있습니다." subtle />
                       </div>
 
+                      {/* 기간 프리셋 칩 (B1) */}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {([
+                          { label: "3개월", months: 3 },
+                          { label: "6개월 ★", months: 6, recommended: true },
+                          { label: "1년", months: 12 },
+                          { label: "3년", months: 36 },
+                        ] as const).map((p) => {
+                          const setPreset = () => {
+                            const end = new Date();
+                            const start = new Date();
+                            start.setMonth(start.getMonth() - p.months);
+                            const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                            setBtStartDate(fmt(start));
+                            setBtEndDate(fmt(end));
+                          };
+                          return (
+                            <button
+                              key={p.label}
+                              onClick={setPreset}
+                              style={{
+                                padding: "5px 10px",
+                                borderRadius: 99,
+                                border: p.recommended ? "1px solid var(--brand-border)" : "1px solid var(--border-default)",
+                                background: p.recommended ? "var(--brand-subtle)" : "var(--bg-surface)",
+                                color: p.recommended ? "var(--brand-active)" : "var(--text-secondary)",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                           <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>시작일</span>
