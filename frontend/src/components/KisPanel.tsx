@@ -322,6 +322,13 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
 
       setApprovalRequest(null);
       const res = await placeKisOrder(req);
+      // 모의 거래 카운터 증가 (P4.21 — 점진적 unlock 추적)
+      if (status?.is_mock) {
+        try {
+          const cur = Number(window.localStorage.getItem("kta_mock_orders_count_v1") || "0");
+          window.localStorage.setItem("kta_mock_orders_count_v1", String(cur + 1));
+        } catch { /* ignore */ }
+      }
       setOrderResult(
         `[${status?.is_mock ? "모의" : "실거래"}] 주문 완료 — 주문번호: ${res.order_no || "—"} · ${res.order_type_label} ${res.side === "buy" ? "매수" : "매도"} ${res.qty}주`
       );
@@ -549,6 +556,31 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
               <Icon name="warning" size={12} decorative /> 현재 모의투자 모드입니다. 실제 주문이 체결되지 않습니다.
             </p>
           )}
+          {/* 모의 → 실거래 점진적 unlock 진행도 (P4.21) */}
+          {isMock && (() => {
+            let count = 0;
+            try { count = Number(window.localStorage.getItem("kta_mock_orders_count_v1") || "0"); } catch { /* ignore */ }
+            const target = 10;
+            const pct = Math.min(100, (count / target) * 100);
+            return (
+              <div style={{ marginTop: 6, padding: "6px 8px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                  <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>🔓 모의 주문 경험</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: count >= target ? "var(--success)" : "var(--text-secondary)" }}>
+                    {count} / {target}회 {count >= target && "— 실거래 도전 가능"}
+                  </span>
+                </div>
+                <div style={{ height: 3, background: "var(--border-subtle)", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: count >= target ? "var(--success)" : "var(--brand-active)" }} />
+                </div>
+                {count < target && (
+                  <p style={{ fontSize: 8, color: "var(--text-quaternary)", marginTop: 3 }}>
+                    실거래 전 모의로 충분히 익히는 것을 권장합니다 (10회 이상)
+                  </p>
+                )}
+              </div>
+            );
+          })()}
           {!isMock && (
             <p style={{ fontSize: 10, color: "var(--bear)", marginTop: 4, fontWeight: 600 }}>
               <Icon name="warning" size={12} decorative style={{ color: "var(--bull)" }} /> 실전투자 모드 — 실제 주문이 체결됩니다!

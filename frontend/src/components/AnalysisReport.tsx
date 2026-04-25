@@ -408,6 +408,39 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
           hint="L1 분석을 바탕으로 강세론(매수해야 한다) AI와 약세론(사지 말고 기다려야 한다) AI가 서로 반박하며 논의합니다. 라운드가 진행될수록 상대 주장에 대한 반박이 쌓여요."
           index={2}
         >
+          {/* 토론 스코어 공개 (P3.R3) */}
+          {(() => {
+            const bullPts = debate.bull_key_points?.length ?? 0;
+            const bearPts = debate.bear_key_points?.length ?? 0;
+            const bullRounds = debate.bull_rounds?.length ?? 0;
+            const bearRounds = debate.bear_rounds?.length ?? 0;
+            const action = decision.action;
+            const winner = action === "BUY" ? "bull" : action === "SELL" ? "bear" : "draw";
+            const total = Math.max(1, bullPts + bearPts);
+            const bullPct = (bullPts / total) * 100;
+            return (
+              <div style={{ marginBottom: 10, padding: "10px 12px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, color: "var(--bull)", fontWeight: 700 }}>
+                    🐂 강세 {bullPts}점 / {bullRounds}라운드 {winner === "bull" && "🏆"}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>토론 결과</span>
+                  <span style={{ fontSize: 10, color: "var(--bear)", fontWeight: 700 }}>
+                    {winner === "bear" && "🏆 "}🐻 약세 {bearPts}점 / {bearRounds}라운드
+                  </span>
+                </div>
+                <div style={{ display: "flex", height: 5, borderRadius: 99, overflow: "hidden", background: "var(--border-subtle)" }}>
+                  <div style={{ width: `${bullPct}%`, background: "var(--bull)" }} />
+                  <div style={{ width: `${100 - bullPct}%`, background: "var(--bear)" }} />
+                </div>
+                <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 6, lineHeight: 1.5 }}>
+                  최종 결정 <b style={{ color: winner === "bull" ? "var(--bull)" : winner === "bear" ? "var(--bear)" : "var(--text-secondary)" }}>{action}</b>은
+                  {winner === "draw" ? " 양쪽 의견이 팽팽해 보류로 결론났습니다." : ` ${winner === "bull" ? "강세론" : "약세론"} 측의 논리가 더 설득력 있다고 평가받았습니다.`}
+                </p>
+              </div>
+            );
+          })()}
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div
               style={{
