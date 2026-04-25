@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from datetime import datetime
 from typing import AsyncGenerator
 from dataclasses import dataclass, field, asdict
@@ -56,6 +57,10 @@ class TradeDecision:
 # 전역 이벤트 큐 (에이전트 → 프론트엔드 스트리밍)
 _thought_queues: dict[str, asyncio.Queue] = {}
 
+# MS-B: (session_id, role) → 마지막 emit 시각 (monotonic seconds).
+# 각 thought에 metadata.duration_ms (이 에이전트의 직전 발화 이후 경과 ms)를 채워 UI에서 처리 시간을 표기.
+_last_emit_ts: dict[tuple[str, str], float] = {}
+
 
 def get_thought_queue(session_id: str) -> asyncio.Queue:
     if session_id not in _thought_queues:
@@ -70,11 +75,116 @@ def clear_thought_queue(session_id: str) -> None:
     큐 객체가 누적되는 것을 방지하기 위한 유틸리티.
     """
     _thought_queues.pop(session_id, None)
+    # 해당 세션의 duration tracking 키도 함께 청소
+    for k in [k for k in _last_emit_ts.keys() if k[0] == session_id]:
+        _last_emit_ts.pop(k, None)
 
 
 async def emit_thought(session_id: str, thought: AgentThought):
+    # MS-A.A10: metadata.signal 표준화 — 프론트엔드가 일관된 키로 의미 신호를 받도록
+    # 우선순위: 호출자가 직접 metadata["signal"]을 설정했으면 존중.
+    # 미설정 시 (role, status, metadata.signal_raw) 기반으로 도출.
+    _ensure_signal(thought)
+    # MS-B: duration_ms 채우기 — 같은 (session, role)의 직전 emit 이후 경과 시간
+    _ensure_duration(session_id, thought)
+    # MS-D: data_sources / model / latency_ms 표준화 (있을 때만)
+    _normalize_provenance(thought)
     queue = get_thought_queue(session_id)
     await queue.put(thought)
+
+
+def _normalize_provenance(thought: AgentThought) -> None:
+    """MS-D D9 — provenance 메타데이터 표준화.
+
+    - `data_sources`: list[str] 로 통일. 별칭 `sources` 도 인식.
+    - `model`: str (예: "gpt-4o", "claude-opus-4"). 별칭 `model_id` 인식.
+    - `latency_ms`: int. 별칭 `elapsed_ms`, `processing_ms` 인식.
+
+    값이 없거나 변환 불가하면 키를 만들지 않는다 (UI 측 optional render).
+    """
+    md = thought.metadata
+    if not isinstance(md, dict):
+        return
+
+    # data_sources 정규화
+    if "data_sources" not in md:
+        alias = md.get("sources")
+        if isinstance(alias, (list, tuple)):
+            md["data_sources"] = [str(x) for x in alias if x]
+        elif isinstance(alias, str) and alias.strip():
+            md["data_sources"] = [alias.strip()]
+    elif isinstance(md.get("data_sources"), str):
+        md["data_sources"] = [md["data_sources"]]
+
+    # model 정규화
+    if "model" not in md:
+        alt = md.get("model_id") or md.get("llm_model")
+        if isinstance(alt, str) and alt.strip():
+            md["model"] = alt.strip()
+
+    # latency_ms 정규화
+    if "latency_ms" not in md:
+        for key in ("elapsed_ms", "processing_ms", "duration_ms_llm"):
+            v = md.get(key)
+            if isinstance(v, (int, float)) and v >= 0:
+                md["latency_ms"] = int(v)
+                break
+
+
+def _ensure_duration(session_id: str, thought: AgentThought) -> None:
+    """이 에이전트가 직전 발화 이후 걸린 시간(ms)을 metadata.duration_ms에 채운다."""
+    if not isinstance(thought.metadata, dict):
+        return
+    if "duration_ms" in thought.metadata:
+        return  # 호출자가 직접 지정한 값 존중
+    role_str = thought.role.value if isinstance(thought.role, AgentRole) else str(thought.role)
+    key = (session_id, role_str)
+    now = time.monotonic()
+    last = _last_emit_ts.get(key)
+    if last is not None:
+        thought.metadata["duration_ms"] = int((now - last) * 1000)
+    _last_emit_ts[key] = now
+
+
+def _ensure_signal(thought: AgentThought) -> None:
+    """thought.metadata['signal'] ∈ {'bull','bear','risk','done'} 보장.
+    없으면 가능할 때만 채우고, 도출 불가 시 키를 생성하지 않는다."""
+    md = thought.metadata
+    if not isinstance(md, dict):
+        return
+    if md.get("signal") in ("bull", "bear", "risk", "done"):
+        return
+
+    role = thought.role.value if isinstance(thought.role, AgentRole) else str(thought.role)
+    status = thought.status.value if isinstance(thought.status, AgentStatus) else str(thought.status)
+
+    # bull/bear researcher → 항상 자기 진영
+    if role == "bull_researcher":
+        md["signal"] = "bull"
+        return
+    if role == "bear_researcher":
+        md["signal"] = "bear"
+        return
+    # risk_manager → risk
+    if role == "risk_manager":
+        md["signal"] = "risk"
+        return
+    # portfolio_manager / guru_agent의 done 상태 → done
+    if role in ("portfolio_manager", "guru_agent") and status == "done":
+        md["signal"] = "done"
+        return
+
+    # 분석가: result에 signal=BUY/SELL/HOLD가 있으면 매핑
+    raw = md.get("signal_raw") or md.get("trade_signal")
+    if isinstance(raw, str):
+        u = raw.upper()
+        if u == "BUY":
+            md["signal"] = "bull"
+        elif u == "SELL":
+            md["signal"] = "bear"
+        elif u == "HOLD":
+            # HOLD는 신호로 표시하지 않음 — 키 생략
+            pass
 
 
 async def stream_thoughts(session_id: str) -> AsyncGenerator[str, None]:

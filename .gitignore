@@ -12,6 +12,11 @@ ENV/
 dist/
 build/
 
+# Node
+node_modules/
+.next/
+out/
+
 # 환경 변수 (API 키 절대 커밋 금지)
 .env
 .env.*

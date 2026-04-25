@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole } from "@/types";
+import { useAgentOffice } from "@/stores/useAgentOffice";
 
 // ── Canvas dimensions ──────────────────────────────────────────────
 const W = 620;
@@ -31,7 +32,7 @@ const AGENTS: Record<AgentRole, AgentMeta> = {
   bear_researcher:     { x: 510, y: 320, label: "약세 연구원",      layer: 2, accent: "#2B7EF5", hair: "#060606", shirt: "#0c1e56", pants: "#04040c", desk: false },
   risk_manager:        { x: 430, y: 250, label: "리스크 매니저",    layer: 3, accent: "#F5A623", hair: "#140808", shirt: "#6e4e00", pants: "#0c0c0c", desk: true },
   portfolio_manager:   { x: 510, y: 110, label: "포트폴리오 매니저", layer: 3, accent: "#3182F6", hair: "#585858", shirt: "#bcc4cc", pants: "#1e1e2e", desk: false },
-  guru_agent:          { x: 560, y: 220, label: "GURU",            layer: 3, accent: "#7D6BFF", hair: "#f2f2f2", shirt: "#3f2c8f", pants: "#17192e", desk: true },
+  guru_agent:          { x: 560, y: 220, label: "구루 에이전트",  layer: 3, accent: "#7D6BFF", hair: "#f2f2f2", shirt: "#3f2c8f", pants: "#17192e", desk: true },
 };
 
 const LAYER_1_ROLES: AgentRole[] = [
@@ -422,18 +423,18 @@ function drawBackground(ctx: CanvasRenderingContext2D) {
   ctx.textBaseline = "top";
 
   ctx.fillStyle = "rgba(236,225,194,0.88)";
-  ctx.fillText("RESEARCH FLOOR", 10, 8);
+  ctx.fillText("리서치 플로어", 10, 8);
 
   ctx.fillStyle = "rgba(76,115,160,0.9)";
-  ctx.fillText("EXCHANGE", 346, 6);
+  ctx.fillText("거래실", 346, 6);
 
   ctx.fillStyle = "rgba(215,225,255,0.95)";
-  ctx.fillText("MEETING ROOM", 346, 166);
+  ctx.fillText("회의실", 346, 166);
 
   // Process pipeline hint
   ctx.fillStyle = "rgba(225, 233, 255, 0.74)";
   ctx.font = "bold 9px 'VT323', 'Courier New', monospace";
-  ctx.fillText("INVESTIGATE -> DEBATE -> REPORT -> DECIDE -> EXCHANGE", 10, H - 12);
+  ctx.fillText("데이터 수집 → 토론 → 리스크 트리아지 → 결정 → 거래 집행", 10, H - 12);
 }
 
 function drawDesk(
@@ -720,7 +721,8 @@ function drawLabel(
     : "rgba(20,21,24,0.85)";
   ctx.fillRect(lx, ly, lw, lh);
 
-  ctx.fillStyle = isDone ? "#2FCA73" : isActive ? accent : "#4E5867";
+  // MS-A.A15: 유휴 상태에서도 캐릭터 식별이 가능하도록 색상 가독성 향상
+  ctx.fillStyle = isDone ? "#2FCA73" : isActive ? accent : "#A8B0BD";
   ctx.fillText(label, cx, ly + 2);
 }
 
@@ -742,6 +744,35 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
   const activeRef = useRef(activeAgents);
   const actorStatesRef = useRef<Record<AgentRole, ActorRuntimeState>>(createInitialActorRuntimeState());
   const lastFrameTimeRef = useRef<number>(0);
+  const [hoveredRole, setHoveredRole] = useState<AgentRole | null>(null);
+  const openInspector = useAgentOffice((s) => s.openInspector);
+  const setFocusedRole = useAgentOffice((s) => s.setFocusedRole);
+
+  // 캔버스 좌표 → 가장 가까운 에이전트 (반경 28px 이내)
+  const hitTestAgent = useCallback((px: number, py: number): AgentRole | null => {
+    let best: { role: AgentRole; d2: number } | null = null;
+    for (const [role, meta] of Object.entries(AGENTS) as [AgentRole, AgentMeta][]) {
+      // 캐릭터는 발 기준 y, 머리까지 약 32px 위.
+      const cx = meta.x;
+      const cy = meta.y - 18;
+      const dx = px - cx;
+      const dy = py - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 28 * 28 && (!best || d2 < best.d2)) {
+        best = { role, d2 };
+      }
+    }
+    return best?.role ?? null;
+  }, []);
+
+  // 캔버스 좌표 변환 (display 크기 ↔ 내부 W×H)
+  const canvasCoords = useCallback((e: React.MouseEvent<HTMLCanvasElement>): [number, number] => {
+    const c = e.currentTarget;
+    const rect = c.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W;
+    const y = ((e.clientY - rect.top) / rect.height) * H;
+    return [x, y];
+  }, []);
 
   // Keep refs in sync without re-triggering effect
   thoughtsRef.current = thoughts;
@@ -899,7 +930,31 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
         ref={canvasRef}
         width={W}
         height={H}
-        style={{ display: "block", position: "absolute", inset: 0, width: "100%", height: "100%" }}
+        onMouseMove={(e) => {
+          const [x, y] = canvasCoords(e);
+          const r = hitTestAgent(x, y);
+          if (r !== hoveredRole) {
+            setHoveredRole(r);
+            setFocusedRole(r);
+          }
+        }}
+        onMouseLeave={() => {
+          setHoveredRole(null);
+          setFocusedRole(null);
+        }}
+        onClick={(e) => {
+          const [x, y] = canvasCoords(e);
+          const r = hitTestAgent(x, y);
+          if (r) openInspector(r);
+        }}
+        style={{
+          display: "block",
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          cursor: hoveredRole ? "pointer" : "default",
+        }}
       />
 
       {/* CRT scanline overlay for retro monitoring feel */}

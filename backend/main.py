@@ -21,11 +21,12 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from bson import ObjectId
 
 from backend.api.user_system import router as user_system_router
+from backend.api.office_layouts import router as office_layouts_router
 from backend.core.config import settings
 from backend.core.events import stream_thoughts, AgentThought, AgentRole, AgentStatus, emit_thought
 from backend.core.mongodb import connect_to_mongo, close_mongo, get_mongo_health, get_mongo_database
@@ -134,6 +135,7 @@ app.add_middleware(
 
 install_user_activity_middleware(app)
 app.include_router(user_system_router)
+app.include_router(office_layouts_router)
 
 
 # ── 스키마 ───────────────────────────────────────────────
@@ -503,6 +505,82 @@ async def get_result(session_id: str, request: Request):
     if not _has_runtime_session_access(session, user):
         raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
     return serialize_runtime_session(session)
+
+
+# ── MS-C: 사용자 → 에이전트 후속 질문 ────────────────────────────
+# docs/AGENT_OFFICE_GATHER_LEVEL_UP.md §0-sexies.1 (C-3, C-6)
+class AskRequest(BaseModel):
+    role: str  # AgentRole 값 (예: "technical_analyst")
+    question: str  # 자연어 질문
+    thought_timestamp: Optional[str] = None  # 참조하는 발화의 timestamp (옵션)
+
+
+@app.post("/api/analysis/{session_id}/ask")
+async def ask_analysis_agent(session_id: str, req: AskRequest, request: Request):
+    """사용자가 분석 세션의 특정 에이전트에게 후속 질문을 던진다.
+
+    1차 구현(stub): 질문 자체를 즉시 thought 형태로 SSE에 emit해서 UI에 노출하고,
+    "확인했음" 응답 thought를 후속으로 emit한다. (LLM 재호출은 후속 PR에서 추가)
+
+    이를 통해 프론트는 양방향 인터랙션 채널을 갖추고, 백엔드는 동일 인터페이스로
+    이후 정식 LLM follow-up을 끼워 넣을 수 있다.
+    """
+    user = await require_user(request)
+    db = _require_mongo_db()
+    session = await get_runtime_session(db, session_id, SESSION_TYPE_ANALYSIS)
+    if not session:
+        raise HTTPException(status_code=404, detail="세션 없음")
+    if not _has_runtime_session_access(session, user):
+        raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
+
+    role_value = (req.role or "").strip()
+    question = (req.question or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="질문 내용이 비어 있습니다")
+    if len(question) > 2000:
+        raise HTTPException(status_code=400, detail="질문은 2000자를 넘을 수 없습니다")
+
+    try:
+        target_role = AgentRole(role_value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 에이전트 역할: {role_value}")
+
+    # 1) 사용자 질문을 사용자 측 발화로 즉시 emit (UI에 즉각 표시)
+    user_label = "사용자"
+    user_thought = AgentThought(
+        agent_id=f"user-{_user_id_str(user) or 'anon'}",
+        role=target_role,
+        status=AgentStatus.THINKING,
+        content=f"💬 {user_label} 질문: {question}",
+        metadata={
+            "kind": "user_question",
+            "user_id": _user_id_str(user),
+            "ref_timestamp": req.thought_timestamp,
+        },
+    )
+    await emit_thought(session_id, user_thought)
+
+    # 2) "수신함, 후속 답변 준비 중" 안내 — 정식 LLM follow-up은 후속 PR
+    ack_thought = AgentThought(
+        agent_id=f"{target_role.value}-followup",
+        role=target_role,
+        status=AgentStatus.THINKING,
+        content=(
+            "사용자 후속 질문을 확인했습니다. 본 세션의 컨텍스트로 추가 분석을 준비합니다. "
+            "정식 LLM 후속 답변은 차기 업데이트에서 활성화됩니다."
+        ),
+        metadata={
+            "kind": "user_question_ack",
+            "ref_question_timestamp": user_thought.timestamp,
+        },
+    )
+    await emit_thought(session_id, ack_thought)
+
+    return {
+        "accepted": True,
+        "message": "질문이 큐에 등록되었습니다.",
+        "question_timestamp": user_thought.timestamp,
+    }
 
 
 @app.post("/api/backtest")

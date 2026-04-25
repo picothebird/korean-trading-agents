@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, SVGProps } from "react";
+import type { CSSProperties, SVGProps, ReactElement } from "react";
 
 // ── Vector Icon Set ─────────────────────────────────────────────────
 // Single source of truth for all iconography.
@@ -34,7 +34,7 @@ type IconProps = Omit<SVGProps<SVGSVGElement>, "name"> & {
   label?: string;
 };
 
-const PATHS: Record<IconName, JSX.Element> = {
+const PATHS: Record<IconName, ReactElement> = {
   // ── navigation / structure ─────────────────────────────────────
   compass: (
     <>

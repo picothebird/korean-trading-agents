@@ -9,6 +9,7 @@
 import { motion } from "framer-motion";
 import type { TradeDecision } from "@/types";
 import { Tooltip, Icon } from "@/components/ui";
+import { AgreementDonut, ConfidenceGauge } from "@/components/viz/Primitives";
 
 const ANALYST_LABEL: Record<string, { ko: string; what: string }> = {
   technical: {
@@ -115,6 +116,15 @@ interface AnalysisReportProps {
   decision: TradeDecision;
 }
 
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--text-secondary)" }}>
+      <span style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
+      {label}
+    </span>
+  );
+}
+
 export function AnalysisReport({ decision }: AnalysisReportProps) {
   const s = decision.agents_summary;
   const details = s.analyst_details ?? {};
@@ -177,6 +187,77 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
             : "에이전트들의 의견이 갈려 신중한 판단이 필요해요."}
         </p>
       </Section>
+
+      {/* MS-D D2: 합의도 도넛 + 반대 의견 강조 */}
+      {(() => {
+        const finalAction = decision.action;
+        const dEntries = Object.entries(details);
+        let agree = 0;
+        let disagree = 0;
+        let neutral = 0;
+        const dissent: { key: string; ko: string; signal: string; conf: number }[] = [];
+        for (const [k, d] of dEntries) {
+          const sig = String(d?.signal ?? "").toUpperCase();
+          if (sig === finalAction) agree++;
+          else if (sig === "HOLD" || !sig) neutral++;
+          else {
+            disagree++;
+            dissent.push({
+              key: k,
+              ko: ANALYST_LABEL[k]?.ko ?? k,
+              signal: sig,
+              conf: Math.round((d?.confidence ?? 0) * 100),
+            });
+          }
+        }
+        if (agree + disagree + neutral === 0) return null;
+        return (
+          <Section
+            title="1-bis. 9 에이전트 합의도"
+            hint="9명의 AI 에이전트(분석가 4 + 연구원 2 + 리스크/포트폴리오/구루 3)가 최종 결정과 같은 방향이었는지 한눈에 확인."
+            index={0}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+              <AgreementDonut agree={agree} disagree={disagree} neutral={neutral} size={72} thickness={9} />
+              <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
+                  <Legend color="var(--bull)" label={`찬성 ${agree}명`} />
+                  <Legend color="var(--bear)" label={`반대 ${disagree}명`} />
+                  <Legend color="var(--text-tertiary)" label={`중립 ${neutral}명`} />
+                </div>
+                <div style={{ marginTop: 4 }}>
+                  <ConfidenceGauge value={decision.confidence} size={50} thickness={6} />
+                </div>
+              </div>
+            </div>
+            {dissent.length > 0 && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "10px 12px",
+                  background: "var(--bear-subtle)",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--bear-border)",
+                }}
+              >
+                <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bear)", margin: 0 }}>
+                  ⚠ 반대 의견 ({dissent.length}명)
+                </p>
+                <p style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4, lineHeight: 1.6 }}>
+                  최종 결정과 다른 신호를 낸 에이전트가 있습니다. 결정 전 이 의견을 반드시 검토하세요.
+                </p>
+                <ul style={{ marginTop: 8, paddingLeft: 16, fontSize: 11, color: "var(--text-primary)" }}>
+                  {dissent.map((x) => (
+                    <li key={x.key} style={{ marginBottom: 2 }}>
+                      <strong>{x.ko}</strong> — <SignalBadge signal={x.signal} /> (신뢰도 {x.conf}%)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Section>
+        );
+      })()}
 
       {/* 2. L1 — 4명의 분석가가 본 시장 */}
       <Section

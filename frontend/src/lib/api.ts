@@ -283,6 +283,28 @@ export async function getAnalysisSession(sessionId: string): Promise<AnalysisSes
   return (await res.json()) as AnalysisSessionDetail;
 }
 
+/**
+ * MS-C: 사용자가 분석 세션의 특정 에이전트(또는 발화)에게 후속 질문을 보낸다.
+ * 백엔드는 비동기로 추가 thought를 SSE 스트림에 emit한다.
+ *
+ * docs/AGENT_OFFICE_GATHER_LEVEL_UP.md §0-sexies.1 (C-3, C-6)
+ */
+export async function askAgent(
+  sessionId: string,
+  payload: { role: string; question: string; thought_timestamp?: string | null },
+): Promise<{ accepted: boolean; message?: string }> {
+  const res = await apiFetch(`${BASE_URL}/api/analysis/${encodeURIComponent(sessionId)}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `질문 전송 실패 (${res.status})`);
+  }
+  return (await res.json()) as { accepted: boolean; message?: string };
+}
+
 export function streamAgentBacktest(
   sessionId: string,
   onProgress: (event: import("@/types").BacktestProgress) => void,
@@ -724,5 +746,129 @@ export async function getMasterTrades(
   }
   return res.json();
 }
+
+// ─────────────────────────────────────────────
+// MS8 — office_layouts CRUD client
+// ─────────────────────────────────────────────
+
+export type OfficeFurniture = {
+  asset_id: string;
+  x: number;
+  y: number;
+  rotation: 0 | 90 | 180 | 270;
+  layer: "floor" | "wall" | "decor";
+};
+
+export type OfficeCharacter = {
+  role: string;
+  base?: string;
+  hair?: string;
+  outfit?: string;
+  accent_color?: string | null;
+};
+
+export type OfficeTheme = "neutral" | "warm" | "dark" | "hanok";
+
+export type OfficeLayout = {
+  _id: string;
+  user_id?: string;
+  name: string;
+  map_id: string;
+  theme: OfficeTheme;
+  furniture: OfficeFurniture[];
+  characters: OfficeCharacter[];
+  notes: string;
+  is_active?: boolean;
+  shared_token?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OfficeLayoutCreate = {
+  name: string;
+  map_id?: string;
+  theme?: OfficeTheme;
+  furniture?: OfficeFurniture[];
+  characters?: OfficeCharacter[];
+  notes?: string;
+  set_active?: boolean;
+};
+
+export type OfficeLayoutUpdate = Partial<Omit<OfficeLayoutCreate, "set_active">>;
+
+async function _olJson<T>(res: Response, fallback: string): Promise<T> {
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: fallback }));
+    throw new Error(err.detail ?? fallback);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function listOfficeLayouts(): Promise<OfficeLayout[]> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts`);
+  const data = await _olJson<{ items: OfficeLayout[] }>(res, "레이아웃 목록 로드 실패");
+  return data.items;
+}
+
+export async function getActiveOfficeLayout(): Promise<OfficeLayout | null> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/active`);
+  const data = await _olJson<{ layout: OfficeLayout | null }>(res, "활성 레이아웃 로드 실패");
+  return data.layout;
+}
+
+export async function getOfficeLayout(id: string): Promise<OfficeLayout> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/${id}`);
+  const data = await _olJson<{ layout: OfficeLayout }>(res, "레이아웃 로드 실패");
+  return data.layout;
+}
+
+export async function createOfficeLayout(payload: OfficeLayoutCreate): Promise<OfficeLayout> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await _olJson<{ layout: OfficeLayout }>(res, "레이아웃 생성 실패");
+  return data.layout;
+}
+
+export async function updateOfficeLayout(id: string, patch: OfficeLayoutUpdate): Promise<OfficeLayout> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const data = await _olJson<{ layout: OfficeLayout }>(res, "레이아웃 업데이트 실패");
+  return data.layout;
+}
+
+export async function deleteOfficeLayout(id: string): Promise<void> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/${id}`, { method: "DELETE" });
+  await _olJson(res, "레이아웃 삭제 실패");
+}
+
+export async function activateOfficeLayout(id: string): Promise<OfficeLayout | null> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/${id}/activate`, { method: "POST" });
+  const data = await _olJson<{ layout: OfficeLayout | null }>(res, "활성화 실패");
+  return data.layout;
+}
+
+export async function issueOfficeLayoutShareToken(id: string): Promise<{ shared_token: string; layout: OfficeLayout }> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/${id}/share`, { method: "POST" });
+  return _olJson(res, "공유 토큰 발급 실패");
+}
+
+export async function revokeOfficeLayoutShareToken(id: string): Promise<OfficeLayout> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/${id}/share`, { method: "DELETE" });
+  const data = await _olJson<{ layout: OfficeLayout }>(res, "공유 토큰 회수 실패");
+  return data.layout;
+}
+
+export async function getSharedOfficeLayout(token: string): Promise<OfficeLayout> {
+  const res = await apiFetch(`${BASE_URL}/api/office-layouts/shared/${encodeURIComponent(token)}`);
+  const data = await _olJson<{ layout: OfficeLayout }>(res, "공유 레이아웃 로드 실패");
+  return data.layout;
+}
+
 
 

@@ -4,13 +4,20 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators, AppUser } from "@/types";
 import { ActivityFeed } from "@/components/AgentOffice";
+import { AgentTimeline } from "@/components/agent-timeline";
+import { AgentInspector } from "@/components/AgentInspector";
+import { AskModal } from "@/components/AskModal";
+import { CommandPalette } from "@/components/CommandPalette";
+import { ShortcutsOverlay } from "@/components/ShortcutsOverlay";
+import { PipelineBar } from "@/components/PipelineBar";
 import { DecisionCard } from "@/components/DecisionCard";
 import { AnalysisReport } from "@/components/AnalysisReport";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { SettingsPanel, type SettingsTab } from "@/components/SettingsPanel";
 import { KisPanel } from "@/components/KisPanel";
-import { PixelOffice } from "@/components/PixelOffice";
-import { StockChartPanel } from "@/components/StockChartPanel";
+import { PhaserCanvas } from "@/components/game/PhaserCanvas";
+import { MarketStatusBadge } from "@/components/MarketStatusBadge";
+import { useAutoNotify } from "@/lib/notifications";import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
 import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
 import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip, Dialog, Loader } from "@/components/ui";
@@ -20,7 +27,7 @@ import {
   listAnalysisHistory, getAnalysisSession, type AnalysisHistoryItem,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest, cancelAgentBacktest,
   listAgentBacktestHistory, getAgentBacktestResult,
-  getAccessToken, clearAccessToken, getMe,
+  getAccessToken, clearAccessToken, getMe, askAgent,
 } from "@/lib/api";
 
 // ── Constants ────────────────────────────────────────────────────
@@ -762,6 +769,8 @@ export default function Home() {
   const [activeAgents, setActiveAgents] = useState<Set<AgentRole>>(new Set());
   const [decision, setDecision] = useState<TradeDecision | null>(null);
   const [logs, setLogs] = useState<AgentThought[]>([]);
+  // MS-F F5: 새 thought 도착 시 사용자 정의 알림 규칙 평가
+  useAutoNotify(logs.length > 0 ? logs[logs.length - 1] : null);
   const [marketData, setMarketData] = useState<Record<string, { current: number; change_pct: number }>>({});
   const [btResult, setBtResult] = useState<BacktestResult | null>(null);
   const [btLoading, setBtLoading] = useState(false);
@@ -779,8 +788,8 @@ export default function Home() {
   const [btHistoryLoading, setBtHistoryLoading] = useState(false);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([]);
   const [analysisHistoryLoading, setAnalysisHistoryLoading] = useState(false);
-  // 진행 중인 분석 세션 ID (복구 + 표시용)
-  const [, setActiveAnalysisSessionId] = useState<string | null>(null);
+  // 진행 중인 분석 세션 ID (복구 + 표시용 + MS-C 후속 질문 라우팅용)
+  const [activeAnalysisSessionId, setActiveAnalysisSessionId] = useState<string | null>(null);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
   const [approvalModal, setApprovalModal] = useState(false);
@@ -2471,52 +2480,49 @@ export default function Home() {
             <p style={{ fontSize: 12, fontWeight: 700, color: "var(--brand-active)", letterSpacing: "0.08em" }}>
               에이전트 컨트롤룸
             </p>
-            <span
-              style={{
-                fontSize: 9,
-                color: "var(--brand-active)",
-                background: "var(--bg-surface)",
-                padding: "2px 8px",
-                borderRadius: 99,
-                border: "1px solid var(--brand-border)",
-                letterSpacing: "0.06em",
-                fontWeight: 600,
-              }}
-            >
-              DATA · DEBATE · DECISION
-            </span>
+            {/* MS-A.A6: 파이프라인 진행 바 (DATA·DEBATE·DECISION 배지 대체) */}
+            <PipelineBar thoughts={thoughts} compact />
           </div>
 
           {/* Status badge + Settings */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {isRunning && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                style={{ display: "flex", alignItems: "center", gap: 6 }}
-              >
-                <motion.span
-                  animate={{ opacity: [1, 0.4, 1] }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
-                  style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--brand)", display: "inline-block" }}
-                />
-                <span style={{ fontSize: 10, fontWeight: 700, color: "var(--brand)" }}>
-                  분석 중 · {activeCount}개 활성
-                </span>
-              </motion.div>
-            )}
-            {!isRunning && thoughts.size > 0 && (
-              <span style={{ fontSize: 10, fontWeight: 600, color: decision ? "var(--success)" : "var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                {decision ? (
-                  <>
-                    <Icon name="check-circle" size={12} decorative />
-                    분석 완료
-                  </>
-                ) : (
-                  `${thoughts.size}/8 완료`
-                )}
-              </span>
-            )}
+            {/* MS-E E10: 한국 시장 세션 상태 */}
+            <MarketStatusBadge compact />
+            {/* MS-A.A3: 3-state 상태 칩 — 대기 중 / 회의 진행 중 / 회의 완료 */}
+            {(() => {
+              const total = thoughts.size;
+              const isDone = !isRunning && total > 0;
+              const stateText = isRunning ? "회의 진행 중" : isDone ? "회의 완료" : "대기 중";
+              const stateColor = isRunning ? "var(--brand)" : isDone ? "var(--success)" : "var(--text-tertiary)";
+              const stateBg = isRunning ? "var(--brand-subtle)" : isDone ? "var(--success-subtle)" : "var(--bg-elevated)";
+              return (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 10px",
+                    borderRadius: 99,
+                    background: stateBg,
+                    color: stateColor,
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  {isRunning && (
+                    <motion.span
+                      animate={{ opacity: [1, 0.4, 1] }}
+                      transition={{ duration: 1.2, repeat: Infinity }}
+                      style={{ width: 6, height: 6, borderRadius: "50%", background: stateColor, display: "inline-block" }}
+                    />
+                  )}
+                  {isDone && <Icon name="check-circle" size={12} decorative />}
+                  <span>{stateText}</span>
+                </motion.div>
+              );
+            })()}
             <button
               onClick={() => openSettings("overview")}
               title="설정"
@@ -2558,11 +2564,12 @@ export default function Home() {
               border: "1px solid var(--border-subtle)",
               borderRadius: 12,
               padding: 8,
-              background: "linear-gradient(180deg, rgba(96,48,255,0.06) 0%, rgba(20,21,24,0.65) 100%)",
+              background: "var(--bg-canvas)",
               overflow: "hidden",
             }}
           >
-            <PixelOffice thoughts={thoughts} activeAgents={activeAgents} />
+            {/* MS0: PixelOffice → PhaserCanvas로 교체. MS3: thoughts(logs) 주입. */}
+            <PhaserCanvas thoughts={logs} />
           </div>
 
           <div
@@ -2571,7 +2578,7 @@ export default function Home() {
               border: "1px solid var(--border-subtle)",
               borderRadius: 12,
               padding: "8px 10px",
-              background: "linear-gradient(180deg, rgba(116,111,255,0.08) 0%, rgba(18,19,24,0.9) 100%)",
+              background: "var(--bg-canvas)",
               overflow: "hidden",
               display: "flex",
               flexDirection: "column",
@@ -2579,19 +2586,18 @@ export default function Home() {
           >
             <p
               style={{
-                fontSize: 9,
+                fontSize: 10,
                 fontWeight: 700,
-                color: "rgba(214,210,255,0.95)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
+                color: "var(--text-secondary)",
+                letterSpacing: "0.04em",
                 marginBottom: 6,
                 flexShrink: 0,
               }}
             >
-              실시간 활동 로그
+              에이전트 타임라인
             </p>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <ActivityFeed logs={logs} logEndRef={logEndRef} />
+              <AgentTimeline thoughts={logs} />
             </div>
           </div>
         </div>
@@ -2764,6 +2770,22 @@ export default function Home() {
         initialTab={settingsInitialTab}
         userRole={currentUser?.role}
       />
+
+      {/* ── MS-C: 글로벌 인터랙션 레이어 ───────────────────────── */}
+      <AgentInspector thoughts={logs} />
+      <AskModal
+        sessionId={activeAnalysisSessionId}
+        onSubmit={async ({ role, question, thoughtTimestamp }) => {
+          if (!activeAnalysisSessionId) return;
+          await askAgent(activeAnalysisSessionId, {
+            role,
+            question,
+            thought_timestamp: thoughtTimestamp,
+          });
+        }}
+      />
+      <CommandPalette />
+      <ShortcutsOverlay />
     </div>
   );
 }

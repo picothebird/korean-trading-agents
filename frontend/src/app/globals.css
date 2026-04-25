@@ -234,6 +234,176 @@
 }
 
 /* ─────────────────────────────────────────────
+   MS-E E4 — Warm theme (베이지·카카오 톤)
+   • 따뜻한 오프-크림 베이스 (#FAF7F2)
+   • 메인 액센트는 차분한 인디고 → 코랄로 대체
+   • 한국 시장 컨벤션 유지 (red=up, blue=down)
+   • light 베이스 위에서 작동 — color-scheme: light
+───────────────────────────────────────────── */
+:root[data-theme="warm"] {
+  --bg-canvas:    #FAF7F2;
+  --bg-base:      #FAF7F2;
+  --bg-surface:   #FFFDF8;
+  --bg-elevated:  #FFFDF8;
+  --bg-overlay:   #F2EDE4;
+  --bg-input:     #FAF7F2;
+  --bg-muted:     #F2EDE4;
+  --bg-spotlight: #FBEEDB; /* 코랄/베이지 5% */
+  --bg-scrim:     rgba(64, 40, 24, 0.40);
+
+  --border-subtle:  rgba(64, 40, 24, 0.08);
+  --border-default: rgba(64, 40, 24, 0.12);
+  --border-strong:  rgba(64, 40, 24, 0.18);
+  --border-focus:   #C2410C;
+
+  --text-primary:   #2A1B0E;
+  --text-secondary: #5A4633;
+  --text-tertiary:  #95826B;
+  --text-quaternary:#C9BBA5;
+  --text-inverse:   #FFFFFF;
+
+  /* Korean market signal preserved */
+  --bull:        #D5384A;
+  --bull-muted:  #A52030;
+  --bull-subtle: #FBE9EB;
+  --bull-border: #F2C9CF;
+  --bull-glow:   rgba(213, 56, 74, 0.18);
+
+  --bear:        #2563EB;
+  --bear-muted:  #1D4ED8;
+  --bear-subtle: #E8EFFD;
+  --bear-border: #C7D7F8;
+  --bear-glow:   rgba(37, 99, 235, 0.18);
+
+  --hold:        #6B5C44;
+  --hold-subtle: #F0EBE0;
+  --hold-border: #DACFB8;
+
+  --brand:        #C2410C;       /* terracotta */
+  --brand-hover:  #9A330A;
+  --brand-active: #7A2807;
+  --brand-subtle: #FBEEDB;
+  --brand-border: #F4D9AE;
+  --brand-glow:   rgba(194, 65, 12, 0.18);
+
+  --success:        #15803D;
+  --success-subtle: #E7F5EC;
+  --success-border: #BFE6CC;
+  --warning:        #B45309;
+  --warning-subtle: #FBEFD9;
+  --warning-border: #F4D9AE;
+  --error:          #B91C1C;
+  --error-subtle:   #FBE9E9;
+  --error-border:   #F2C9C9;
+  --danger:         #B91C1C;
+  --danger-subtle:  #FBE9E9;
+  --info:           #C2410C;
+  --info-subtle:    #FBEEDB;
+
+  --status-idle:     #95826B;
+  --status-thinking: #C2410C;
+  --status-analyzing:#0E7490;
+  --status-debating: #7C3AED;
+  --status-deciding: #B45309;
+  --status-done:     #15803D;
+
+  --shadow-sm:  0 1px 2px rgba(64, 40, 24, 0.05);
+  --shadow-md:  0 4px 12px rgba(64, 40, 24, 0.07), 0 1px 2px rgba(64, 40, 24, 0.05);
+  --shadow-lg:  0 12px 32px rgba(64, 40, 24, 0.10), 0 2px 6px rgba(64, 40, 24, 0.05);
+  --shadow-xl:  0 24px 56px rgba(64, 40, 24, 0.14), 0 4px 10px rgba(64, 40, 24, 0.05);
+  --shadow-spotlight: 0 8px 24px rgba(194, 65, 12, 0.12);
+  --shadow-focus: 0 0 0 3px rgba(194, 65, 12, 0.20);
+
+  --tooltip-bg:     #2A1B0E;
+  --tooltip-fg:     #FFFDF8;
+  --tooltip-border: rgba(255, 255, 255, 0.10);
+}
+
+/* ─────────────────────────────────────────────
+   MS-E E4 — Hanok theme (한옥 묵향 + 한지 톤)
+   • 한지 베이스 (#F4EFE3) + 묵(墨)색 텍스트
+   • 단청에서 영감 받은 액센트 (단청 청록)
+   • 한국 시장 컨벤션 유지
+───────────────────────────────────────────── */
+:root[data-theme="hanok"] {
+  --bg-canvas:    #F4EFE3;        /* 한지 */
+  --bg-base:      #F4EFE3;
+  --bg-surface:   #FBF7EC;        /* 미색 */
+  --bg-elevated:  #FBF7EC;
+  --bg-overlay:   #ECE5D2;
+  --bg-input:     #F4EFE3;
+  --bg-muted:     #ECE5D2;
+  --bg-spotlight: #DEEDE8;        /* 단청 청록 5% */
+  --bg-scrim:     rgba(40, 30, 20, 0.42);
+
+  --border-subtle:  rgba(40, 30, 20, 0.08);
+  --border-default: rgba(40, 30, 20, 0.14);
+  --border-strong:  rgba(40, 30, 20, 0.22);
+  --border-focus:   #2F6E5E;
+
+  --text-primary:   #1F1A12;       /* 묵(墨) */
+  --text-secondary: #4A4030;
+  --text-tertiary:  #8A7C66;
+  --text-quaternary:#BFB29B;
+  --text-inverse:   #FBF7EC;
+
+  --bull:        #C03244;          /* 진사(辰砂) */
+  --bull-muted:  #8E1D2C;
+  --bull-subtle: #F6E5E7;
+  --bull-border: #ECC8CC;
+  --bull-glow:   rgba(192, 50, 68, 0.18);
+
+  --bear:        #1F4E8B;          /* 단청 청람 */
+  --bear-muted:  #14376B;
+  --bear-subtle: #E0E9F5;
+  --bear-border: #BBCDE6;
+  --bear-glow:   rgba(31, 78, 139, 0.18);
+
+  --hold:        #6B5F45;
+  --hold-subtle: #ECE5D2;
+  --hold-border: #D4C9AE;
+
+  --brand:        #2F6E5E;          /* 단청 청록 */
+  --brand-hover:  #235447;
+  --brand-active: #1A4035;
+  --brand-subtle: #DEEDE8;
+  --brand-border: #B8D5CC;
+  --brand-glow:   rgba(47, 110, 94, 0.18);
+
+  --success:        #4F7C3A;        /* 송엽 */
+  --success-subtle: #E5EFD9;
+  --success-border: #C5D9AE;
+  --warning:        #B07A1E;        /* 황토 */
+  --warning-subtle: #F4E8D0;
+  --warning-border: #E2CB99;
+  --error:          #A52030;
+  --error-subtle:   #F2D7DA;
+  --error-border:   #E0AAB1;
+  --danger:         #A52030;
+  --danger-subtle:  #F2D7DA;
+  --info:           #2F6E5E;
+  --info-subtle:    #DEEDE8;
+
+  --status-idle:     #8A7C66;
+  --status-thinking: #2F6E5E;
+  --status-analyzing:#1F4E8B;
+  --status-debating: #6E4A7B;
+  --status-deciding: #B07A1E;
+  --status-done:     #4F7C3A;
+
+  --shadow-sm:  0 1px 2px rgba(40, 30, 20, 0.06);
+  --shadow-md:  0 4px 12px rgba(40, 30, 20, 0.08), 0 1px 2px rgba(40, 30, 20, 0.05);
+  --shadow-lg:  0 12px 32px rgba(40, 30, 20, 0.12), 0 2px 6px rgba(40, 30, 20, 0.05);
+  --shadow-xl:  0 24px 56px rgba(40, 30, 20, 0.16), 0 4px 10px rgba(40, 30, 20, 0.06);
+  --shadow-spotlight: 0 8px 24px rgba(47, 110, 94, 0.14);
+  --shadow-focus: 0 0 0 3px rgba(47, 110, 94, 0.22);
+
+  --tooltip-bg:     #1F1A12;
+  --tooltip-fg:     #FBF7EC;
+  --tooltip-border: rgba(255, 255, 255, 0.10);
+}
+
+/* ─────────────────────────────────────────────
    Tailwind v4 theme extension
 ───────────────────────────────────────────── */
 @theme inline {

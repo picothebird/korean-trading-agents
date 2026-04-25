@@ -1,0 +1,37 @@
+# Korean Trading Agents — Pixel Office Asset Licenses
+
+이 문서는 `public/game/assets/`에 포함된 모든 외부 자산의 라이선스를 통합·요약한 것입니다.
+세부 원본 라이선스 파일은 각 팩 폴더의 `License.txt`를 참조하세요.
+
+---
+
+## Kenney CC0 Asset Packs
+
+다음 팩은 **Creative Commons Zero (CC0)** 라이선스로 배포되며, 상업적 사용·재배포·수정 모두 자유입니다. 크레딧 표기는 권장 사항(필수 아님).
+
+- **Tiny Town v1.1** (2023-01-11) — `kenney/kenney_tiny-town/`
+  - 16×16 플로어/벽/문/소품 — MS2 default-office 맵 베이스 타일셋
+- **RPG Urban Pack v1.0** (2019-01-05) — `kenney/kenney_rpg-urban-pack/`
+  - 16×16 사무실 가구/소품·캐릭터 — MS3 액터 + MS7 가구 에디터 후보
+- **UI Pack — Pixel Adventure** — `kenney/kenney_ui-pack-pixel-adventure/`
+  - 9-slice 패널/버튼 — MS4 HUD 자산
+
+원본 출처: https://kenney.nl  ·  라이선스 전문: https://creativecommons.org/publicdomain/zero/1.0/
+
+크레딧(임의): "Pixel art assets by Kenney (www.kenney.nl), licensed under CC0."
+
+---
+
+## Galmuri (font)
+
+`npm install galmuri` (npm 패키지)로 설치된 한글 픽셀 폰트.
+
+- 라이선스: **SIL Open Font License 1.1**
+- 원본: https://github.com/quiple/galmuri
+- 사용 범위: MS5 테마/MS4 HUD 텍스트 렌더링
+
+---
+
+## 미사용 / 보관
+
+- **Desert Shooter Pack v1.0** (Kenney CC0) — 현 사무실 시나리오와 무관해 `public/`에 복사하지 않음. 추후 시즌 테마 도입 시 별도 폴더로 추가.
