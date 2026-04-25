@@ -27,13 +27,16 @@ import { TimelineEntry } from "./TimelineEntry";
 import { useTimelineStore } from "./useTimeline";
 import type { TimelineRow } from "./types";
 import { ActivityProgressChart } from "@/components/viz/Primitives";
+import { TimelineStrip } from "./TimelineStrip";
 
 interface AgentTimelineProps {
   /** 부모(page.tsx)가 SSE로 모은 전체 thoughts 시간순 배열. */
   thoughts: AgentThought[];
+  /** 표시 변형 — full(기본): 풀 타임라인 / strip: 최근 5개 컴팩트 (MS-S3) */
+  variant?: "full" | "strip";
 }
 
-export function AgentTimeline({ thoughts }: AgentTimelineProps) {
+export function AgentTimeline({ thoughts, variant = "full" }: AgentTimelineProps) {
   const filters = useTimelineStore((s) => s.filters);
   const groupMode = useTimelineStore((s) => s.groupMode);
   const paused = useTimelineStore((s) => s.paused);
@@ -189,6 +192,11 @@ export function AgentTimeline({ thoughts }: AgentTimelineProps) {
     const last = thoughts[thoughts.length - 1];
     return last ? new Date(last.timestamp).getTime() : 0;
   }, [thoughts]);
+
+  // MS-S3: 사이드바용 strip 변형 — 모든 훅 호출 후 분기.
+  if (variant === "strip") {
+    return <TimelineStrip thoughts={thoughts} limit={5} />;
+  }
 
   return (
     <div

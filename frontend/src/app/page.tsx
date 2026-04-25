@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators, AppUser } from "@/types";
-import { AgentTimeline } from "@/components/agent-timeline";
+import { AgentStage } from "@/components/stage";
 import { AgentInspector } from "@/components/AgentInspector";
 import { AskModal } from "@/components/AskModal";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -14,7 +14,6 @@ import { AnalysisReport } from "@/components/AnalysisReport";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { SettingsPanel, type SettingsTab } from "@/components/SettingsPanel";
 import { KisPanel } from "@/components/KisPanel";
-import { PhaserCanvas } from "@/components/game/PhaserCanvas";
 import { MarketStatusBadge } from "@/components/MarketStatusBadge";
 import { useAutoNotify } from "@/lib/notifications";import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
@@ -1999,10 +1998,10 @@ export default function Home() {
                       {/* 기간 프리셋 칩 (B1) */}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {([
-                          { label: "3개월", months: 3 },
+                          { label: "3개월", months: 3, recommended: false },
                           { label: "6개월 ★", months: 6, recommended: true },
-                          { label: "1년", months: 12 },
-                          { label: "3년", months: 36 },
+                          { label: "1년", months: 12, recommended: false },
+                          { label: "3년", months: 36, recommended: false },
                         ] as const).map((p) => {
                           const setPreset = () => {
                             const end = new Date();
@@ -2625,59 +2624,17 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── 50/50 split: Pixel Office + Activity Feed ───────── */}
+        {/* ── MS-S1: AgentStage 통합 무대 (PhaserCanvas + 사이드바 + 회의록) ───────── */}
         <div
           style={{
             flex: 1,
             minHeight: 0,
             padding: "10px 14px 12px",
-            display: "grid",
-            gridTemplateRows: "1fr 1fr",
-            gap: 10,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <div
-            style={{
-              minHeight: 0,
-              border: "1px solid var(--border-subtle)",
-              borderRadius: 12,
-              padding: 8,
-              background: "var(--bg-canvas)",
-              overflow: "hidden",
-            }}
-          >
-            {/* MS0: PixelOffice → PhaserCanvas로 교체. MS3: thoughts(logs) 주입. */}
-            <PhaserCanvas thoughts={logs} />
-          </div>
-
-          <div
-            style={{
-              minHeight: 0,
-              border: "1px solid var(--border-subtle)",
-              borderRadius: 12,
-              padding: "8px 10px",
-              background: "var(--bg-canvas)",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <p
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: "var(--text-secondary)",
-                letterSpacing: "0.04em",
-                marginBottom: 6,
-                flexShrink: 0,
-              }}
-            >
-              에이전트 타임라인
-            </p>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <AgentTimeline thoughts={logs} />
-            </div>
-          </div>
+          <AgentStage thoughts={logs} decision={decision} />
         </div>
       </main>
 

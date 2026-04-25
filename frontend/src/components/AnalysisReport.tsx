@@ -129,7 +129,7 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
   const s = decision.agents_summary;
   const details = s.analyst_details ?? {};
   const debate = s.debate;
-  const risk = s.risk;
+  const risk = s.risk as (typeof s.risk & { guru_action_changed?: boolean }) | undefined;
   const confidencePct = Math.round(decision.confidence * 100);
   const kelly = s.kelly_position_pct ?? s.position_size_pct ?? 0;
   const initialCapital = 10_000_000; // 1,000만원 가정 (UI 표시용)

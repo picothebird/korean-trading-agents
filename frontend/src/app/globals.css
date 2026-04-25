@@ -1,5 +1,5 @@
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
-@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────
@@ -724,3 +724,101 @@ body {
 .pill-success { background: var(--success-subtle); color: var(--success); border: 1px solid var(--success-border); }
 .pill-warning { background: var(--warning-subtle); color: var(--warning); border: 1px solid var(--warning-border); }
 .pill-danger  { background: var(--danger-subtle); color: var(--danger); border: 1px solid var(--error-border); }
+
+
+/* =============================================================
+   AGENT STAGE — "Pixel-Tonal" 시각 언어 (MS-S0)
+   docs/AGENT_STAGE_REDESIGN_PROPOSAL.md
+   --------------------------------------------------------------
+   적용 범위: <div class="agent-stage"> 자손에만 영향. 글로벌 미수정.
+   원칙: 8px 그리드, 라디우스 0/4px, 그림자 금지, 모노 라벨.
+   ============================================================= */
+.agent-stage {
+  /* 픽셀 캔버스(32px 타일)와 호환되는 4px 베이스 */
+  --stage-grid: 8px;
+  --stage-radius-sharp: 0px;
+  --stage-radius:       4px;
+  --stage-radius-soft:  8px;   /* 회의록 카드 한정 */
+
+  /* 라벨/메타용 모노 — 픽셀 캔버스 조각의 "정직함" 톤 */
+  --stage-font-label: var(--font-mono);
+  --stage-font-headline: var(--font-sans);
+
+  /* 9 에이전트 액센트 — Phaser 액터 색과 1:1 동기 */
+  --agent-c1: #4D8DEF;   /* technical (윤 차트) */
+  --agent-c2: #38BDF8;   /* fundamental (박 펀더) */
+  --agent-c3: #A78BFA;   /* sentiment (한 심리) */
+  --agent-c4: #34D399;   /* macro (류 매크로) */
+  --agent-c5: #F87171;   /* bull researcher (불 강세) */
+  --agent-c6: #1F6FEB;   /* bear researcher (베어 약세) */
+  --agent-c7: #FBBF24;   /* risk (권 리스크) */
+  --agent-c8: #16A34A;   /* portfolio (정 매니저) */
+  --agent-c9: #8B5CF6;   /* guru */
+
+  /* 무대 베이스 surface — 캔버스와 매끈히 이어짐 */
+  --stage-surface: var(--bg-surface);
+  --stage-surface-mute: var(--bg-overlay);
+  --stage-border: var(--border-default);
+  --stage-border-strong: var(--border-strong);
+
+  /* 액션/시그널 도트 */
+  --stage-bull: var(--bull);
+  --stage-bear: var(--bear);
+  --stage-hold: var(--hold);
+
+  /* 모션 */
+  --stage-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --stage-dur-fast: 180ms;
+  --stage-dur-base: 280ms;
+  --stage-dur-slow: 420ms;
+
+  /* 폰트 메타 */
+  font-family: var(--stage-font-headline);
+}
+
+/* 무대 내부의 픽셀-호환 카드 */
+.agent-stage .stage-card {
+  background: var(--stage-surface);
+  border: 1px solid var(--stage-border);
+  border-radius: var(--stage-radius);
+  box-shadow: none;
+}
+.agent-stage .stage-card-soft {
+  background: var(--stage-surface);
+  border: 1px solid var(--stage-border);
+  border-radius: var(--stage-radius-soft);
+  box-shadow: none;
+}
+.agent-stage .stage-card-accent {
+  background: var(--stage-surface);
+  border: 1px solid var(--stage-border-strong);
+  border-radius: var(--stage-radius);
+  /* 8-bit 느낌의 1px outset (그림자 대신) */
+  box-shadow: 0 1px 0 0 var(--stage-border-strong);
+}
+
+/* 모노 라벨 — meta·count·timestamp */
+.agent-stage .stage-label {
+  font-family: var(--stage-font-label);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  font-feature-settings: "tnum", "lnum";
+}
+
+/* 헤드라인 — 24px 800 tight tracking */
+.agent-stage .stage-headline {
+  font-family: var(--stage-font-headline);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+/* reduced-motion 안전 */
+@media (prefers-reduced-motion: reduce) {
+  .agent-stage *, .agent-stage *::before, .agent-stage *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
