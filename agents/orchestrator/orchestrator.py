@@ -104,6 +104,8 @@ async def researcher_debate(
     bull_stance = ""
     bear_stance = ""
     previous_round_price: float | None = None
+    bull_rounds: list[dict] = []
+    bear_rounds: list[dict] = []
     
     for round_num in range(1, rounds + 1):
         # 라운드마다 최신 시세/뉴스를 재조회해 토론 컨텍스트를 갱신한다.
@@ -185,6 +187,11 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
         except Exception as e:
             bull_stance = f"강세 관점 생성 실패: {str(e)[:80]}"
 
+        bull_rounds.append({
+            "round": round_num,
+            "argument": bull_stance,
+            "key_points": list(bull_key_points or []),
+        })
         await emit_thought(session_id, AgentThought(
             agent_id="bull_researcher",
             role=AgentRole.BULL_RESEARCHER,
@@ -236,6 +243,11 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
         except Exception as e:
             bear_stance = f"약세 관점 생성 실패: {str(e)[:80]}"
 
+        bear_rounds.append({
+            "round": round_num,
+            "argument": bear_stance,
+            "key_points": list(bear_key_points or []),
+        })
         await emit_thought(session_id, AgentThought(
             agent_id="bear_researcher",
             role=AgentRole.BEAR_RESEARCHER,
@@ -251,7 +263,33 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
             },
         ))
 
-    return {"bull_stance": bull_stance, "bear_stance": bear_stance}
+    # 토론 종료 → 양측 연구원 DONE 신호 (프론트 L2 진행률 마감)
+    final_bull_points = bull_rounds[-1]["key_points"] if bull_rounds else []
+    final_bear_points = bear_rounds[-1]["key_points"] if bear_rounds else []
+    await emit_thought(session_id, AgentThought(
+        agent_id="bull_researcher",
+        role=AgentRole.BULL_RESEARCHER,
+        status=AgentStatus.DONE,
+        content=f"강세론 정리 ({len(bull_rounds)}라운드): {bull_stance[:140]}",
+        metadata={"rounds": bull_rounds, "final_key_points": final_bull_points},
+    ))
+    await emit_thought(session_id, AgentThought(
+        agent_id="bear_researcher",
+        role=AgentRole.BEAR_RESEARCHER,
+        status=AgentStatus.DONE,
+        content=f"약세론 정리 ({len(bear_rounds)}라운드): {bear_stance[:140]}",
+        metadata={"rounds": bear_rounds, "final_key_points": final_bear_points},
+    ))
+
+    return {
+        "bull_stance": bull_stance,
+        "bear_stance": bear_stance,
+        "bull_rounds": bull_rounds,
+        "bear_rounds": bear_rounds,
+        "bull_key_points": final_bull_points,
+        "bear_key_points": final_bear_points,
+        "rounds": len(bull_rounds),
+    }
 
 
 async def risk_manager(
@@ -424,6 +462,40 @@ JSON: {{"action": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "reasoning": "결정 �
     pm_action = _normalize_action(pm_result.get("action", "HOLD"))
     pm_confidence = _clamp01(float(pm_result.get("confidence", 0.3)))
 
+    # 분석가별 상세 정보(프론트 회의록용)
+    analyst_details: dict[str, dict] = {}
+    for key, val in analyst_results.items():
+        if isinstance(val, dict):
+            analyst_details[key] = {
+                "signal": val.get("signal", "HOLD"),
+                "confidence": float(val.get("confidence", 0.5) or 0.5),
+                "summary": val.get("summary") or val.get("reason") or "",
+                "key_signals": val.get("key_signals") or val.get("key_points") or [],
+                "risk_level": val.get("risk_level"),
+            }
+
+    debate_block = {
+        "bull_stance": debate_results.get("bull_stance", ""),
+        "bear_stance": debate_results.get("bear_stance", ""),
+        "bull_key_points": debate_results.get("bull_key_points", []),
+        "bear_key_points": debate_results.get("bear_key_points", []),
+        "bull_rounds": debate_results.get("bull_rounds", []),
+        "bear_rounds": debate_results.get("bear_rounds", []),
+        "rounds": int(debate_results.get("rounds", 0) or 0),
+    }
+
+    risk_block = {
+        "risk_level": risk_result.get("risk_level"),
+        "max_position_pct": risk_result.get("max_position_pct"),
+        "kelly_position_pct": kelly_pct,
+        "stop_loss_pct": risk_result.get("stop_loss_pct"),
+        "key_risks": list(risk_result.get("key_risks", []) or [])[:5],
+        "summary": risk_result.get("summary", ""),
+        "avg_confidence_pct": round(
+            (sum(confidences) / len(confidences) * 100) if confidences else 50.0, 1
+        ),
+    }
+
     decision = TradeDecision(
         action=pm_action,
         ticker=ticker,
@@ -431,6 +503,9 @@ JSON: {{"action": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "reasoning": "결정 �
         reasoning=pm_result.get("reasoning", ""),
         agents_summary={
             "analyst_signals": signal_counts,
+            "analyst_details": analyst_details,
+            "debate": debate_block,
+            "risk": risk_block,
             "risk_level": risk_result.get("risk_level"),
             "position_size_pct": float(pm_result.get("position_size_pct", 0)),
             "kelly_position_pct": kelly_pct,

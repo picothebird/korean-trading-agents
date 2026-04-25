@@ -214,6 +214,39 @@ export async function cancelAgentBacktest(sessionId: string): Promise<{ session_
   return res.json();
 }
 
+export interface AgentBacktestHistoryItem {
+  session_id: string;
+  ticker: string;
+  status: "running" | "done" | "error" | string;
+  created_at: string | null;
+  updated_at: string | null;
+  error: string | null;
+  summary: {
+    total_return?: number | null;
+    alpha?: number | null;
+    sharpe_ratio?: number | null;
+    max_drawdown?: number | null;
+    win_rate?: number | null;
+    total_trades?: number | null;
+    start_date?: string | null;
+    end_date?: string | null;
+  };
+}
+
+export async function listAgentBacktestHistory(limit = 20): Promise<AgentBacktestHistoryItem[]> {
+  const res = await apiFetch(`${BASE_URL}/api/backtest/agent/history?limit=${limit}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data?.items) ? (data.items as AgentBacktestHistoryItem[]) : [];
+}
+
+export async function getAgentBacktestResult(sessionId: string): Promise<import("@/types").BacktestResult | null> {
+  const res = await apiFetch(`${BASE_URL}/api/backtest/agent/result/${sessionId}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return (data?.result as import("@/types").BacktestResult) ?? null;
+}
+
 export function streamAgentBacktest(
   sessionId: string,
   onProgress: (event: import("@/types").BacktestProgress) => void,

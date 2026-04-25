@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import type { TradeDecision } from "@/types";
+import { Tooltip } from "@/components/ui";
 
 // Korean market: RED = UP/BUY, BLUE = DOWN/SELL
 const ACTION_CFG = {
@@ -88,7 +89,12 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
                 alignItems: "center", justifyContent: "center",
               }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: cfg.color, lineHeight: 1 }}>{confidencePct}%</span>
-                <span style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 1 }}>신뢰도</span>
+                <Tooltip
+                  content="9개 AI 에이전트의 의견 일치도와 데이터의 명확함을 종합해 0–100%로 환산한 값. 70% 이상이면 의견이 비교적 일치함, 50% 미만이면 크게 갈렸다는 뜻. AI 판단 자체가 맞는다는 보장은 아닙니다."
+                  maxWidth={300}
+                >
+                  <span style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 1, borderBottom: "1px dotted var(--text-tertiary)", cursor: "help" }}>ℹ 신뢰도</span>
+                </Tooltip>
               </div>
             </div>
           </div>
@@ -255,19 +261,34 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             {kelly > 0 && (
               <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
-                <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>Kelly 포지션</p>
+                <Tooltip
+                  content="켈리 공식(Kelly Criterion)으로 계산한 자본 대비 권장 투자 비율. 한 번에 자본의 이 비율만 투자하면 장기 기대수익이 최대화되고 파산 확률은 최소화됩니다. 안전을 위해 공식 결과의 절반(Half-Kelly)만 적용합니다."
+                  maxWidth={320}
+                >
+                  <p style={{ fontSize: 10, color: "var(--text-tertiary)", borderBottom: "1px dotted var(--text-tertiary)", display: "inline-block", cursor: "help" }}>ℹ Kelly 포지션</p>
+                </Tooltip>
                 <p style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{kelly}%</p>
               </div>
             )}
             {decision.agents_summary?.risk_level && (
               <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
-                <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>리스크 등급</p>
+                <Tooltip
+                  content="LOW(낮음) · MEDIUM(보통) · HIGH(높음) · CRITICAL(매우 위험)의 4단계. 변동성, 거시 환경, 종목 고유 위험을 종합해 산출됩니다."
+                  maxWidth={300}
+                >
+                  <p style={{ fontSize: 10, color: "var(--text-tertiary)", borderBottom: "1px dotted var(--text-tertiary)", display: "inline-block", cursor: "help" }}>ℹ 리스크 등급</p>
+                </Tooltip>
                 <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{decision.agents_summary.risk_level}</p>
               </div>
             )}
             {typeof stopLossPct === "number" && (
               <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "10px 12px" }}>
-                <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>손절 라인</p>
+                <Tooltip
+                  content="매수 후 가격이 이 비율 이상 떨어지면 자동으로 손실을 확정하고 빠져나오는 방어선. 하락을 온전히 수용하지 않고 다음 기회를 위해 자본을 지키는 장치입니다."
+                  maxWidth={300}
+                >
+                  <p style={{ fontSize: 10, color: "var(--text-tertiary)", borderBottom: "1px dotted var(--text-tertiary)", display: "inline-block", cursor: "help" }}>ℹ 손절 라인</p>
+                </Tooltip>
                 <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{stopLossPct}%</p>
               </div>
             )}

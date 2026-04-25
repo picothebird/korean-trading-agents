@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators, AppUser } from "@/types";
 import { ActivityFeed } from "@/components/AgentOffice";
 import { DecisionCard } from "@/components/DecisionCard";
+import { AnalysisReport } from "@/components/AnalysisReport";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { SettingsPanel, type SettingsTab } from "@/components/SettingsPanel";
 import { KisPanel } from "@/components/KisPanel";
@@ -17,6 +18,7 @@ import { useRouter } from "next/navigation";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest, cancelAgentBacktest,
+  listAgentBacktestHistory, getAgentBacktestResult,
   getAccessToken, clearAccessToken, getMe,
 } from "@/lib/api";
 
@@ -189,7 +191,12 @@ function StockPriceCard({
             {/* RSI */}
             {info.rsi_14 != null && (
               <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 4 }}>RSI-14</p>
+                <Tooltip
+                  content="RSI(상대강도 지수) - 최근 14일간 오른 날과 내린 날의 힘을 비교해 0~100으로 점수화한 값. 70 이상이면 '너무 많이 올랐다(과매수)', 30 이하면 '너무 많이 떨어졌다(과매도)' 관점. 30~70 사이는 중립 구간입니다."
+                  maxWidth={300}
+                >
+                  <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 4, display: "inline-block", borderBottom: "1px dotted var(--text-tertiary)", cursor: "help" }}>ℹ RSI-14</p>
+                </Tooltip>
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <div style={{ flex: 1, height: 3, background: "var(--bg-overlay)", borderRadius: 99, overflow: "hidden" }}>
                     <div
@@ -220,7 +227,12 @@ function StockPriceCard({
             {/* 52W Range */}
             {info.high_52w > 0 && (
               <div style={{ flex: 2 }}>
-                <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 4 }}>52주 범위</p>
+                <Tooltip
+                  content="최근 1년(52주) 동안의 최고가와 최저가 구간. 막대 위의 표시는 현재가가 그 구간의 어디에 있는지 알려주어요. 원쪽에 가까우면 1년 중 최고점 근처(차익실실 필요), 왼쪽이면 최저점 근처(반등 기회 가능성)를 뜻합니다."
+                  maxWidth={320}
+                >
+                  <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 4, display: "inline-block", borderBottom: "1px dotted var(--text-tertiary)", cursor: "help" }}>ℹ 52주 범위</p>
+                </Tooltip>
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <span style={{ fontSize: 8, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
                     {(info.low_52w / 1000).toFixed(0)}K
@@ -677,7 +689,38 @@ function HumanApprovalModal({
 }
 
 // ── Analysis tab empty state ──────────────────────────────────────
-function AnalysisEmptyState({ isRunning, activeCount }: { isRunning: boolean; activeCount: number }) {
+function AnalysisEmptyState({
+  isRunning,
+  activeCount,
+  hasThoughts,
+  hadError,
+}: {
+  isRunning: boolean;
+  activeCount: number;
+  hasThoughts: boolean;
+  hadError: boolean;
+}) {
+  // 3가지 상태로 분기:
+  // 1) 실행 중 → "분석 중" + 활성 에이전트 수
+  // 2) 실행 끝났지만 결과 없음 (decision === null && hasThoughts) → "결과를 불러오지 못함"
+  // 3) 처음 진입 (idle) → "분석 시작을 눌러주세요"
+  let title: string;
+  let sub: string | null = null;
+  let iconName: "search" | "target" | "warning";
+
+  if (isRunning) {
+    iconName = "search";
+    title = "에이전트들이 분석 중...";
+    sub = `${activeCount}개 에이전트 활성화`;
+  } else if (hasThoughts && !hadError) {
+    iconName = "warning";
+    title = "분석은 끝났지만 최종 결정을 받지 못했어요";
+    sub = "잠시 후 다시 시도하거나 백엔드 로그를 확인하세요.";
+  } else {
+    iconName = "target";
+    title = "분석 시작을 눌러 AI 에이전트를 가동하세요";
+  }
+
   return (
     <div
       style={{
@@ -691,20 +734,16 @@ function AnalysisEmptyState({ isRunning, activeCount }: { isRunning: boolean; ac
         gap: 10,
       }}
     >
-      <motion.span
-        animate={{ rotate: isRunning ? [0, 10, -10, 0] : 0 }}
-        transition={{ duration: 1.5, repeat: isRunning ? Infinity : 0 }}
-        style={{ display: "inline-flex", color: "var(--brand)" }}
-      >
-        <Icon name={isRunning ? "search" : "target"} size={36} strokeWidth={1.5} decorative />
-      </motion.span>
-      <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-        {isRunning ? "에이전트들이 분석 중..." : "분석 시작을 눌러 AI 에이전트를 가동하세요"}
-      </p>
-      {isRunning && (
-        <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
-          {activeCount}개 에이전트 활성화
-        </p>
+      {isRunning ? (
+        <Loader size={36} center={false} />
+      ) : (
+        <span style={{ display: "inline-flex", color: iconName === "warning" ? "var(--warning)" : "var(--brand)" }}>
+          <Icon name={iconName} size={36} strokeWidth={1.5} decorative />
+        </span>
+      )}
+      <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>{title}</p>
+      {sub && (
+        <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{sub}</p>
       )}
     </div>
   );
@@ -735,6 +774,8 @@ export default function Home() {
   const [btConfirmOpen, setBtConfirmOpen] = useState(false);
   const [btSessionId, setBtSessionId] = useState<string | null>(null);
   const [btCancelling, setBtCancelling] = useState(false);
+  const [btHistory, setBtHistory] = useState<import("@/lib/api").AgentBacktestHistoryItem[]>([]);
+  const [btHistoryLoading, setBtHistoryLoading] = useState(false);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
   const [approvalModal, setApprovalModal] = useState(false);
@@ -1024,6 +1065,41 @@ export default function Home() {
       analysisCleanupRef.current?.();
       btCleanupRef.current?.();
     };
+  }, []);
+
+  // 사용자별 백테스트 이력 fetch (탭 진입 시 + 새 결과 도착 시 자동 갱신)
+  const refreshBacktestHistory = useCallback(async () => {
+    if (!currentUser) return;
+    setBtHistoryLoading(true);
+    try {
+      const items = await listAgentBacktestHistory(20);
+      setBtHistory(items);
+    } catch {
+      // ignore
+    } finally {
+      setBtHistoryLoading(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (tab === "backtest") {
+      refreshBacktestHistory();
+    }
+  }, [tab, refreshBacktestHistory]);
+
+  useEffect(() => {
+    // 새 결과가 들어오면 이력 새로고침
+    if (btResult) refreshBacktestHistory();
+  }, [btResult, refreshBacktestHistory]);
+
+  const handleLoadHistoryItem = useCallback(async (sessionId: string) => {
+    const result = await getAgentBacktestResult(sessionId);
+    if (result) {
+      setBtResult(result);
+      setBtError(null);
+    } else {
+      setBtError("이력의 결과 데이터를 불러오지 못했어요.");
+    }
   }, []);
 
   // Keyboard shortcuts
@@ -1519,7 +1595,7 @@ export default function Home() {
                   )}
                 </AnimatePresence>
 
-                {/* Decision card or empty state */}
+                {/* Decision card / Analysis report / Empty state */}
                 {decision ? (
                   <>
                     <DecisionCard
@@ -1531,6 +1607,7 @@ export default function Home() {
                       }
                       onOpenSettings={() => openSettings("guru")}
                     />
+                    <AnalysisReport decision={decision} />
                     <motion.button
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1558,7 +1635,12 @@ export default function Home() {
                     </motion.button>
                   </>
                 ) : (
-                  <AnalysisEmptyState isRunning={isRunning} activeCount={activeCount} />
+                  <AnalysisEmptyState
+                    isRunning={isRunning}
+                    activeCount={activeCount}
+                    hasThoughts={thoughts.size > 0}
+                    hadError={!!analysisError}
+                  />
                 )}
               </motion.div>
             )}
@@ -1949,6 +2031,99 @@ export default function Home() {
                     </p>
                     <p style={{ fontSize: 10, color: "var(--text-tertiary)", textAlign: "center" }}>
                       {backtestSummaryText}
+                    </p>
+                  </div>
+                )}
+
+                {/* 최근 시뮬레이션 이력 (실행 중이 아닐 때만) */}
+                {!btLoading && btHistory.length > 0 && (
+                  <div
+                    style={{
+                      background: "var(--bg-elevated)",
+                      borderRadius: "var(--radius-xl)",
+                      border: "1px solid var(--border-subtle)",
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <Icon name="clock" size={12} decorative /> 최근 시뮬레이션 이력
+                      </p>
+                      <button
+                        onClick={refreshBacktestHistory}
+                        disabled={btHistoryLoading}
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text-tertiary)",
+                          background: "none",
+                          border: "none",
+                          cursor: btHistoryLoading ? "wait" : "pointer",
+                        }}
+                      >
+                        {btHistoryLoading ? "갱신 중…" : "새로고침"}
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {btHistory.slice(0, 8).map((item) => {
+                        const ret = item.summary?.total_return;
+                        const alpha = item.summary?.alpha;
+                        const isDone = item.status === "done";
+                        const dateRange =
+                          item.summary?.start_date && item.summary?.end_date
+                            ? `${item.summary.start_date.slice(0, 10)} ~ ${item.summary.end_date.slice(0, 10)}`
+                            : (item.created_at ?? "").slice(0, 10);
+                        return (
+                          <button
+                            key={item.session_id}
+                            onClick={() => isDone && handleLoadHistoryItem(item.session_id)}
+                            disabled={!isDone}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "60px 1fr auto",
+                              gap: 8,
+                              alignItems: "center",
+                              padding: "8px 10px",
+                              background: "var(--bg-surface)",
+                              border: "1px solid var(--border-default)",
+                              borderRadius: "var(--radius-md)",
+                              cursor: isDone ? "pointer" : "not-allowed",
+                              opacity: isDone ? 1 : 0.6,
+                              textAlign: "left",
+                            }}
+                          >
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
+                              {item.ticker}
+                            </span>
+                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
+                              {dateRange}
+                              {item.status === "running" && " · 진행 중"}
+                              {item.status === "error" && ` · 오류${item.error ? `: ${item.error.slice(0, 30)}` : ""}`}
+                            </span>
+                            {isDone && typeof ret === "number" && (
+                              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    color: ret >= 0 ? "var(--bull)" : "var(--bear)",
+                                    fontVariantNumeric: "tabular-nums",
+                                  }}
+                                >
+                                  {ret >= 0 ? "+" : ""}{ret.toFixed(1)}%
+                                </span>
+                                {typeof alpha === "number" && (
+                                  <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                                    α {alpha >= 0 ? "+" : ""}{alpha.toFixed(1)}%p
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 8, lineHeight: 1.5 }}>
+                      💡 시뮬레이션 중에 페이지를 떠나도 백엔드는 끝까지 계산을 마치고 결과를 저장해요. 다시 돌아오면 여기에서 확인하고 클릭해 결과를 다시 볼 수 있습니다.
                     </p>
                   </div>
                 )}

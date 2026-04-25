@@ -37,6 +37,37 @@ export interface TradeDecision {
   exit_strategy?: string;
   agents_summary: {
     analyst_signals: { BUY: number; SELL: number; HOLD: number };
+    /** 분석가별 상세 (회의록용) */
+    analyst_details?: Record<
+      string,
+      {
+        signal: "BUY" | "SELL" | "HOLD" | string;
+        confidence: number;
+        summary: string;
+        key_signals?: string[];
+        risk_level?: string | null;
+      }
+    >;
+    /** 강세/약세 토론 전체 기록 */
+    debate?: {
+      bull_stance: string;
+      bear_stance: string;
+      bull_key_points: string[];
+      bear_key_points: string[];
+      bull_rounds: { round: number; argument: string; key_points: string[] }[];
+      bear_rounds: { round: number; argument: string; key_points: string[] }[];
+      rounds: number;
+    };
+    /** 리스크 매니저 상세 */
+    risk?: {
+      risk_level?: string;
+      max_position_pct?: number;
+      kelly_position_pct?: number;
+      stop_loss_pct?: number;
+      key_risks?: string[];
+      summary?: string;
+      avg_confidence_pct?: number;
+    };
     risk_level: string;
     position_size_pct: number;
     kelly_position_pct?: number;

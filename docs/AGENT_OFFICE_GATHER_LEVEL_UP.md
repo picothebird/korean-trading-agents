@@ -1,12 +1,345 @@
 # Agent Office — Gather.town 수준으로 끌어올리기 위한 개편 플랜
 
 > 작성: 2026-04-26  
+> **v3 (최종 결정): 2026-04-26 — §0-ter 참조. 사용자 디렉티브: "고품질·확장성·유저 커스터마이징 풀스택". v2의 점진적/타협안 폐기.**  
 > 대상 컴포넌트: `frontend/src/components/PixelOffice.tsx`, `AgentOffice.tsx` (사이드 우측 패널의 "에이전트 컨트롤룸" 영역)  
-> 목표: 게더타운(Gather.town) 수준의 "살아있는 가상 사무실" 시각화로 에이전트들의 협업·이동·발화를 표현. 가능한 한 **공개 오픈소스/에셋**을 차용하여 자체 개발 비용을 최소화.
+> 목표: 게더타운(Gather.town) 수준의 "살아있는 가상 사무실" 시각화로 에이전트들의 협업·이동·발화를 표현. **유저가 자기 사무실/캐릭터/레이아웃을 자유롭게 커스터마이즈할 수 있는 확장 가능한 플랫폼**으로 설계.
 
 ---
 
-## 0. TL;DR (한 장 요약)
+## 0-ter. 최종 권장 (v3 — 고품질 + 확장성 + 커스터마이징 풀스택) ⭐⭐
+
+> 사용자 디렉티브 (2026-04-26): *"매우 고퀄리티로 가고싶어 향후 확장성 및 유저가 다양하게 커스텀도 할 수 있는 방향으로 최대한 고품질로 계획해."*
+
+v2의 "Track A 먼저 보고 결정" 점진주의는 **이 디렉티브와 양립 불가**입니다. 처음부터 풀스택 아키텍처를 깔고, 콘텐츠/씬/캐릭터/오피스를 **데이터 주도(data-driven)** 로 분리해야 사용자 커스터마이징이 가능합니다. v3는 이를 위한 단일 일관 플랜입니다.
+
+### 0-ter.1 핵심 설계 원칙
+
+| 원칙 | 함의 |
+| --- | --- |
+| **1. 엔진은 Phaser 3 LTS** | 8년 검증, Next.js·React 통합 사례 풍부, Tiled/카메라/필터/사운드/플러그인 생태계 완비. Phaser 4는 v4.0.0 갓 출시 — 12개월 후 재평가. 번들 ~200 KB gz는 lazy chunk + dynamic import로 격리 |
+| **2. 렌더는 React 밖에서, 상태는 React에서** | `<PixelOfficeStage>` 래퍼만 React. Phaser 인스턴스는 `useRef`에 살리고 zustand store(`officeStore`)로 React↔Phaser 양방향 브릿지. WebSocket 이벤트(`AgentThought`)는 store에 push, Phaser는 store 구독 |
+| **3. 모든 콘텐츠는 데이터** | 맵·캐릭터·가구·애니메이션·대사 = JSON/TMJ 파일. 코드에 좌표·색상 하드코딩 0건. 사용자가 GUI(Tiled 또는 자체 인게임 에디터)로 변형 가능 |
+| **4. 에셋 파이프라인은 표준화** | LDtk 또는 Tiled로 맵 제작 → JSON export → 런타임 로더가 청크 스트리밍. 스프라이트는 TexturePacker JSON 아틀라스 |
+| **5. 유저 커스터마이징은 3계층** | (a) 프리셋(테마/레이아웃 갤러리) → (b) 인게임 에디터(드래그&드롭) → (c) 고급 사용자용 JSON 직접 편집·임포트 |
+| **6. 멀티테넌시 대비** | 사용자별 office config를 MongoDB(`office_layouts` 컬렉션)에 저장. 클라우드 동기화·공유 URL 가능 |
+| **7. 접근성·폴백 유지** | `prefers-reduced-motion`/저사양 감지 시 자동으로 `AgentOffice.tsx` 카드 뷰로 폴백. 키보드 네비게이션 |
+| **8. 라이선스 청결** | 코어 에셋은 **Kenney CC0 + LimeZu Lite($1.50, 정식 결제 후 Discord SaaS 임베딩 확약)** 이중화. AGPL/GPL 코드 직접 차용 금지(WorkAdventure, Tiled GUI 자체는 OK — 출력 JSON만 사용) |
+
+### 0-ter.2 최종 스택 (확정)
+
+| 영역 | 선택 | 이유 |
+| --- | --- | --- |
+| 렌더 엔진 | **Phaser 3.90.x LTS** | 안정/생태계/Tiled 일급지원 |
+| 맵 에디터 | **LDtk 1.5+** (1차) + **Tiled 1.11** (보조) | LDtk = 모던 UX, 레벨 stacking, 자동 레이어. Tiled = 더 많은 커뮤니티 에셋 호환 |
+| 길찾기 | **Phaser-Navmesh** (MIT) + fallback **easystarjs** | navmesh는 그리드보다 자연스러운 사선 이동. fallback A* |
+| UI/HUD 오버레이 | **React 19 (현 페이지)** | 현 디자인 시스템·라이트 토큰 그대로 사용 |
+| 상태 브릿지 | **Zustand 4** | 1.5 KB, React/Phaser 양쪽에서 구독 가능 |
+| 캐릭터 생성 | **LPC Spritesheet Generator** (CC-BY-SA, 격리 디렉터리) + **LimeZu Character Generator** (커밋된 라이선스 후) | 사용자가 머리/옷/액세서리 조합으로 자기 캐릭터 생성 |
+| 사운드 | **Howler.js** (Phaser 내장 대체 가능 — 결정 보류) | UI 효과음 분리 관리 시 필요 |
+| 인게임 에디터 | **자체 구현** (`react-dnd` + Phaser scene swap) | Tiled를 인게임에 임베드 불가 → 단순 드래그&드롭 정도만 |
+| 폰트 | **Galmuri11 / DungGeunMo** (SIL OFL) | 한국어 픽셀 톤 |
+| 저장소 | **MongoDB Atlas `office_layouts` 컬렉션** + 로컬 IndexedDB 캐시 | 멀티 디바이스 동기 |
+| 빌드 | **Next.js 16 dynamic import** + `transpilePackages: ["phaser"]` | SSR 회피 |
+
+번들 예산: Phaser 3 200 KB + navmesh 8 KB + zustand 1.5 KB + howler 7 KB ≈ **~220 KB gz**, lazy chunk로 첫 페인트와 분리.
+
+### 0-ter.3 모듈 아키텍처
+
+```
+frontend/src/
+├── components/
+│   ├── PixelOffice.tsx              # 얇은 래퍼: <PixelOfficeStage> + HUD 오버레이 React
+│   ├── AgentOffice.tsx              # 폴백 카드 뷰 (유지)
+│   └── office/
+│       ├── HUD/                     # 말풍선·미니맵·툴팁 (React)
+│       └── editor/                  # 인게임 커스터마이저 (React + react-dnd)
+├── game/                            # ⭐ Phaser 영역 (React 비의존)
+│   ├── boot.ts                      # Phaser.Game 부트스트랩
+│   ├── scenes/
+│   │   ├── PreloadScene.ts          # 아틀라스/맵/폰트 로딩
+│   │   ├── OfficeScene.ts           # 메인 사무실
+│   │   ├── EditorScene.ts           # 인게임 에디터 모드
+│   │   └── BootScene.ts
+│   ├── actors/
+│   │   ├── AgentActor.ts            # 4방향 walk, 말풍선 anchor, 책상 routing
+│   │   └── ActorFactory.ts          # 캐릭터 config → Actor 생성
+│   ├── systems/
+│   │   ├── PathfindingSystem.ts     # navmesh + reservation table
+│   │   ├── DialogueSystem.ts        # store 구독 → 말풍선 dispatch
+│   │   ├── CameraSystem.ts          # follow / free / cinematic
+│   │   ├── InteractionSystem.ts     # 클릭→포커스, 더블클릭→상세
+│   │   └── EditorSystem.ts          # 그리드 스냅, 가구 배치
+│   ├── data/
+│   │   ├── maps/
+│   │   │   ├── default-office.ldtk
+│   │   │   └── default-office.json
+│   │   └── presets/
+│   │       ├── themes.json          # neutral / warm / dark / hanok
+│   │       └── characters/*.json
+│   └── plugins/
+│       └── KoreanLabelPlugin.ts     # 한국어 폰트/말풍선 9-slice
+├── store/
+│   └── officeStore.ts               # zustand: thoughts, focusedAgent, theme, layout
+└── public/game/
+    ├── tilesets/                    # CC0 Kenney + LimeZu (정식)
+    ├── characters/                  # LPC + LimeZu CharGen 출력 PNG
+    ├── atlases/*.json               # TexturePacker
+    └── audio/                       # CC0 효과음
+```
+
+### 0-ter.4 데이터 스키마 (사용자 커스터마이징의 핵심)
+
+**`OfficeLayout` (사용자별 1+ 개, MongoDB `office_layouts` 컬렉션)**:
+```ts
+interface OfficeLayout {
+  _id: ObjectId;
+  user_id: string;
+  name: string;                       // "내 트레이딩 데스크"
+  is_active: boolean;
+  theme: 'neutral' | 'warm' | 'dark' | 'hanok' | string;
+  map: {
+    preset?: 'default-office' | 'open-loft' | 'hanok-room' | 'penthouse';
+    custom_ldtk?: string;             // base64 LDtk JSON (고급)
+    width: number; height: number;
+  };
+  agents: Array<{
+    role: AgentRole;                  // 백엔드 9 roles와 1:1
+    desk: { x: number; y: number; rotation: 0|90|180|270 };
+    character: CharacterConfig;       // 아래
+  }>;
+  furniture: Array<{
+    asset_id: string;                 // 'plant_pot_01', 'monitor_dual_01'
+    x: number; y: number; rotation: number;
+    layer: 'floor' | 'object' | 'overhead';
+  }>;
+  ambience: {
+    bgm?: string;                     // 'lofi_office_01' | null
+    sfx_volume: number;
+    particles: boolean;               // 먼지/햇살
+  };
+  created_at: Date;
+  updated_at: Date;
+  shared_token?: string;              // 'aBcD12' → /office/share/aBcD12 공유
+}
+
+interface CharacterConfig {
+  base: 'lpc_male_01' | 'lpc_female_01' | 'limezu_chibi_01' | string;
+  hair: { sprite_id: string; color: string };
+  outfit: { top: string; bottom: string; shoes: string };
+  accessories: string[];              // 'glasses_round', 'headset_01'
+  name_label: string;                 // 한국어 이름표 ("나정훈", "박애나")
+  emoji_set?: 'default' | 'kpop' | 'finance';  // 말풍선 옆 이모지 셋
+}
+```
+
+**프리셋 갤러리** (`game/data/presets/themes.json`): 4종 시작 — `neutral`(라이트 톤 기본), `warm`(우디/식물), `dark`(야간 트레이딩 데스크), `hanok`(한옥 모티프).
+
+### 0-ter.5 사용자 커스터마이징 UX (3-Tier)
+
+1. **Tier 1 — 프리셋 선택** (90% 사용자)  
+   사이드 패널 우상단 "오피스 변경" 버튼 → 모달에서 4개 테마 + 4개 레이아웃 카드 클릭. 즉시 적용·DB 저장.
+
+2. **Tier 2 — 인게임 에디터** (파워 유저)  
+   `EditorScene` 진입 시 그리드 표시·가구 팔레트(LimeZu/Kenney 100+ 종) 사이드바·드래그&드롭·우클릭 회전·캐릭터 더블클릭→`CharacterCustomizer`(머리/옷/이름표) 모달. 저장 시 `OfficeLayout`로 직렬화.
+
+3. **Tier 3 — JSON/LDtk 임포트** (개발자/디자이너)  
+   "고급 → LDtk 파일 가져오기"로 본인이 LDtk 데스크탑에서 만든 `.ldtk` 업로드. 검증·리매핑 후 `custom_ldtk` 필드에 저장. 공유 토큰으로 다른 유저에게 배포 가능.
+
+### 0-ter.6 백엔드 변경
+
+- 신규 컬렉션 `office_layouts` (위 스키마).
+- 신규 엔드포인트:
+  - `GET /api/office/layouts` — 내 레이아웃 목록
+  - `POST /api/office/layouts` — 생성
+  - `PATCH /api/office/layouts/{id}` — 부분 업데이트
+  - `POST /api/office/layouts/{id}/activate` — 활성화 1개
+  - `GET /api/office/share/{token}` — 공유 가져오기 (read-only)
+  - `POST /api/office/layouts/import` — LDtk JSON 검증/임포트
+- 검증: 좌표 범위·에셋 화이트리스트(`asset_id` ∈ 우리 카탈로그)·LDtk 크기 ≤ 256×256 타일·총 객체 수 ≤ 500.
+
+### 0-ter.7 단계별 마일스톤 (사용자 OK 즉시 착수)
+
+> 모든 단계가 끝까지 진행됨을 전제로 한 일정. 각 마일스톤 PR로 끊되, *중간 다운그레이드 없이* 풀 아키텍처를 향해 직진.
+
+| MS | 산출물 | 검증 기준 |
+| --- | --- | --- |
+| **MS0 — 부트스트랩** | Phaser 3 + zustand 의존성 추가, `transpilePackages`, dynamic import, 빈 `OfficeScene`이 라이트 토큰 배경에서 렌더 | `<PixelOffice>` 자리에 검은 화면 대신 빈 캔버스 표시, SSR 에러 0 |
+| **MS1 — 에셋 파이프라인** | Kenney Top-Down + LimeZu Lite 다운로드, TexturePacker 아틀라스 빌드 스크립트, `PreloadScene` 로딩바 | 모든 아틀라스 한 번에 로드 ≤ 1.5s on 3G fast |
+| **MS2 — 디폴트 맵** | LDtk로 `default-office` (60×40 타일, 9 데스크 zone) 제작, JSON export, 런타임 로더, 충돌 레이어 적용 | 맵이 정상 렌더, 카메라 팬 가능, 9 데스크 마커 표시 |
+| **MS3 — 액터 + 길찾기** | `AgentActor` (4방향 walk 8fps), `PathfindingSystem` navmesh + reservation, 9 에이전트 데스크 정주 | `AgentThought` WebSocket 이벤트 → 해당 에이전트가 동선따라 이동 |
+| **MS4 — HUD/말풍선/카메라** | React HUD 오버레이(미니맵·범례·필터), 말풍선 9-slice + 한국어 폰트, 클릭→카메라 follow | 기존 `PixelOffice`의 모든 기능 재현 + 카메라 줌 |
+| **MS5 — 테마 시스템** | 4개 프리셋 테마, 라이트 토큰 변수 동기, 다크 모드 시 자동 톤 변환 | 테마 전환 모달에서 즉시 반영 |
+| **MS6 — 캐릭터 커스터마이저** | `CharacterCustomizer` 모달 (베이스/머리/옷/이모지 셋), 미리보기 캔버스, `CharacterConfig` 저장 | 9 에이전트 각각 독립 외형 저장·복원 |
+| **MS7 — 인게임 가구 에디터** | `EditorScene`, 팔레트 사이드바, 그리드 스냅, 회전, 실행취소, 저장 | 가구 100개 배치 후 새로고침해도 유지 |
+| **MS8 — 백엔드 API + 멀티 레이아웃** | `office_layouts` CRUD, 활성 레이아웃 토글, 레이아웃 갤러리 UI | 사용자가 레이아웃 3개 만들고 전환 |
+| **MS9 — 공유/임포트** | shared_token, 공유 URL, LDtk 임포트 + 검증 + 화이트리스트 | A 유저가 만든 레이아웃을 B 유저가 가져와 활성화 |
+| **MS10 — 사운드/파티클/시네마틱** | Howler 통합, BGM 토글, 먼지/햇살 파티클, "장 마감" 시네마틱 카메라 무브 | 옵션 토글 즉시 반영, 모바일 OK |
+| **MS11 — 접근성 + 폴백 + QA** | reduced-motion → 카드 뷰 자동, 키보드 네비, 저사양(GPU tier 0) 감지, e2e Playwright | Lighthouse a11y ≥ 95, 60fps@1080p / 30fps@저사양 |
+
+### 0-ter.8 확장 후크 (향후 기능을 위한 미리 깔아두는 인터페이스)
+
+플러그인 패턴으로 닫지 않고 열어두는 지점:
+
+- **AgentBehavior 플러그인**: `interface AgentBehavior { onThought, onIdle, onFocus, onLeave }` — 향후 "에이전트가 커피 마시러 간다" 같은 idle 행동 추가 시 새 클래스 등록만.
+- **AssetCatalog**: `public/game/atlases/catalog.json`이 자산 메타(id/preview/tags/license). 새 에셋 팩 추가는 JSON에 항목 추가 + atlas drop만.
+- **ThemeProvider 브릿지**: 라이트 토큰(`--bg-canvas`, `--brand`)을 Phaser config에 자동 주입 → 디자인 시스템 변경 시 게임 톤 자동 추종.
+- **EventBus**: `officeStore`에 모든 게임 이벤트 publish → 향후 분석/리플레이/AI 학습 데이터로 재활용.
+- **LiveMode 어댑터**: `WebSocket → store → Phaser` 단방향 흐름이 이미 분리되어 있어, 추후 멀티 사용자(여러 트레이더의 office를 한 캔버스에) 모드 전환 시 어댑터만 교체.
+
+### 0-ter.9 라이선스 매트릭스 (확정 사용 예정 자산)
+
+| 자산 | 라이선스 | 사용 방식 | 비고 |
+| --- | --- | --- | --- |
+| Phaser 3 | MIT | 코드 의존성 | OK |
+| LDtk | MIT (앱) / 출력 JSON 자유 | 맵 에디터(개발자 PC), 출력만 번들 | OK |
+| Tiled | GPL (앱) / 출력 JSON 자유 | 보조 에디터, 출력만 사용 | OK |
+| Kenney Game Assets | **CC0** | 직접 번들·재배포·수정 | OK (디폴트) |
+| LimeZu Modern Office Lite | $1.50 개인 | 정식 결제 + Discord에 SaaS 임베딩 OK 서면 확인 후 사용 | **확약 전엔 Kenney만으로 진행** |
+| LPC Spritesheet | CC-BY-SA 3.0 | `public/game/characters/lpc/` 격리, README에 크레딧 + share-alike 고지 | 코어 코드와 분리 |
+| Galmuri11 / DungGeunMo | SIL OFL | 폰트 파일 번들, 폰트명 보존 | OK |
+| Phaser-Navmesh | MIT | 의존성 | OK |
+| Howler.js | MIT | 의존성 | OK |
+| Zustand | MIT | 의존성 | OK |
+| WorkAdventure | AGPL | **코드 차용 금지** — 패턴 학습만 | 회피 확정 |
+
+### 0-ter.10 리스크 및 대응
+
+| 리스크 | 영향 | 대응 |
+| --- | --- | --- |
+| Phaser 3 + Next.js 16 + Turbopack 호환성 | 부트 실패 | MS0에서 1일 PoC. 막히면 webpack mode로 fallback (Next 16 도큐먼트 옵션 존재) |
+| 번들 +220 KB gz | LCP 영향 | 사이드 패널 첫 토글 시 lazy load + skeleton. 첫 페인트 영향 0 |
+| LimeZu 라이선스 거부 | 시각 디테일 ↓ | Kenney CC0 단독 + 자체 픽셀 보강(2~3일 추가). 디폴트 톤은 Kenney로 충분 |
+| 사용자가 만든 LDtk가 악성/과대 | 서버/렌더 부하 | 임포트 시 크기·객체 수·에셋 ID 화이트리스트 검증 |
+| 작업량 (MS0~MS11) | 일정 | 각 MS 독립 PR — 어느 시점에서 멈춰도 그 시점까진 완성품 |
+
+### 0-ter.11 v2와의 관계
+
+- v2의 "Track A→B→C 점진주의"는 **이 디렉티브와 양립 불가**하므로 폐기.
+- v2의 *기술적 통찰*(에셋이 80%, Phaser 3 > 4, LimeZu 라이선스 회색)은 **v3에 그대로 흡수**됨 — Kenney를 디폴트로, LimeZu는 라이선스 확약 후 부가, Phaser 3 LTS 채택.
+- 즉 v3 = v2의 분석을 받아들이되, "충분히 좋은" 타협 대신 **"확장 가능한 풀 아키텍처"** 로 직진.
+
+### 0-ter.12 사용자 결정 필요 (MS0 착수 전)
+
+1. **에셋**: Kenney CC0 디폴트 + LimeZu 라이선스 병행 문의 → OK?
+2. **맵 에디터**: LDtk 1차(권장) vs Tiled 1차 → OK?
+3. **상태 라이브러리**: Zustand 신규 도입 OK? (현재 프로젝트는 직접 fetch + React state)
+4. **백엔드**: `office_layouts` 컬렉션·API를 backend/api에 추가 OK?
+5. **MS0 시작 시점**: 즉시 vs 위 1~4 결정 후
+
+위 5개에 답이 오면 MS0부터 순차 PR로 들어갑니다. 각 MS 종료 시 데모 GIF + 체크리스트로 검증.
+
+---
+
+## 0-bis. 재검토 결론 (v2 — 참고용, 폐기됨)
+
+v1 원안(§0~§9)은 **"Phaser 4 + Tiled + LimeZu 스택으로 풀 재구성"**이었습니다. 하루 묵혀 다시 보면 **이건 사이드 패널 1개의 ROI에 비해 과한 베팅**입니다. 핵심을 다시 정렬합니다.
+
+### 0-bis.1 v1의 잘못된 가정 5가지
+
+| # | v1의 가정 | 재검토 결과 |
+| --- | --- | --- |
+| 1 | "퀄리티 격차의 원인은 렌더링 엔진" | **틀렸음.** 격차의 80%는 *에셋*(스프라이트 디테일)이고, 20%만 엔진/길찾기다. `fillRect`로 픽셀 찍는 것 자체는 문제 아님 — `drawImage`로 LimeZu 스프라이트를 그려도 똑같이 동작 |
+| 2 | "Phaser가 표준이라 안전" | **부분 정답.** Phaser **4**는 2026‑04 갓 릴리스. 우리 Next.js 16 + React 19 + Turbopack과의 결합은 검증 사례 거의 0. PoC에서 막히면 Phaser 3로 다운그레이드해야 함 |
+| 3 | "+345 KB gz 번들은 lazy load로 해결" | **현실 왜곡.** 사용자가 패널을 열면 어차피 로드. 현재 페이지 전체 의존성(react·next·framer·recharts·radix·pretendard) 합쳐도 ~250 KB gz 추정인데, **단일 의존성이 그걸 넘는다**. LCP 영향 무시 못 함 |
+| 4 | "1100줄 → 600줄로 다이어트" | **거짓 절약.** Phaser 코드 600줄 + Tiled JSON + 에셋 빌드 파이프라인 + 폴백 카드 코드(`AgentOffice.tsx`) 유지 = **순증**. 또 Phaser 학습/디버깅 비용은 코드 LOC에 안 잡힘 |
+| 5 | "LimeZu $4면 끝" | **라이선스 회색지대.** SaaS 임베딩 시 LimeZu 개인 라이선스("재배포·재판매 금지")가 명확치 않음. 결제 후 Discord에 문의해야 안전. CC0 Kenney 단독은 디테일이 LimeZu 대비 떨어짐(LimeZu Modern Office가 압도적으로 사무실 톤에 맞음) |
+
+### 0-bis.2 진짜 문제 정의 (다시)
+
+사용자가 원하는 건 **"게더타운 수준의 시각적 디테일과 살아있는 느낌"**이지, 게더의 *기능*(WebRTC, 룸, 멀티플레이어)이 아닙니다. 즉:
+
+1. **스프라이트 디테일** (현재 16×24 도트 → LimeZu 32×48 4방향 5등신)
+2. **가구·바닥 다양성** (현재 책상 1종 → 100+ 종)
+3. **자연스러운 이동** (현재 L자 직선 → A* 회피)
+4. **말풍선·이펙트** (현재 OK 수준)
+5. **라이트 톤 일치** (현재 다크 CRT — 명백한 회귀)
+
+→ **이 5개를 만족하는 가장 가벼운 경로**를 다시 설계.
+
+### 0-bis.3 새 권장: 3‑Track Incremental Plan ⭐
+
+**v1처럼 "한 방에 Phaser 풀 이전"이 아니라, 3 트랙으로 쪼개서 각 단계마다 독립적으로 가치를 검증**합니다.
+
+#### Track A — **Asset Swap In Place** (1.5일, 위험 낮음, 효과 70%)
+v1을 **하지 않고** 현재 캔버스 코드만 유지한 채:
+- `drawCharacter()`/`drawDesk()`의 `fillRect` 호출을 **`drawImage(LimeZuSpritesheet, sx, sy, ...)`** 로 교체. 코드 라인은 거의 동일.
+- LimeZu Modern Office 타일셋(또는 Kenney CC0)을 background에 한 번 `drawImage`.
+- LimeZu Character Generator로 9명 PNG 추출 → 4방향 walk 6프레임 인덱싱.
+- 다크 CRT 오버레이/`VT323` 제거 → 라이트 토큰(`--bg-canvas` 크림톤) 적용.
+- **결과**: 추가 의존성 0 KB. 시각적 품질이 게더의 **70% 수준까지** 점프. 사용자 반응을 보고 다음 트랙을 결정할 수 있음.
+
+#### Track B — **Tilemap + Pathfinding** (Track A 검증 후, 2일, 위험 중)
+Track A 결과가 *"좋은데 동선이 어색하다"*면:
+- `easystarjs` (15 KB gz, MIT)만 추가. 의존성 1개.
+- Tiled로 콜리전 레이어 그려서 JSON export → 50줄짜리 자체 로더로 그리드 입력.
+- 기존 `buildRoutedPath`를 A*로 교체. 9명 동시 reservation table.
+- **결과**: 추가 +15 KB gz. 자연스러운 회피·우회. 게더 **85% 수준**.
+
+#### Track C — **Engine Swap (선택적)** (Track B 후 사용자가 더 원하면, 4일, 위험 높음)
+사용자가 *"카메라 줌·필터·인터랙션도 원한다"*면 비로소:
+- **Phaser 3** 또는 **PixiJS v8** 중 선택 (둘 다 더 가벼움/안정적):
+  - Phaser **3** (~200 KB gz, 8년 검증, Next.js 통합 사례 풍부) — DX 좋음, Tiled/카메라/필터 내장.
+  - **PixiJS v8** (~100 KB gz, MIT, 38k★) — 순수 렌더러. 더 가볍지만 카메라/씬 직접 구현.
+- Track A에서 만든 어셋·스프라이트 그대로 재사용 (낭비 없음).
+- **결과**: 게더 95%+. 단, 이 트랙은 **사용자가 명시적으로 원할 때만** 진행.
+
+> **핵심: Track A만으로도 사용자가 만족할 가능성이 높습니다.** v1처럼 처음부터 Track C를 가정하고 모든 인프라를 짜는 건 YAGNI 위반.
+
+### 0-bis.4 Phaser 4 vs 3 vs PixiJS — Track C 진입 시 비교
+
+| | Phaser 4 (v1 안) | Phaser 3 (수정안) | PixiJS v8 |
+| --- | --- | --- | --- |
+| 안정성 | 2026-04 v4.0.0 (신생) | 8년 검증 | 안정 |
+| Next.js 16 + React 19 결합 사례 | 거의 없음 | 다수 | 다수 |
+| 번들 (min+gzip) | ~345 KB | ~200 KB | ~100 KB |
+| Tiled 통합 | 내장 | 내장 | `@pixi/tilemap` 플러그인 |
+| 카메라/필터/씬 | 내장 | 내장 | 직접 구현 |
+| 학습 비용 | 중 | 중 | 중-상 |
+| LLM 학습 데이터 | 충분(v3 위주) | 매우 충분 | 충분 |
+| **권장도** | △ (v4는 12개월 뒤 재검토) | **◎** | ○ (UI 쪽 통합 작업 많을 때) |
+
+→ **Track C에 들어가면 Phaser 4가 아니라 Phaser 3 채택 권장.**
+
+### 0-bis.5 LimeZu vs Kenney 라이선스 — 명확히
+
+| | LimeZu Modern Office ($2.50) | Kenney 2D (CC0) |
+| --- | --- | --- |
+| 시각 품질 | ★★★★★ (사무실에 최적) | ★★★ (제너릭) |
+| 한국식 디테일 추가 | 픽셀 직접 편집 가능 | 동일 |
+| SaaS 임베딩 | 라이선스 명시 X — Discord 확인 필요 | **명백히 OK** (퍼블릭 도메인) |
+| 크레딧 표시 | 필요 | 불필요 |
+| **권장** | Track A에서 시도, 라이선스 OK면 채택 | LimeZu 라이선스 막히면 **즉시 폴백** |
+
+→ **Track A 시작 전 LimeZu Discord에 SaaS 임베딩 가능 여부 1줄 문의** (1일 이내 답변 통상). 답 오기 전엔 Kenney CC0로 PoC.
+
+### 0-bis.6 v1 대비 변경 요약
+
+| 항목 | v1 | v2 (재검토) |
+| --- | --- | --- |
+| 접근법 | 한 번에 풀 마이그레이션 | 3 트랙 점진적 |
+| 첫 걸음 | Phaser PoC (1일) | **에셋 스왑 인 플레이스** (1.5일) |
+| 엔진 | Phaser 4 (신생) | Track C 진입 시 Phaser 3 권장 |
+| 번들 영향 | +345 KB gz (디폴트) | Track A: 0 KB / Track B: +15 KB / Track C: +100~200 KB |
+| 첫 검증 시점 | Phase 5 (~9일 후) | Track A 끝(1.5일 후) |
+| 라이선스 | LimeZu 결제 가정 | LimeZu Discord 확인 후 Kenney 폴백 보유 |
+| 폐기 위험 | Phaser 안 맞으면 9일 손실 | Track A는 어차피 가치, Track B/C는 옵트인 |
+
+### 0-bis.7 다음 액션 (v2 기준)
+
+1. **사용자 결정**: Track A부터 가도 OK인가? (= "v1 풀 마이그레이션 보류하고 점진적으로 가자"에 동의)
+2. **에셋 결정**: LimeZu Discord 문의 vs 처음부터 Kenney CC0로 갈 것인가?
+3. **Track A 착수 시 산출물**:
+   - `frontend/public/game/sprites/` 에셋 폴더 신설.
+   - `PixelOffice.tsx`의 `drawCharacter`/`drawDesk` 함수만 교체 (다른 구조 유지).
+   - 다크 CRT 오버레이/`VT323`/scanline 제거, 라이트 토큰 적용.
+   - PR 1개로 검증 → 사용자 OK면 Track B 진행.
+
+이 v2가 더 합리적이라고 판단되면 §1 이후의 v1 원안은 **참고만** 하시고, Track A 체크리스트(§0-bis.7)부터 시작하면 됩니다.
+
+---
+
+## 0. TL;DR (한 장 요약 — v1 원안)
 
 | 영역 | 현재 (자체 캔버스 픽셀 페인트) | 변경 후 (Phaser 4 + Tiled + LimeZu/Kenney 에셋) |
 | --- | --- | --- |

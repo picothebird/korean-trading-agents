@@ -21,7 +21,9 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Any, Literal
+
+from bson import ObjectId
 
 from backend.api.user_system import router as user_system_router
 from backend.core.config import settings
@@ -38,6 +40,7 @@ from backend.core.order_approvals import (
     serialize_approval,
 )
 from backend.core.runtime_sessions import (
+    RUNTIME_SESSION_COLLECTION,
     SESSION_TYPE_AGENT_BACKTEST,
     SESSION_TYPE_ANALYSIS,
     create_runtime_session,
@@ -294,6 +297,15 @@ def _serialize_backtest_result(result) -> dict:
 
 def _user_id_str(user: dict) -> str:
     return str(user.get("_id") or user.get("id") or "")
+
+
+def _to_object_id_safe(raw: Any) -> ObjectId | None:
+    if isinstance(raw, ObjectId):
+        return raw
+    try:
+        return ObjectId(str(raw)) if raw else None
+    except Exception:
+        return None
 
 
 def _user_is_master(user: dict) -> bool:
@@ -661,6 +673,52 @@ async def get_agent_backtest_result(session_id: str, request: Request):
     if not _has_runtime_session_access(session, user):
         raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
     return serialize_runtime_session(session)
+
+
+@app.get("/api/backtest/agent/history")
+async def list_agent_backtest_history(request: Request, limit: int = 20):
+    """현재 사용자의 최근 AI 시뮬레이션 이력 (최신순). 사용자가 페이지를 떠나도 결과를 다시 볼 수 있도록.
+
+    - status: running / done / error 모두 포함
+    - result는 페이로드가 클 수 있어 핵심 metric만 추출해 반환
+    """
+    user = await require_user(request)
+    db = _require_mongo_db()
+    owner_id = _to_object_id_safe(_user_id_str(user))
+    if owner_id is None:
+        return {"items": []}
+    safe_limit = max(1, min(int(limit or 20), 100))
+    cursor = (
+        db[RUNTIME_SESSION_COLLECTION]
+        .find({"owner_user_id": owner_id, "session_type": SESSION_TYPE_AGENT_BACKTEST})
+        .sort("created_at", -1)
+        .limit(safe_limit)
+    )
+
+    items: list[dict[str, Any]] = []
+    async for row in cursor:
+        s = serialize_runtime_session(row)
+        result = s.get("result") or {}
+        metrics = (result.get("metrics") or {}) if isinstance(result, dict) else {}
+        items.append({
+            "session_id": s.get("session_id"),
+            "ticker": s.get("ticker"),
+            "status": s.get("status"),
+            "created_at": s.get("created_at"),
+            "updated_at": s.get("updated_at"),
+            "error": s.get("error"),
+            "summary": {
+                "total_return": metrics.get("total_return"),
+                "alpha": metrics.get("alpha"),
+                "sharpe_ratio": metrics.get("sharpe_ratio"),
+                "max_drawdown": metrics.get("max_drawdown"),
+                "win_rate": metrics.get("win_rate"),
+                "total_trades": metrics.get("total_trades"),
+                "start_date": result.get("start_date") if isinstance(result, dict) else None,
+                "end_date": result.get("end_date") if isinstance(result, dict) else None,
+            },
+        })
+    return {"items": items}
 
 
 # ── 설정 API ────────────────────────────────────────────
