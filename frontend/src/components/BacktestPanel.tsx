@@ -275,6 +275,26 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
         );
       })()}
 
+      {/* 백테스트 가정 아코디언 (B3) */}
+      <details style={{ marginBottom: 12 }}>
+        <summary style={{ fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", padding: "8px 12px", background: "var(--warning-subtle)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+          ⚠️ 이 백테스트가 실제 투자가 <b>아닌</b> 이유 — 가정 보기
+        </summary>
+        <div style={{ marginTop: 8, padding: "12px 14px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)", fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.7 }}>
+          <ul style={{ paddingLeft: 18, margin: 0 }}>
+            <li><b>완벽 체결 가정</b> — 종가 또는 다음 시가에서 100% 체결된다고 가정합니다. 실제로는 호가 부족·갭 등으로 실패할 수 있습니다.</li>
+            <li><b>수수료/세금 미반영</b> — 위 KPI는 거래 비용을 제외한 이론값입니다. 실제 수익률은 더 낮습니다.</li>
+            <li><b>슬리피지 미반영</b> — 실제 매수/매도 시 시장가 차이가 발생할 수 있습니다.</li>
+            <li><b>과거 데이터 기반</b> — 미래 수익을 보장하지 않습니다. 시장 환경/뉴스/거시 변수 변화에 취약합니다.</li>
+            <li><b>오버피팅 위험</b> — 좋은 결과가 우연일 수 있습니다. 다양한 기간(3개월/1년/3년)에서 검증해 보세요.</li>
+            <li><b>Look-ahead bias</b> — 최선을 다해 방지했지만 일부 지표는 발표 시점 데이터를 사용합니다.</li>
+          </ul>
+          <p style={{ marginTop: 8, fontSize: 10, color: "var(--text-tertiary)" }}>
+            👉 실제 투자 전 반드시 <b>모의 → 소액 실거래</b> 순으로 검증하세요.
+          </p>
+        </div>
+      </details>
+
       {/* Headline KPIs (3 large) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <Metric

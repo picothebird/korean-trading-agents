@@ -249,6 +249,27 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTr
             );
           })()}
 
+          {/* 신뢰도 산식 공개 (D1) */}
+          <details style={{ marginBottom: 10 }}>
+            <summary style={{ fontSize: 10, color: "var(--text-tertiary)", cursor: "pointer", padding: "4px 0", listStyle: "none" }}>
+              📐 신뢰도 {confidencePct}%는 어떻게 계산됐나요?
+            </summary>
+            <div style={{ marginTop: 6, padding: "10px 12px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)", fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.65 }}>
+              <p style={{ marginBottom: 6 }}>
+                <b>신뢰도 = 합의 정도 × 데이터 명확함</b>
+              </p>
+              <ol style={{ paddingLeft: 16, margin: 0 }}>
+                <li><b>합의 정도</b>: 9개 에이전트(기술/기본/심리/매크로/리스크 등)의 BUY/SELL/HOLD 표가 한쪽으로 얼마나 쏠렸는지</li>
+                <li><b>데이터 명확함</b>: 각 에이전트의 자체 신뢰도(데이터 충분성·노이즈)의 평균</li>
+                <li>토론(Bull vs Bear) 단계 점수가 가산</li>
+                <li>리스크 매니저의 위험 등급에 따라 감산</li>
+              </ol>
+              <p style={{ marginTop: 6, fontSize: 10, color: "var(--text-tertiary)" }}>
+                ※ 신뢰도가 높다고 “수익이 보장”되는 것은 아닙니다. AI 합의 + 데이터 품질의 척도입니다.
+              </p>
+            </div>
+          </details>
+
           {/* Reasoning */}
           <div style={{
             background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)",
@@ -271,6 +292,16 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTr
                   <p style={{ fontSize: 10, color: "var(--text-tertiary)", borderBottom: "1px dotted var(--text-tertiary)", display: "inline-block", cursor: "help" }}>ℹ Kelly 포지션</p>
                 </Tooltip>
                 <p style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{kelly}%</p>
+                {/* Kelly 산식 공개 (D3) */}
+                <details style={{ marginTop: 4 }}>
+                  <summary style={{ fontSize: 9, color: "var(--text-tertiary)", cursor: "pointer", listStyle: "none" }}>
+                    📐 산식
+                  </summary>
+                  <p style={{ fontSize: 9, color: "var(--text-secondary)", marginTop: 3, lineHeight: 1.5 }}>
+                    f* = (p × b − q) / b 에서 p=승률, q=1−p, b=손익비.
+                    안전을 위해 결과의 50% (Half-Kelly)와 GURU 정책 상한이 추가 적용됩니다.
+                  </p>
+                </details>
               </div>
             )}
             {decision.agents_summary?.risk_level && (

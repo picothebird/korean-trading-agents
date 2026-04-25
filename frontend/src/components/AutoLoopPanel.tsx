@@ -638,6 +638,8 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
           <>
             거래마다 빠지는 수수료/슬리피지/세금 비율입니다.{" "}
             <strong style={{ color: "var(--text-secondary)" }}>1bp = 0.01%</strong>이며, 100bp가 1% 입니다.
+            {" "}현재 설정 합계 ≈ <b>{((settings.feeBps + settings.slippageBps + settings.taxBps) / 100).toFixed(3)}%</b>
+            {" "}(매매 1회 기준 1,000만원당 약 <b>{Math.round((settings.feeBps + settings.slippageBps + settings.taxBps) * 1000).toLocaleString("ko-KR")}원</b>)
           </>
         }
       >
@@ -855,6 +857,22 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         }}
       >
         <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 6 }}>자동 루프 로그</p>
+        {/* 미실행 사유 안내 (A6) */}
+        <details style={{ marginBottom: 8 }}>
+          <summary style={{ fontSize: 9, color: "var(--text-tertiary)", cursor: "pointer", listStyle: "none" }}>
+            ❓ 매수/매도가 안 일어난 이유는 어디에서 보나요?
+          </summary>
+          <div style={{ marginTop: 6, padding: "8px 10px", background: "var(--bg-surface)", borderRadius: "var(--radius-md)", fontSize: 9, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+            <p style={{ marginBottom: 4 }}>아래 로그 메시지에서 다음 키워드가 보이면 해당 사유로 거래가 보류됐습니다:</p>
+            <ul style={{ paddingLeft: 14, margin: 0 }}>
+              <li><b>신뢰도</b> — 최소 신뢰도 미달</li>
+              <li><b>한도/포지션</b> — 최대 비중 또는 일일 한도 초과</li>
+              <li><b>세션</b> — 현재 시장 세션이 거래 가능 시간대 아님</li>
+              <li><b>GURU</b> — GURU 정책으로 액션 변경 또는 차단</li>
+              <li><b>정책/승인</b> — 사용자 수동 승인 필요</li>
+            </ul>
+          </div>
+        </details>
         <div style={{ maxHeight: 126, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
           {mergedLogs.length === 0 && <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>아직 로그가 없습니다.</p>}
           {mergedLogs.slice(-24).reverse().map((log, idx) => (
