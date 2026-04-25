@@ -1978,7 +1978,7 @@ export default function Home() {
                     <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 10 }}>
                       {backtestSummaryText}
                     </p>
-                    <BacktestPanel result={btResult} />
+                    <BacktestPanel result={btResult} mode={btMode} decisionIntervalDays={btDecisionIntervalDays} />
                   </div>
                 )}
 

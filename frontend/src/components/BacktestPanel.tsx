@@ -58,6 +58,10 @@ function Metric({ label, value, sub, positive, hint }: MetricProps) {
 
 interface BacktestPanelProps {
   result: BacktestResult;
+  /** 어떤 전략으로 시뮬레이션했는지 — 라벨/설명 문구를 모드에 맞게 표시 */
+  mode?: "agent" | "ma";
+  /** 판단 주기(거래일) — 'AI 에이전트가 N일마다 분석' 안내에 사용 */
+  decisionIntervalDays?: number;
 }
 
 const MONITORING_THRESHOLDS = {
@@ -127,9 +131,15 @@ function PredictionTooltip({
   );
 }
 
-export function BacktestPanel({ result }: BacktestPanelProps) {
+export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: BacktestPanelProps) {
   const m = result.metrics;
   const isProfit = m.total_return > 0;
+  const strategyName = mode === "agent" ? "AI 에이전트 전략" : "이동평균(MA) 규칙 전략";
+  const strategyShort = mode === "agent" ? "AI 에이전트" : "MA 규칙";
+  const strategyExplain =
+    mode === "agent"
+      ? `'분석' 탭에서 보던 그 9명의 AI 에이전트 팀이, 만약 과거 이 기간 동안 ${decisionIntervalDays ? `${decisionIntervalDays}거래일` : "정기적"}마다 같은 방식으로 회의를 열어 BUY/SELL/HOLD를 결정했다면 어떻게 됐을지 시뮬레이션한 결과예요. 즉, 사용자가 직접 전략을 만든 게 아니라 'AI 에이전트들의 판단 = 전략'으로 보고 과거 데이터로 돌려본 것입니다.`
+      : "단기 이동평균선이 장기 이동평균선을 위로 돌파하면 매수, 아래로 깨면 매도하는 가장 고전적인 추세 추종 규칙으로 시뮬레이션한 결과입니다.";
   const predictionTrace = result.prediction_trace ?? [];
   const predictionMonitoring = result.prediction_monitoring;
   const predictionChartData = predictionTrace.map((p) => ({
@@ -145,6 +155,25 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* '이 전략이 뭐냐?' 설명 — 사용자가 직접 만든 게 아님을 명확히 전달 */}
+      <div
+        style={{
+          padding: "10px 14px",
+          background: "var(--brand-subtle, rgba(99,102,241,0.08))",
+          border: "1px solid var(--brand-border, rgba(99,102,241,0.25))",
+          borderRadius: "var(--radius-lg)",
+          fontSize: 11,
+          color: "var(--text-secondary)",
+          lineHeight: 1.6,
+        }}
+      >
+        <p style={{ fontSize: 12, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name={mode === "agent" ? "robot" : "chart-bar"} size={14} decorative />
+          여기서 말하는 '{strategyName}'이란?
+        </p>
+        <p>{strategyExplain}</p>
+      </div>
+
       {/* Plain-language summary line */}
       <div
         style={{
@@ -157,7 +186,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
           lineHeight: 1.55,
         }}
       >
-        이 전략은 같은 기간 이 종목을 단순 보유만 했을 때 대비
+        <strong>{strategyName}</strong>은 같은 기간 이 종목을 단순 보유만 했을 때 대비
         {" "}<strong style={{ color: m.alpha > 0 ? "var(--bull)" : "var(--bear)" }}>
           {m.alpha >= 0 ? "+" : ""}{m.alpha.toFixed(1)}%p
         </strong>{" "}
@@ -184,11 +213,11 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
         <div style={{ marginTop: 8 }}>
           <ul style={{ paddingLeft: 18, margin: 0 }}>
             <li><strong>초기 자본</strong>: 1,000만원으로 시작합니다.</li>
-            <li><strong>매수(BUY)</strong>: AI가 매수 신호를 주면 현금 자원의 100%를 해당 종목으로 전환합니다 (수수료/호가 간격 반영).</li>
+            <li><strong>매수(BUY)</strong>: {strategyShort}이 매수 신호를 주면 현금 자원의 100%를 해당 종목으로 전환합니다 (수수료/호가 간격 반영).</li>
             <li><strong>매도(SELL)</strong>: 매도 신호 시 보유하는 총 주식을 전량 처분해 현금으로 돌아갑니다.</li>
             <li><strong>홀드(HOLD)</strong>: 아무 액션도 하지 않고 현재 상태를 유지합니다. 이미 매수한 상태에서 BUY가 다시 떨어져도 추가 매수하지 않고 계속 보유합니다 (신호 변화가 있을 때만 행동).</li>
             <li><strong>체결 지연</strong>: D일 신호는 실제 시장과 같이 D+1일 가격으로 체결됩니다.</li>
-            <li><strong>벤치마크</strong>: 같은 기간 이 종목을 단순 사서 끝까지 보유(buy &amp; hold)했을 때의 수익률입니다. AI 전략이 이것을 이겼으면 알파(α)가 양수.</li>
+            <li><strong>벤치마크</strong>: 같은 기간 이 종목을 단순 사서 끝까지 보유(buy &amp; hold)했을 때의 수익률입니다. {strategyShort} 전략이 이것을 이겼으면 알파(α)가 양수.</li>
           </ul>
         </div>
       </details>
@@ -206,7 +235,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
           value={`${m.alpha >= 0 ? "+" : ""}${m.alpha.toFixed(1)}%p`}
           positive={m.alpha > 0}
           sub="vs 단순보유(벤치마크)"
-          hint="이 AI 전략이 같은 기간 이 종목을 '사서 계속 보유'만 했을 때 대비 얼마나 더 벌었는지(퍼센트포인트 단위). 양수면 AI 전략이 단순보유보다 높은 수익, 음수면 오히려 소외될 수 있었다는 뜻. (α·알파는 월가 워렌 버핏G 같은 투자 교과서에 나오는 표준 용어)"
+          hint={`이 ${strategyShort} 전략이 같은 기간 이 종목을 '사서 계속 보유'만 했을 때 대비 얼마나 더 벌었는지(퍼센트포인트 단위). 양수면 ${strategyShort}이 단순보유보다 높은 수익, 음수면 오히려 못 벌었다는 뜻. (α·알파는 투자 교과서의 표준 용어)`}
         />
         <Metric
           label="샤프 비율"
@@ -266,7 +295,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
           borderRadius: "var(--radius-lg)", border: "1px solid var(--border-subtle)",
         }}>
           <InfoTooltip
-            content="이 종목을 시작일에 사서 종료일까지 아무 거래 없이 그대로 보유(buy &amp; hold)했을 때의 수익률. AI 전략이 이 단순 보유보다 돈을 잘 벌었음을 확인하는 기준선입니다."
+            content={`이 종목을 시작일에 사서 종료일까지 아무 거래 없이 그대로 보유(buy & hold)했을 때의 수익률. ${strategyShort} 전략이 이 단순 보유보다 돈을 잘 벌었는지 확인하는 기준선입니다.`}
             maxWidth={300}
           >
             <span style={{ fontSize: 11, color: "var(--text-tertiary)", flex: 1, borderBottom: "1px dotted var(--text-tertiary)", cursor: "help" }}>
@@ -281,7 +310,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
             background: m.alpha > 0 ? "var(--success-subtle)" : "var(--error-subtle)",
             color: m.alpha > 0 ? "var(--success)" : "var(--error)",
           }}>
-            AI 전략이 {m.alpha > 0 ? "+" : ""}{m.alpha.toFixed(1)}%p {m.alpha > 0 ? "더 벌었음" : "더 못 벌었음"}
+            {strategyShort}이 {m.alpha > 0 ? "+" : ""}{m.alpha.toFixed(1)}%p {m.alpha > 0 ? "더 벌었음" : "더 못 벌었음"}
           </span>
         </div>
       )}
