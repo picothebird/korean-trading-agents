@@ -83,6 +83,9 @@ export class AgentActor {
   private headBaseY: number;
   private hairBaseY: number;
   private headOutlineBaseY: number;
+  // MS8 thought particles
+  private particles: Array<{ obj: Phaser.GameObjects.Arc; born: number }> = [];
+  private lastEmit = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, role: AgentRole) {
     this.scene = scene;
@@ -212,7 +215,7 @@ export class AgentActor {
     this.legs.setAlpha(alpha);
   }
 
-  /** Scene update에서 명시 호출. 글로우 펄스 + 활성 상태 머리/몸통 호흡 bob. */
+  /** Scene update에서 명시 호출. 글로우 펄스 + 활성 상태 머리/몸통 호흡 bob + MS8 생각 파티클. */
   pulse(time: number): void {
     // 활성 상태에서만 머리/몸통 ±1px bob (1200ms)
     if (this.currentStatus !== "idle") {
@@ -223,6 +226,35 @@ export class AgentActor {
       this.hair.setY(this.hairBaseY + offset);
       this.headOutline.setY(this.headOutlineBaseY + offset);
     }
+    // MS8 생각 파티클 — active 상태에서 700ms마다 머리 위 점 1개 emit, 1500ms 동안 위로 떠오르며 페이드아웃
+    if (ACTIVE_STATUSES.has(this.currentStatus)) {
+      if (time - this.lastEmit > 700) {
+        this.lastEmit = time;
+        const color = STATUS_TINT[this.currentStatus];
+        const headTopY = this.headBaseY - HEAD_H / 2;
+        const dot = this.scene.add.circle(this.x, headTopY - 2, 2, color, 0.95);
+        dot.setDepth(900);
+        this.particles.push({ obj: dot, born: time });
+      }
+      // 기존 파티클 업데이트 (위로 0.7px/16ms 이동, 1500ms 후 제거)
+      const survivors: typeof this.particles = [];
+      for (const p of this.particles) {
+        const age = time - p.born;
+        if (age > 1500) {
+          p.obj.destroy();
+          continue;
+        }
+        const t = age / 1500;
+        p.obj.setY(this.headBaseY - HEAD_H / 2 - 2 - t * 18);
+        p.obj.setAlpha(0.95 * (1 - t));
+        survivors.push(p);
+      }
+      this.particles = survivors;
+    } else if (this.particles.length > 0) {
+      // 비활성 전환 시 즉시 정리
+      for (const p of this.particles) p.obj.destroy();
+      this.particles = [];
+    }
     if (!this.glow.visible) return;
     const t = (time % 800) / 800;
     const scale = 1 + Math.sin(t * Math.PI * 2) * 0.08;
@@ -232,6 +264,8 @@ export class AgentActor {
   destroy(): void {
     this.bubbleHideTimer?.remove(false);
     this.bubbleText?.destroy();
+    for (const p of this.particles) p.obj.destroy();
+    this.particles = [];
     this.glow.destroy();
     this.shadow.destroy();
     this.legs.destroy();
