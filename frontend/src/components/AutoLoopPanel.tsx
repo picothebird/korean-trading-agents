@@ -327,26 +327,93 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            void toggleAutoLoop();
-          }}
-          disabled={busy}
-          style={{
-            border: settings.enabled ? "1px solid var(--success-border)" : "1px solid var(--border-default)",
-            background: settings.enabled ? "var(--success-subtle)" : "var(--bg-overlay)",
-            color: settings.enabled ? "var(--success)" : "var(--text-secondary)",
-            borderRadius: 99,
-            padding: "5px 11px",
-            fontSize: 10,
-            fontWeight: 700,
-            cursor: busy ? "not-allowed" : "pointer",
-            opacity: busy ? 0.7 : 1,
-          }}
-        >
-          {settings.enabled ? "자동 실행 ON" : "자동 실행 OFF"}
-        </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {settings.enabled && paperAccount && paperAccount.shares > 0 && (
+            <button
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                const ok = window.confirm(
+                  `현재 보유 ${paperAccount.shares.toFixed(2)}주 (평가 ${Math.round(paperAccount.market_value).toLocaleString("ko-KR")}원, 미실현 ${Math.round(paperAccount.unrealized_pnl).toLocaleString("ko-KR")}원).\n\n루프를 중지하고 매도(청산) 페이지로 이동합니다.\n계속하시겠습니까?`
+                );
+                if (!ok) return;
+                void toggleAutoLoop();
+                try {
+                  window.dispatchEvent(new CustomEvent("kta:liquidate-request", {
+                    detail: { ticker, qty: Math.floor(paperAccount.shares) },
+                  }));
+                } catch { /* ignore */ }
+              }}
+              disabled={busy}
+              title="루프 중지 후 보유 포지션 매도 페이지로 이동"
+              style={{
+                border: "1px solid var(--bear-border, var(--bear))",
+                background: "var(--bear-subtle, transparent)",
+                color: "var(--bear)",
+                borderRadius: 99,
+                padding: "5px 10px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: busy ? "not-allowed" : "pointer",
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              ⛔ 즉시청산
+            </button>
+          )}
+          <button
+            onClick={() => {
+              void toggleAutoLoop();
+            }}
+            disabled={busy}
+            style={{
+              border: settings.enabled ? "1px solid var(--warning-border, var(--success-border))" : "1px solid var(--success-border)",
+              background: settings.enabled ? "var(--warning-subtle, var(--success-subtle))" : "var(--success-subtle)",
+              color: settings.enabled ? "var(--warning, var(--success))" : "var(--success)",
+              borderRadius: 99,
+              padding: "5px 11px",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.7 : 1,
+            }}
+          >
+            {settings.enabled ? "⏸ 일시중지" : "▶ 자동 실행"}
+          </button>
+        </div>
       </div>
+
+      {/* 포지션 요약 카드 (보유 시) */}
+      {paperAccount && paperAccount.shares > 0 && (
+        <div style={{
+          padding: "10px 12px",
+          marginBottom: 10,
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: "var(--radius-lg)",
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(0,1fr))",
+          gap: 8,
+        }}>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>보유</p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{paperAccount.shares.toFixed(2)}주</p>
+          </div>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>평균단가</p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{Math.round(paperAccount.avg_buy_price).toLocaleString("ko-KR")}</p>
+          </div>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>평가금액</p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{Math.round(paperAccount.market_value).toLocaleString("ko-KR")}</p>
+          </div>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>미실현 손익</p>
+            <p style={{ fontSize: 12, fontWeight: 800, color: paperAccount.unrealized_pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
+              {paperAccount.unrealized_pnl >= 0 ? "+" : ""}{Math.round(paperAccount.unrealized_pnl).toLocaleString("ko-KR")}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Internal tab pills — split dense settings/activity/trades */}
       <div style={{ marginBottom: 12 }}>

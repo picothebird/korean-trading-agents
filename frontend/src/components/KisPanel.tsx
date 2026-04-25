@@ -109,6 +109,16 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [guruRequireUserConfirmation, setGuruRequireUserConfirmation] = useState(false);
 
+  // 첫 실거래 진입 가드 (한 번 동의 시 localStorage에 저장)
+  const LIVE_TRADE_ACK_KEY = "kta_live_trade_ack_v1";
+  const [liveTradeAcknowledged, setLiveTradeAcknowledged] = useState(false);
+  const [showLiveTradeGate, setShowLiveTradeGate] = useState(false);
+  useEffect(() => {
+    try {
+      setLiveTradeAcknowledged(typeof window !== "undefined" && window.localStorage.getItem(LIVE_TRADE_ACK_KEY) === "1");
+    } catch { /* ignore */ }
+  }, []);
+
   // 주문 폼 상태
   const [orderTicker, setOrderTicker] = useState(prefillTicker);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
@@ -125,6 +135,23 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
   // prefillTicker 가 바뀌면 폼 동기화
   useEffect(() => {
     if (prefillTicker) setOrderTicker(prefillTicker);
+  }, [prefillTicker]);
+
+  // 즉시청산 힌트가 있으면 매도 폼 프리필
+  useEffect(() => {
+    try {
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem("kta_liquidate_hint_v1") : null;
+      if (!raw) return;
+      const hint = JSON.parse(raw) as { ticker?: string; qty?: number; ts?: number };
+      if (!hint?.ticker) return;
+      // 5분 이내 힌트만 적용
+      if (hint.ts && Date.now() - hint.ts > 5 * 60_000) return;
+      if (prefillTicker && hint.ticker !== prefillTicker) return;
+      setOrderTicker(hint.ticker);
+      setOrderSide("sell");
+      if (hint.qty && hint.qty > 0) setOrderQty(String(Math.max(1, Math.floor(hint.qty))));
+      window.localStorage.removeItem("kta_liquidate_hint_v1");
+    } catch { /* ignore */ }
   }, [prefillTicker]);
 
   const loadStatus = useCallback(async () => {
@@ -213,7 +240,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
       );
       if (res.order_result) {
         setOrderResult(
-          `승인 후 주문 완료${res.order_result.is_mock ? " (모의)" : ""} — 주문번호: ${res.order_result.order_no || "—"} · ${res.order_result.order_type_label} ${res.order_result.side === "buy" ? "매수" : "매도"} ${res.order_result.qty}주`
+          `[${res.order_result.is_mock ? "모의" : "실거래"}] 승인 후 주문 완료 — 주문번호: ${res.order_result.order_no || "—"} · ${res.order_result.order_type_label} ${res.order_result.side === "buy" ? "매수" : "매도"} ${res.order_result.qty}주`
         );
       } else {
         setOrderResult("주문 승인 처리 완료");
@@ -266,6 +293,11 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
       setOrderError("이미 승인 대기 중인 주문이 있습니다. 승인/거절을 먼저 처리하세요.");
       return;
     }
+    // ── 첫 실거래 진입 시 안전 가드 ──
+    if (!isMock && !liveTradeAcknowledged) {
+      setShowLiveTradeGate(true);
+      return;
+    }
     if (!showConfirm) { setShowConfirm(true); return; }
     setOrderLoading(true);
     setOrderResult(null);
@@ -290,7 +322,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
       setApprovalRequest(null);
       const res = await placeKisOrder(req);
       setOrderResult(
-        `주문 완료${status?.is_mock ? " (모의)" : ""} — 주문번호: ${res.order_no || "—"} · ${res.order_type_label} ${res.side === "buy" ? "매수" : "매도"} ${res.qty}주`
+        `[${status?.is_mock ? "모의" : "실거래"}] 주문 완료 — 주문번호: ${res.order_no || "—"} · ${res.order_type_label} ${res.side === "buy" ? "매수" : "매도"} ${res.qty}주`
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "주문 실패";
@@ -892,6 +924,75 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
           </AnimatePresence>
         </div>
       </div>
+
+      {/* ── 첫 실거래 진입 가드 모달 ── */}
+      {showLiveTradeGate && (
+        <div
+          onClick={() => setShowLiveTradeGate(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 460, width: "100%",
+              background: "var(--bg-surface)",
+              borderRadius: "var(--radius-xl)",
+              border: "2px solid var(--bear-border, var(--bear))",
+              padding: "22px 24px",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <span style={{ fontSize: 28 }}>⚠️</span>
+              <h3 style={{ fontSize: 17, fontWeight: 800, color: "var(--bear)", margin: 0 }}>
+                실거래 모드 첫 진입 안내
+              </h3>
+            </div>
+            <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.7, marginBottom: 14 }}>
+              지금부터 누르는 주문 버튼은 <b style={{ color: "var(--bear)" }}>실제 증권 계좌로 체결</b>됩니다.
+              모의투자와 달리 잃은 돈을 되돌릴 수 없습니다.
+            </p>
+            <ul style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.8, paddingLeft: 18, marginBottom: 16 }}>
+              <li>처음에는 <b>1주 같은 작은 단위</b>로 연습하기를 권장합니다.</li>
+              <li>분석 결과의 <b>신뢰도가 70% 이상</b>일 때만 실거래를 권장합니다.</li>
+              <li>설정의 <b>일일 손실/주문 한도</b>를 미리 정해두면 안전합니다.</li>
+              <li>언제든지 자동매매는 일시중지하거나 청산할 수 있습니다.</li>
+            </ul>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setShowLiveTradeGate(false)}
+                style={{
+                  flex: 1, padding: "10px 14px", borderRadius: "var(--radius-lg)",
+                  border: "1px solid var(--border-default)", background: "var(--bg-elevated)",
+                  color: "var(--text-secondary)", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                취소 · 모의로 돌아가기
+              </button>
+              <button
+                onClick={() => {
+                  try { window.localStorage.setItem(LIVE_TRADE_ACK_KEY, "1"); } catch { /* ignore */ }
+                  setLiveTradeAcknowledged(true);
+                  setShowLiveTradeGate(false);
+                  setShowConfirm(true);
+                }}
+                style={{
+                  flex: 1, padding: "10px 14px", borderRadius: "var(--radius-lg)", border: "none",
+                  background: "var(--bear)", color: "var(--text-inverse, #fff)",
+                  fontSize: 12, fontWeight: 800, cursor: "pointer",
+                }}
+              >
+                이해했습니다 · 실거래 진행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

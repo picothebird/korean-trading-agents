@@ -1304,6 +1304,25 @@ export default function Home() {
     }
   }, [decision]);
 
+  // 즉시 청산 요청 이벤트 수신 (AutoLoopPanel/PortfolioLoopPanel에서 디스패치)
+  useEffect(() => {
+    const onLiquidate = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { ticker?: string; qty?: number } | undefined;
+      if (!detail?.ticker) return;
+      setKisOrderTicker(detail.ticker);
+      setTab("trading");
+      try {
+        window.localStorage.setItem("kta_liquidate_hint_v1", JSON.stringify({
+          ticker: detail.ticker,
+          qty: detail.qty ?? 0,
+          ts: Date.now(),
+        }));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("kta:liquidate-request", onLiquidate as EventListener);
+    return () => window.removeEventListener("kta:liquidate-request", onLiquidate as EventListener);
+  }, []);
+
   if (!authReady) {
     return (
       <div
