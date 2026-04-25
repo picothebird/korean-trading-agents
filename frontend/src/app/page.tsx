@@ -578,7 +578,7 @@ function HumanApprovalModal({
           <span style={{ fontSize: 24 }}>⚠️</span>
           <div>
             <p style={{ fontSize: 14, fontWeight: 700, color: "var(--warning)" }}>인간 승인 필요</p>
-            <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>고신뢰도 / 대규모 포지션 결정</p>
+            <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>고신뢰도 / 대규모 포지션 결정 (실주문은 매매 탭에서 승인)</p>
           </div>
         </div>
 
@@ -633,7 +633,7 @@ function HumanApprovalModal({
               cursor: "pointer",
             }}
           >
-            승인 — {cfg.label} 진행
+            승인하고 매매 탭으로 이동
           </button>
         </div>
       </motion.div>

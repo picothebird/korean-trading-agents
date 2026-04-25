@@ -5,14 +5,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   getKisStatus,
   getKisBalance,
-  getKisPrice,
+  getSettings,
   placeKisOrder,
+  requestKisOrderApproval,
+  getKisOrderApproval,
+  approveKisOrderApproval,
+  rejectKisOrderApproval,
 } from "@/lib/api";
 import type {
   KisStatus,
   KisBalance,
   KisHolding,
   KisOrderRequest,
+  KisOrderApproval,
 } from "@/types";
 
 const SPRING = { type: "spring" as const, stiffness: 340, damping: 30 };
@@ -99,6 +104,7 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
   const [statusLoading, setStatusLoading] = useState(false);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [guruRequireUserConfirmation, setGuruRequireUserConfirmation] = useState(false);
 
   // 주문 폼 상태
   const [orderTicker, setOrderTicker] = useState(prefillTicker);
@@ -110,6 +116,8 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
   const [orderResult, setOrderResult] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalRequest, setApprovalRequest] = useState<KisOrderApproval | null>(null);
 
   // prefillTicker 가 바뀌면 폼 동기화
   useEffect(() => {
@@ -128,6 +136,15 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
     }
   }, []);
 
+  const loadApprovalPolicy = useCallback(async () => {
+    try {
+      const s = await getSettings();
+      setGuruRequireUserConfirmation(Boolean(s.guru_require_user_confirmation));
+    } catch {
+      // 설정 조회 실패 시 기존 값 유지
+    }
+  }, []);
+
   const loadBalance = useCallback(async () => {
     setBalanceLoading(true);
     setBalanceError(null);
@@ -143,34 +160,158 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
 
   useEffect(() => {
     loadStatus();
-  }, [loadStatus]);
+    loadApprovalPolicy();
+  }, [loadStatus, loadApprovalPolicy]);
+
+  const isMock = status?.is_mock ?? true;
+  const hasPendingApproval = approvalRequest?.status === "pending";
+
+  const buildOrderRequest = useCallback((): KisOrderRequest => {
+    const qty = parseInt(orderQty, 10) || 1;
+    const parsedPrice = parseInt(orderPrice, 10) || 0;
+    return {
+      ticker: orderTicker.trim(),
+      side: orderSide,
+      qty,
+      price: orderType === "01" ? 0 : parsedPrice,
+      order_type: orderType,
+    };
+  }, [orderTicker, orderSide, orderQty, orderPrice, orderType]);
+
+  const handleRefreshApproval = useCallback(async () => {
+    if (!approvalRequest) return;
+    setApprovalLoading(true);
+    setOrderError(null);
+    try {
+      const refreshed = await getKisOrderApproval(approvalRequest.approval_id);
+      setApprovalRequest(refreshed);
+    } catch (e: unknown) {
+      setOrderError(e instanceof Error ? e.message : "승인 상태 조회 실패");
+    } finally {
+      setApprovalLoading(false);
+    }
+  }, [approvalRequest]);
+
+  const handleApprove = useCallback(async () => {
+    if (!approvalRequest || approvalRequest.status !== "pending") return;
+    setApprovalLoading(true);
+    setOrderError(null);
+    setOrderResult(null);
+    try {
+      const res = await approveKisOrderApproval(approvalRequest.approval_id);
+      setApprovalRequest((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: res.status,
+              resolved_at: res.resolved_at,
+            }
+          : prev
+      );
+      if (res.order_result) {
+        setOrderResult(
+          `승인 후 주문 완료${res.order_result.is_mock ? " (모의)" : ""} — 주문번호: ${res.order_result.order_no || "—"} · ${res.order_result.order_type_label} ${res.order_result.side === "buy" ? "매수" : "매도"} ${res.order_result.qty}주`
+        );
+      } else {
+        setOrderResult("주문 승인 처리 완료");
+      }
+    } catch (e: unknown) {
+      setOrderError(e instanceof Error ? e.message : "주문 승인 처리 실패");
+      try {
+        const refreshed = await getKisOrderApproval(approvalRequest.approval_id);
+        setApprovalRequest(refreshed);
+      } catch {
+        // 상태 조회 실패는 기존 에러를 유지
+      }
+    } finally {
+      setApprovalLoading(false);
+    }
+  }, [approvalRequest]);
+
+  const handleReject = useCallback(async () => {
+    if (!approvalRequest || approvalRequest.status !== "pending") return;
+    setApprovalLoading(true);
+    setOrderError(null);
+    setOrderResult(null);
+    try {
+      const res = await rejectKisOrderApproval(approvalRequest.approval_id);
+      setApprovalRequest((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: res.status,
+              resolved_at: res.resolved_at,
+            }
+          : prev
+      );
+      setOrderError("주문 승인 요청이 거절되었습니다. 주문은 실행되지 않았습니다.");
+    } catch (e: unknown) {
+      setOrderError(e instanceof Error ? e.message : "주문 거절 처리 실패");
+      try {
+        const refreshed = await getKisOrderApproval(approvalRequest.approval_id);
+        setApprovalRequest(refreshed);
+      } catch {
+        // 상태 조회 실패는 기존 에러를 유지
+      }
+    } finally {
+      setApprovalLoading(false);
+    }
+  }, [approvalRequest]);
 
   const handleOrder = async () => {
+    if (hasPendingApproval) {
+      setOrderError("이미 승인 대기 중인 주문이 있습니다. 승인/거절을 먼저 처리하세요.");
+      return;
+    }
     if (!showConfirm) { setShowConfirm(true); return; }
     setOrderLoading(true);
     setOrderResult(null);
     setOrderError(null);
     setShowConfirm(false);
     try {
-      const req: KisOrderRequest = {
-        ticker: orderTicker.trim(),
-        side: orderSide,
-        qty: parseInt(orderQty, 10) || 1,
-        price: orderType === "01" ? 0 : (parseInt(orderPrice, 10) || 0),
-        order_type: orderType,
-      };
+      const req = buildOrderRequest();
+      const settings = await getSettings().catch(() => null);
+      const requiresApproval = Boolean(settings?.guru_require_user_confirmation);
+      setGuruRequireUserConfirmation(requiresApproval);
+
+      if (!isMock && requiresApproval) {
+        const approval = await requestKisOrderApproval({
+          ...req,
+          context: "kis_panel_manual_order",
+        });
+        setApprovalRequest(approval);
+        setOrderResult(`승인 요청 생성 완료 — 요청 ID: ${approval.approval_id}`);
+        return;
+      }
+
+      setApprovalRequest(null);
       const res = await placeKisOrder(req);
       setOrderResult(
         `주문 완료${status?.is_mock ? " (모의)" : ""} — 주문번호: ${res.order_no || "—"} · ${res.order_type_label} ${res.side === "buy" ? "매수" : "매도"} ${res.qty}주`
       );
     } catch (e: unknown) {
-      setOrderError(e instanceof Error ? e.message : "주문 실패");
+      const msg = e instanceof Error ? e.message : "주문 실패";
+      if (!isMock && msg.includes("승인 강제")) {
+        try {
+          const req = buildOrderRequest();
+          const approval = await requestKisOrderApproval({
+            ...req,
+            context: "kis_panel_manual_order_fallback",
+          });
+          setApprovalRequest(approval);
+          setOrderResult(`승인 요청 생성 완료 — 요청 ID: ${approval.approval_id}`);
+          return;
+        } catch (approvalErr: unknown) {
+          const approvalMsg = approvalErr instanceof Error ? approvalErr.message : "주문 승인 요청 생성 실패";
+          setOrderError(approvalMsg);
+          return;
+        }
+      }
+      setOrderError(msg);
     } finally {
       setOrderLoading(false);
     }
   };
-
-  const isMock = status?.is_mock ?? true;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -336,6 +477,11 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
               🔴 실전투자 모드 — 실제 주문이 체결됩니다!
             </p>
           )}
+          {!isMock && guruRequireUserConfirmation && (
+            <p style={{ fontSize: 10, color: "var(--warning)", marginTop: 4, fontWeight: 700 }}>
+              🛡 GURU 승인 강제 ON — 주문 전 승인요청 생성 후 승인/거절 버튼으로 최종 실행됩니다.
+            </p>
+          )}
         </div>
 
         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -471,20 +617,22 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={handleOrder}
-                disabled={orderLoading || !orderTicker.trim()}
+                disabled={orderLoading || approvalLoading || hasPendingApproval || !orderTicker.trim()}
                 whileTap={{ scale: 0.97 }}
                 style={{
                   width: "100%", padding: "12px 0",
                   borderRadius: "var(--radius-lg)", border: "none",
-                  background: !orderTicker.trim() || orderLoading
+                  background: !orderTicker.trim() || orderLoading || approvalLoading || hasPendingApproval
                     ? "var(--bg-elevated)"
                     : orderSide === "buy" ? "rgba(34,197,94,0.8)" : "rgba(239,68,68,0.8)",
-                  color: !orderTicker.trim() || orderLoading ? "var(--text-tertiary)" : "#fff",
-                  fontSize: 14, fontWeight: 700, cursor: (!orderTicker.trim() || orderLoading) ? "not-allowed" : "pointer",
+                  color: !orderTicker.trim() || orderLoading || approvalLoading || hasPendingApproval ? "var(--text-tertiary)" : "#fff",
+                  fontSize: 14, fontWeight: 700, cursor: (!orderTicker.trim() || orderLoading || approvalLoading || hasPendingApproval) ? "not-allowed" : "pointer",
                   transition: "all 200ms",
                 }}
               >
-                {orderLoading
+                {hasPendingApproval
+                  ? "승인 대기 중..."
+                  : orderLoading
                   ? "주문 중..."
                   : `${orderSide === "buy" ? "매수" : "매도"} 주문`}
               </motion.button>
@@ -523,10 +671,12 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
                   </button>
                   <button
                     onClick={handleOrder}
+                    disabled={orderLoading || approvalLoading}
                     style={{
                       flex: 2, padding: "8px 0", borderRadius: "var(--radius-md)", border: "none",
                       background: orderSide === "buy" ? "rgba(34,197,94,0.9)" : "rgba(239,68,68,0.9)",
-                      color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      color: "#fff", fontSize: 12, fontWeight: 700, cursor: (orderLoading || approvalLoading) ? "not-allowed" : "pointer",
+                      opacity: (orderLoading || approvalLoading) ? 0.6 : 1,
                     }}
                   >
                     확인 — {orderSide === "buy" ? "매수" : "매도"} 진행
@@ -535,6 +685,91 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* 승인 요청 카드 */}
+          {approvalRequest && (
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: "var(--radius-lg)",
+                background: "rgba(251,191,36,0.08)",
+                border: "1px solid rgba(251,191,36,0.35)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <p style={{ fontSize: 12, color: "#fbbf24", fontWeight: 700 }}>
+                  승인 요청 상태: {approvalRequest.status.toUpperCase()}
+                </p>
+                <button
+                  onClick={handleRefreshApproval}
+                  disabled={approvalLoading}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid rgba(251,191,36,0.4)",
+                    background: "rgba(251,191,36,0.16)",
+                    color: "#fbbf24",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: approvalLoading ? "not-allowed" : "pointer",
+                  }}
+                >
+                  상태 갱신
+                </button>
+              </div>
+              <p style={{ fontSize: 10, color: "var(--text-secondary)", lineHeight: 1.5, wordBreak: "break-all" }}>
+                요청 ID: {approvalRequest.approval_id}
+                <br />
+                만료 시각: {approvalRequest.expires_at}
+              </p>
+
+              {approvalRequest.status === "pending" ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={handleReject}
+                    disabled={approvalLoading}
+                    style={{
+                      flex: 1,
+                      padding: "9px 0",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid rgba(239,68,68,0.5)",
+                      background: "rgba(239,68,68,0.14)",
+                      color: "var(--bear)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: approvalLoading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    거절
+                  </button>
+                  <button
+                    onClick={handleApprove}
+                    disabled={approvalLoading}
+                    style={{
+                      flex: 2,
+                      padding: "9px 0",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid rgba(34,197,94,0.5)",
+                      background: "rgba(34,197,94,0.16)",
+                      color: "var(--bull)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: approvalLoading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    승인 후 실제 주문 실행
+                  </button>
+                </div>
+              ) : (
+                <p style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                  처리 시각: {approvalRequest.resolved_at ?? "-"}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* 주문 결과 */}
           <AnimatePresence>

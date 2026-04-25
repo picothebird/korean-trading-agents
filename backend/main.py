@@ -8,6 +8,7 @@ import asyncio
 import sys
 import os
 import math
+from datetime import datetime, timedelta
 
 # 프로젝트 루트를 sys.path에 추가
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -114,6 +115,15 @@ class KisOrderRequest(BaseModel):
     order_type: str = "00"    # "00": 지정가, "01": 시장가
 
 
+class KisOrderApprovalCreateRequest(BaseModel):
+    ticker: str
+    side: str                  # "buy" | "sell"
+    qty: int
+    price: int
+    order_type: str = "00"    # "00": 지정가, "01": 시장가
+    context: str = ""         # optional UI context
+
+
 class AgentBacktestRequest(BaseModel):
     ticker: str
     start_date: str = "2023-01-01"
@@ -166,6 +176,75 @@ class PortfolioLoopStartRequest(BaseModel):
 # ── 실행 중인 세션 저장 (간단한 인메모리) ─────────────────
 _active_sessions: dict[str, dict] = {}
 _backtest_sessions: dict[str, dict] = {}  # 에이전트 백테스트 세션
+_kis_order_approvals: dict[str, dict] = {}
+
+_KIS_APPROVAL_TTL_MIN = 15
+_KIS_APPROVAL_MAX_KEEP_HOURS = 24
+
+
+def _utc_now_iso() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _parse_iso_utc(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", ""))
+
+
+def _is_kis_approval_expired(approval: dict) -> bool:
+    expires_at = str(approval.get("expires_at", "") or "")
+    if not expires_at:
+        return True
+    try:
+        return datetime.utcnow() >= _parse_iso_utc(expires_at)
+    except Exception:
+        return True
+
+
+def _cleanup_kis_order_approvals() -> None:
+    if not _kis_order_approvals:
+        return
+    now = datetime.utcnow()
+    remove_keys: list[str] = []
+    for aid, row in _kis_order_approvals.items():
+        created_at = str(row.get("created_at", "") or "")
+        status = str(row.get("status", "") or "")
+        if status == "pending" and _is_kis_approval_expired(row):
+            row["status"] = "expired"
+            row["resolved_at"] = _utc_now_iso()
+            continue
+        try:
+            created_dt = _parse_iso_utc(created_at)
+            if now - created_dt >= timedelta(hours=_KIS_APPROVAL_MAX_KEEP_HOURS):
+                remove_keys.append(aid)
+        except Exception:
+            remove_keys.append(aid)
+    for aid in remove_keys:
+        _kis_order_approvals.pop(aid, None)
+
+
+def _validate_kis_order_request(side: str, qty: int, order_type: str) -> None:
+    if side not in ("buy", "sell"):
+        raise HTTPException(status_code=422, detail="side는 'buy' 또는 'sell'이어야 합니다")
+    if qty <= 0:
+        raise HTTPException(status_code=422, detail="수량은 1 이상이어야 합니다")
+    if order_type not in ("00", "01"):
+        raise HTTPException(status_code=422, detail="order_type은 '00'(지정가) 또는 '01'(시장가)")
+
+
+def _build_kis_order_payload(
+    ticker: str,
+    side: str,
+    qty: int,
+    price: int,
+    order_type: str,
+) -> dict:
+    return {
+        "ticker": ticker.strip(),
+        "side": side,
+        "qty": int(qty),
+        "price": 0 if order_type == "01" else int(price),
+        "order_type": order_type,
+    }
 
 
 def _serialize_backtest_result(result) -> dict:
@@ -675,23 +754,165 @@ async def kis_price(ticker: str):
 @app.post("/api/kis/order")
 async def kis_order(req: KisOrderRequest):
     """주식 현금 주문 (매수/매도)"""
-    if req.side not in ("buy", "sell"):
-        raise HTTPException(status_code=422, detail="side는 'buy' 또는 'sell'이어야 합니다")
-    if req.qty <= 0:
-        raise HTTPException(status_code=422, detail="수량은 1 이상이어야 합니다")
-    if req.order_type not in ("00", "01"):
-        raise HTTPException(status_code=422, detail="order_type은 '00'(지정가) 또는 '01'(시장가)")
+    _validate_kis_order_request(req.side, req.qty, req.order_type)
+    if (not settings.kis_mock) and settings.guru_require_user_confirmation:
+        raise HTTPException(
+            status_code=428,
+            detail="GURU 승인 강제 옵션이 켜져 있습니다. /api/kis/order/approval/request 이후 approve/reject API를 사용하세요.",
+        )
+
+    payload = _build_kis_order_payload(
+        ticker=req.ticker,
+        side=req.side,
+        qty=req.qty,
+        price=req.price,
+        order_type=req.order_type,
+    )
+
     try:
         from data.kis.trading import place_order
         return await place_order(
-            ticker=req.ticker,
-            side=req.side,  # type: ignore[arg-type]
-            qty=req.qty,
-            price=req.price,
-            order_type=req.order_type,
+            ticker=payload["ticker"],
+            side=payload["side"],  # type: ignore[arg-type]
+            qty=payload["qty"],
+            price=payload["price"],
+            order_type=payload["order_type"],
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/kis/order/approval/request")
+async def create_kis_order_approval(req: KisOrderApprovalCreateRequest):
+    """실전 주문 전 승인 대기 건 생성 (GURU 승인 강제 대응)"""
+    _cleanup_kis_order_approvals()
+    _validate_kis_order_request(req.side, req.qty, req.order_type)
+
+    payload = _build_kis_order_payload(
+        ticker=req.ticker,
+        side=req.side,
+        qty=req.qty,
+        price=req.price,
+        order_type=req.order_type,
+    )
+
+    now = datetime.utcnow()
+    approval_id = str(uuid4())
+    row = {
+        "approval_id": approval_id,
+        "status": "pending",
+        "created_at": now.replace(microsecond=0).isoformat() + "Z",
+        "expires_at": (now + timedelta(minutes=_KIS_APPROVAL_TTL_MIN)).replace(microsecond=0).isoformat() + "Z",
+        "resolved_at": None,
+        "context": str(req.context or "")[:500],
+        "order": payload,
+        "is_mock": settings.kis_mock,
+        "guru_require_user_confirmation": bool(settings.guru_require_user_confirmation),
+    }
+    _kis_order_approvals[approval_id] = row
+
+    return {
+        "approval_id": approval_id,
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "expires_at": row["expires_at"],
+        "order": row["order"],
+        "is_mock": row["is_mock"],
+        "guru_require_user_confirmation": row["guru_require_user_confirmation"],
+    }
+
+
+@app.get("/api/kis/order/approval/{approval_id}")
+async def get_kis_order_approval(approval_id: str):
+    """주문 승인 대기 건 조회"""
+    _cleanup_kis_order_approvals()
+    row = _kis_order_approvals.get(approval_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+
+    if row.get("status") == "pending" and _is_kis_approval_expired(row):
+        row["status"] = "expired"
+        row["resolved_at"] = _utc_now_iso()
+
+    return {
+        "approval_id": row.get("approval_id"),
+        "status": row.get("status"),
+        "created_at": row.get("created_at"),
+        "expires_at": row.get("expires_at"),
+        "resolved_at": row.get("resolved_at"),
+        "order": row.get("order"),
+        "is_mock": row.get("is_mock"),
+        "guru_require_user_confirmation": row.get("guru_require_user_confirmation"),
+    }
+
+
+@app.post("/api/kis/order/approval/{approval_id}/approve")
+async def approve_kis_order_approval(approval_id: str):
+    """승인 대기 건을 승인하고 실제 주문 실행"""
+    _cleanup_kis_order_approvals()
+    row = _kis_order_approvals.get(approval_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+
+    status = str(row.get("status", "") or "")
+    if status != "pending":
+        raise HTTPException(status_code=409, detail=f"이미 처리된 승인 요청입니다: {status}")
+
+    if _is_kis_approval_expired(row):
+        row["status"] = "expired"
+        row["resolved_at"] = _utc_now_iso()
+        raise HTTPException(status_code=410, detail="승인 요청 유효시간이 만료되었습니다")
+
+    payload = row.get("order", {})
+    try:
+        from data.kis.trading import place_order
+        order_result = await place_order(
+            ticker=str(payload.get("ticker", "")),
+            side=str(payload.get("side", "buy")),  # type: ignore[arg-type]
+            qty=int(payload.get("qty", 0) or 0),
+            price=int(payload.get("price", 0) or 0),
+            order_type=str(payload.get("order_type", "00")),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    row["status"] = "approved"
+    row["resolved_at"] = _utc_now_iso()
+    row["order_result"] = order_result
+
+    return {
+        "approval_id": approval_id,
+        "status": row["status"],
+        "resolved_at": row["resolved_at"],
+        "order_result": order_result,
+    }
+
+
+@app.post("/api/kis/order/approval/{approval_id}/reject")
+async def reject_kis_order_approval(approval_id: str):
+    """승인 대기 건 거절"""
+    _cleanup_kis_order_approvals()
+    row = _kis_order_approvals.get(approval_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+
+    status = str(row.get("status", "") or "")
+    if status != "pending":
+        raise HTTPException(status_code=409, detail=f"이미 처리된 승인 요청입니다: {status}")
+
+    if _is_kis_approval_expired(row):
+        row["status"] = "expired"
+        row["resolved_at"] = _utc_now_iso()
+        raise HTTPException(status_code=410, detail="승인 요청 유효시간이 만료되었습니다")
+
+    row["status"] = "rejected"
+    row["resolved_at"] = _utc_now_iso()
+
+    return {
+        "approval_id": approval_id,
+        "status": row["status"],
+        "resolved_at": row["resolved_at"],
+    }
 
 
 if __name__ == "__main__":

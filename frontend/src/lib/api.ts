@@ -365,3 +365,55 @@ export async function placeKisOrder(
   }
   return res.json();
 }
+
+export async function requestKisOrderApproval(
+  req: import("@/types").KisOrderApprovalCreateRequest
+): Promise<import("@/types").KisOrderApproval> {
+  const res = await fetch(`${BASE_URL}/api/kis/order/approval/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "주문 승인 요청 생성 실패" }));
+    throw new Error(err.detail ?? "주문 승인 요청 생성 실패");
+  }
+  return res.json();
+}
+
+export async function getKisOrderApproval(
+  approvalId: string
+): Promise<import("@/types").KisOrderApproval> {
+  const res = await fetch(`${BASE_URL}/api/kis/order/approval/${encodeURIComponent(approvalId)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "주문 승인 상태 조회 실패" }));
+    throw new Error(err.detail ?? "주문 승인 상태 조회 실패");
+  }
+  return res.json();
+}
+
+export async function approveKisOrderApproval(
+  approvalId: string
+): Promise<import("@/types").KisOrderApprovalActionResult> {
+  const res = await fetch(`${BASE_URL}/api/kis/order/approval/${encodeURIComponent(approvalId)}/approve`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "주문 승인 처리 실패" }));
+    throw new Error(err.detail ?? "주문 승인 처리 실패");
+  }
+  return res.json();
+}
+
+export async function rejectKisOrderApproval(
+  approvalId: string
+): Promise<import("@/types").KisOrderApprovalActionResult> {
+  const res = await fetch(`${BASE_URL}/api/kis/order/approval/${encodeURIComponent(approvalId)}/reject`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "주문 거절 처리 실패" }));
+    throw new Error(err.detail ?? "주문 거절 처리 실패");
+  }
+  return res.json();
+}

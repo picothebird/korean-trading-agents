@@ -20,7 +20,7 @@ from backend.core.events import (
 )
 from backend.core.llm import create_response
 from agents.analyst.analysts import technical_analyst, fundamental_analyst, sentiment_analyst, macro_analyst
-from data.market.fetcher import get_stock_info
+from data.market.fetcher import get_stock_info, get_technical_indicators, get_news_async
 
 
 _VALID_ACTIONS = {"BUY", "SELL", "HOLD"}
@@ -98,23 +98,72 @@ async def researcher_debate(
 ) -> dict:
     """강세/약세 연구원 토론 (지정된 라운드 수 반복)"""
     analysis_summary = json.dumps(analyst_results, ensure_ascii=False, indent=2)
+    company_name = str(get_stock_info(ticker).get("name", "") or "")
     
     bull_stance = ""
     bear_stance = ""
+    previous_round_price: float | None = None
     
     for round_num in range(1, rounds + 1):
+        # 라운드마다 최신 시세/뉴스를 재조회해 토론 컨텍스트를 갱신한다.
+        market_summary = "실시간 가격 재조회 실패"
+        news_summary = "뉴스 재조회 실패"
+        latest_price = None
+        latest_change_pct = None
+        intraround_change_pct = None
+        top_news_titles: list[str] = []
+
+        try:
+            indicators = get_technical_indicators(ticker, days=45)
+            latest_price = indicators.get("current_price")
+            latest_change_pct = indicators.get("change_pct")
+            volume = indicators.get("volume")
+
+            if isinstance(latest_price, (int, float)) and previous_round_price and previous_round_price > 0:
+                intraround_change_pct = (float(latest_price) - previous_round_price) / previous_round_price * 100.0
+            if isinstance(latest_price, (int, float)):
+                previous_round_price = float(latest_price)
+
+            latest_price_text = f"{float(latest_price):,.0f}원" if isinstance(latest_price, (int, float)) else "N/A"
+            latest_change_text = f"{float(latest_change_pct):+.2f}%" if isinstance(latest_change_pct, (int, float)) else "N/A"
+            intraround_change_text = f"{float(intraround_change_pct):+.2f}%" if isinstance(intraround_change_pct, (int, float)) else "N/A"
+            volume_text = f"{int(volume):,}" if isinstance(volume, int) else "N/A"
+            market_summary = (
+                f"현재가 {latest_price_text} | 일중등락 {latest_change_text} | "
+                f"직전 라운드 대비 {intraround_change_text} | 거래량 {volume_text}"
+            )
+        except Exception:
+            pass
+
+        try:
+            latest_news = await get_news_async(ticker, company_name)
+            for item in latest_news[:3]:
+                title = str(item.get("title", "") or "").strip()
+                if title:
+                    top_news_titles.append(title)
+            if top_news_titles:
+                news_summary = " | ".join(top_news_titles)
+            else:
+                news_summary = "신규 뉴스 없음"
+        except Exception:
+            pass
+
         # 강세 연구원
         await emit_thought(session_id, AgentThought(
             agent_id="bull_researcher",
             role=AgentRole.BULL_RESEARCHER,
             status=AgentStatus.DEBATING,
-            content=f"[라운드 {round_num}] 매수 논거 수립 중...",
+            content=f"[라운드 {round_num}] 매수 논거 수립 중... ({market_summary})",
         ))
 
         bull_prompt = f"""당신은 강세(매수) 관점의 주식 연구원입니다.
 
 [분석팀 결과]
 {analysis_summary}
+
+[라운드 최신 데이터 재조회]
+- 시세: {market_summary}
+- 뉴스 헤드라인: {news_summary}
 
 [약세 측 주장 (이전 라운드)]
 {bear_stance if bear_stance else '(첫 라운드)'}
@@ -140,7 +189,14 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
             role=AgentRole.BULL_RESEARCHER,
             status=AgentStatus.DEBATING,
             content=f"[라운드 {round_num}] {bull_stance}",
-            metadata={"round": round_num, "key_points": bull_key_points},
+            metadata={
+                "round": round_num,
+                "key_points": bull_key_points,
+                "latest_price": latest_price,
+                "latest_change_pct": latest_change_pct,
+                "intraround_change_pct": intraround_change_pct,
+                "news_titles": top_news_titles,
+            },
         ))
 
         # 약세 연구원
@@ -148,13 +204,17 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
             agent_id="bear_researcher",
             role=AgentRole.BEAR_RESEARCHER,
             status=AgentStatus.DEBATING,
-            content=f"[라운드 {round_num}] 매도 논거 수립 중...",
+            content=f"[라운드 {round_num}] 매도 논거 수립 중... ({market_summary})",
         ))
 
         bear_prompt = f"""당신은 약세(매도/관망) 관점의 주식 연구원입니다.
 
 [분석팀 결과]
 {analysis_summary}
+
+[라운드 최신 데이터 재조회]
+- 시세: {market_summary}
+- 뉴스 헤드라인: {news_summary}
 
 [강세 측 주장]
 {bull_stance}
@@ -180,7 +240,14 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
             role=AgentRole.BEAR_RESEARCHER,
             status=AgentStatus.DEBATING,
             content=f"[라운드 {round_num}] {bear_stance}",
-            metadata={"round": round_num, "key_points": bear_key_points},
+            metadata={
+                "round": round_num,
+                "key_points": bear_key_points,
+                "latest_price": latest_price,
+                "latest_change_pct": latest_change_pct,
+                "intraround_change_pct": intraround_change_pct,
+                "news_titles": top_news_titles,
+            },
         ))
 
     return {"bull_stance": bull_stance, "bear_stance": bear_stance}

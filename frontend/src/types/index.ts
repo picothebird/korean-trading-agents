@@ -246,6 +246,35 @@ export interface KisOrderResult {
   is_mock: boolean;
 }
 
+export interface KisOrderApprovalCreateRequest {
+  ticker: string;
+  side: "buy" | "sell";
+  qty: number;
+  price: number;
+  order_type: "00" | "01";
+  context?: string;
+}
+
+export type KisOrderApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+
+export interface KisOrderApproval {
+  approval_id: string;
+  status: KisOrderApprovalStatus;
+  created_at: string;
+  expires_at: string;
+  resolved_at?: string | null;
+  order: KisOrderRequest;
+  is_mock: boolean;
+  guru_require_user_confirmation: boolean;
+}
+
+export interface KisOrderApprovalActionResult {
+  approval_id: string;
+  status: KisOrderApprovalStatus;
+  resolved_at: string;
+  order_result?: KisOrderResult;
+}
+
 export interface BacktestProgress {
   type: "connected" | "backtest_result" | "error" | "done";
   agent_id?: string;
