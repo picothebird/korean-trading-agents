@@ -26,6 +26,9 @@ openai==2.31.0
 pydantic==2.12.3
 pydantic-settings==2.13.1
 python-dotenv==1.1.1
+motor==3.7.1
+dnspython==2.8.0
+cryptography==45.0.6
 
 # --- Korean Market Data ---
 # FinanceDataReader: install from GitHub (PyPI wheel missing for Python 3.14)

@@ -13,11 +13,12 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, time
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from agents.orchestrator.orchestrator import run_analysis
+from backend.core.user_runtime_settings import runtime_profile_context
 from data.market.krx_rules import (
     KrxSession,
     get_krx_session,
@@ -81,6 +82,8 @@ class AutoLoopSettings:
     supervision_level: SupervisionLevel = SupervisionLevel.BALANCED
     execution_session_mode: ExecutionSessionMode = ExecutionSessionMode.REGULAR_ONLY
     initial_cash: float = 10_000_000.0
+    owner_user_id: str = ""
+    runtime_profile: dict[str, Any] | None = None
 
 
 @dataclass
@@ -242,136 +245,137 @@ class AutoTradingSupervisor:
         try:
             self._append_log(rt, "info", f"자동 사이클 #{rt.stats.cycle_count} 시작")
 
-            decision_session = f"auto-loop-{rt.loop_id}-{rt.stats.cycle_count}-{uuid4().hex[:8]}"
-            decision = await run_analysis(rt.settings.ticker, decision_session)
-            rt.latest_decision = {
-                "action": decision.action,
-                "ticker": decision.ticker,
-                "confidence": decision.confidence,
-                "reasoning": decision.reasoning,
-                "agents_summary": decision.agents_summary,
-                "timestamp": decision.timestamp,
-            }
+            with runtime_profile_context(rt.settings.runtime_profile):
+                decision_session = f"auto-loop-{rt.loop_id}-{rt.stats.cycle_count}-{uuid4().hex[:8]}"
+                decision = await run_analysis(rt.settings.ticker, decision_session)
+                rt.latest_decision = {
+                    "action": decision.action,
+                    "ticker": decision.ticker,
+                    "confidence": decision.confidence,
+                    "reasoning": decision.reasoning,
+                    "agents_summary": decision.agents_summary,
+                    "timestamp": decision.timestamp,
+                }
 
-            action = str(decision.action).upper()
-            if action not in ("BUY", "SELL", "HOLD"):
-                action = "HOLD"
-            confidence = float(decision.confidence)
+                action = str(decision.action).upper()
+                if action not in ("BUY", "SELL", "HOLD"):
+                    action = "HOLD"
+                confidence = float(decision.confidence)
 
-            rt.decision_history.append(
-                DecisionHistoryPoint(
-                    timestamp=datetime.now().strftime("%H:%M"),
-                    confidence=round(confidence * 100, 1),
-                    actionScore=1 if action == "BUY" else -1 if action == "SELL" else 0,
-                    action=action,  # type: ignore[arg-type]
+                rt.decision_history.append(
+                    DecisionHistoryPoint(
+                        timestamp=datetime.now().strftime("%H:%M"),
+                        confidence=round(confidence * 100, 1),
+                        actionScore=1 if action == "BUY" else -1 if action == "SELL" else 0,
+                        action=action,  # type: ignore[arg-type]
+                    )
                 )
-            )
-            rt.decision_history = rt.decision_history[-80:]
+                rt.decision_history = rt.decision_history[-80:]
 
-            self._append_log(rt, "success", f"분석 완료 · {action} · 신뢰도 {(confidence * 100):.1f}%")
+                self._append_log(rt, "success", f"분석 완료 · {action} · 신뢰도 {(confidence * 100):.1f}%")
 
-            if confidence < rt.settings.min_confidence:
-                rt.stats.skipped_cycles += 1
-                self._append_log(
-                    rt,
-                    "warn",
-                    f"신뢰도 미달로 주문 보류 · {(confidence * 100):.1f}% < {(rt.settings.min_confidence * 100):.1f}%",
-                )
-                return
-
-            if action == "HOLD":
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "info", "HOLD 판단으로 주문 없이 다음 사이클을 대기합니다.")
-                return
-
-            current_session = get_krx_session()
-            include_after_hours = rt.settings.execution_session_mode == ExecutionSessionMode.REGULAR_AND_AFTER_HOURS
-
-            if rt.settings.paper_trade:
-                if not is_tradable_session(current_session, include_after_hours=include_after_hours):
+                if confidence < rt.settings.min_confidence:
                     rt.stats.skipped_cycles += 1
                     self._append_log(
                         rt,
-                        "info",
-                        f"현재 세션({current_session.value})은 실행 대상이 아니어서 주문을 보류합니다.",
+                        "warn",
+                        f"신뢰도 미달로 주문 보류 · {(confidence * 100):.1f}% < {(rt.settings.min_confidence * 100):.1f}%",
                     )
                     return
-            else:
-                if current_session != KrxSession.REGULAR:
+
+                if action == "HOLD":
                     rt.stats.skipped_cycles += 1
-                    if include_after_hours:
-                        self._append_log(rt, "warn", "실전 시간외 주문 라우팅은 아직 미지원입니다. 정규장까지 대기합니다.")
-                    else:
-                        self._append_log(rt, "warn", "정규장 모드로 설정되어 현재 세션에서는 주문하지 않습니다.")
+                    self._append_log(rt, "info", "HOLD 판단으로 주문 없이 다음 사이클을 대기합니다.")
                     return
 
-            # 감독 레벨 기반 인간 승인 게이트
-            requires_human = bool((decision.agents_summary or {}).get("requires_human_approval"))
-            risk_level = str((decision.agents_summary or {}).get("risk_level", "")).upper()
-            if self._should_block_by_supervision(rt.settings.supervision_level, requires_human, risk_level):
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", "감독 레벨 규칙으로 주문이 보류되었습니다.")
-                return
+                current_session = get_krx_session()
+                include_after_hours = rt.settings.execution_session_mode == ExecutionSessionMode.REGULAR_AND_AFTER_HOURS
 
-            from data.kis.trading import get_current_price
+                if rt.settings.paper_trade:
+                    if not is_tradable_session(current_session, include_after_hours=include_after_hours):
+                        rt.stats.skipped_cycles += 1
+                        self._append_log(
+                            rt,
+                            "info",
+                            f"현재 세션({current_session.value})은 실행 대상이 아니어서 주문을 보류합니다.",
+                        )
+                        return
+                else:
+                    if current_session != KrxSession.REGULAR:
+                        rt.stats.skipped_cycles += 1
+                        if include_after_hours:
+                            self._append_log(rt, "warn", "실전 시간외 주문 라우팅은 아직 미지원입니다. 정규장까지 대기합니다.")
+                        else:
+                            self._append_log(rt, "warn", "정규장 모드로 설정되어 현재 세션에서는 주문하지 않습니다.")
+                        return
 
-            price_res = await get_current_price(rt.settings.ticker)
-            market_price = int(price_res.get("current_price") or 0)
-            price_time = str(price_res.get("price_time", "") or "")
-            rt.latest_price = market_price
-            rt.latest_price_time = price_time if price_time else None
-            if market_price <= 0:
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", "현재가 조회 실패로 주문을 건너뜁니다.")
-                return
+                # 감독 레벨 기반 인간 승인 게이트
+                requires_human = bool((decision.agents_summary or {}).get("requires_human_approval"))
+                risk_level = str((decision.agents_summary or {}).get("risk_level", "")).upper()
+                if self._should_block_by_supervision(rt.settings.supervision_level, requires_human, risk_level):
+                    rt.stats.skipped_cycles += 1
+                    self._append_log(rt, "warn", "감독 레벨 규칙으로 주문이 보류되었습니다.")
+                    return
 
-            if _looks_like_future_quote_time(price_time):
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", f"미래 시각 시세 감지({price_time})로 이번 사이클 주문을 보류합니다.")
-                return
+                from data.kis.trading import get_current_price
 
-            market_block_reason = self._should_block_by_market_state(rt.settings.supervision_level, action, price_res)
-            if market_block_reason:
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", market_block_reason)
-                return
+                price_res = await get_current_price(rt.settings.ticker)
+                market_price = int(price_res.get("current_price") or 0)
+                price_time = str(price_res.get("price_time", "") or "")
+                rt.latest_price = market_price
+                rt.latest_price_time = price_time if price_time else None
+                if market_price <= 0:
+                    rt.stats.skipped_cycles += 1
+                    self._append_log(rt, "warn", "현재가 조회 실패로 주문을 건너뜁니다.")
+                    return
 
-            cash_available: float | None = None
-            shares_owned: float | None = None
-            if not rt.settings.paper_trade:
-                try:
-                    from data.kis.trading import get_balance
+                if _looks_like_future_quote_time(price_time):
+                    rt.stats.skipped_cycles += 1
+                    self._append_log(rt, "warn", f"미래 시각 시세 감지({price_time})로 이번 사이클 주문을 보류합니다.")
+                    return
 
-                    bal = await get_balance()
-                    cash_available = float(bal.get("cash") or 0.0)
-                    holdings = bal.get("holdings") or []
-                    for h in holdings:
-                        if str(h.get("ticker", "")).strip() == rt.settings.ticker:
-                            shares_owned = float(h.get("qty") or 0.0)
-                            break
-                except Exception as e:
-                    self._append_log(rt, "warn", f"실전 잔고 조회 실패(보수적 수량 적용): {str(e)[:80]}")
+                market_block_reason = self._should_block_by_market_state(rt.settings.supervision_level, action, price_res)
+                if market_block_reason:
+                    rt.stats.skipped_cycles += 1
+                    self._append_log(rt, "warn", market_block_reason)
+                    return
 
-            plan = self._plan_trade(
-                rt,
-                action,
-                market_price,
-                cash_available=cash_available,
-                shares_owned=shares_owned,
-            )
-            if plan["qty"] <= 0:
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "info", "포지션/현금 한도 내에서 추가 주문이 필요하지 않습니다.")
-                return
+                cash_available: float | None = None
+                shares_owned: float | None = None
+                if not rt.settings.paper_trade:
+                    try:
+                        from data.kis.trading import get_balance
 
-            side = plan["side"]
-            qty = int(plan["qty"])
+                        bal = await get_balance()
+                        cash_available = float(bal.get("cash") or 0.0)
+                        holdings = bal.get("holdings") or []
+                        for h in holdings:
+                            if str(h.get("ticker", "")).strip() == rt.settings.ticker:
+                                shares_owned = float(h.get("qty") or 0.0)
+                                break
+                    except Exception as e:
+                        self._append_log(rt, "warn", f"실전 잔고 조회 실패(보수적 수량 적용): {str(e)[:80]}")
 
-            if rt.settings.paper_trade:
-                self._apply_paper_trade(rt, side=side, qty=qty, market_price=market_price, confidence=confidence, reason=plan["reason"])
-                return
+                plan = self._plan_trade(
+                    rt,
+                    action,
+                    market_price,
+                    cash_available=cash_available,
+                    shares_owned=shares_owned,
+                )
+                if plan["qty"] <= 0:
+                    rt.stats.skipped_cycles += 1
+                    self._append_log(rt, "info", "포지션/현금 한도 내에서 추가 주문이 필요하지 않습니다.")
+                    return
 
-            await self._execute_live_trade(rt, side=side, qty=qty, market_price=market_price, confidence=confidence, reason=plan["reason"])
+                side = plan["side"]
+                qty = int(plan["qty"])
+
+                if rt.settings.paper_trade:
+                    self._apply_paper_trade(rt, side=side, qty=qty, market_price=market_price, confidence=confidence, reason=plan["reason"])
+                    return
+
+                await self._execute_live_trade(rt, side=side, qty=qty, market_price=market_price, confidence=confidence, reason=plan["reason"])
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -640,6 +644,7 @@ class AutoTradingSupervisor:
 
         return {
             "loop_id": rt.loop_id,
+            "owner_user_id": rt.settings.owner_user_id,
             "ticker": rt.settings.ticker,
             "running": rt.running,
             "cycle_running": rt.cycle_running,
@@ -661,6 +666,7 @@ class AutoTradingSupervisor:
                 "supervision_level": rt.settings.supervision_level.value,
                 "execution_session_mode": rt.settings.execution_session_mode.value,
                 "initial_cash": rt.settings.initial_cash,
+                "owner_user_id": rt.settings.owner_user_id,
             },
             "stats": {
                 "cycle_count": rt.stats.cycle_count,

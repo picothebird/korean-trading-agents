@@ -11,7 +11,6 @@ import re
 import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from backend.core.config import settings
 from backend.core.events import AgentRole, AgentStatus, AgentThought, emit_thought
 from backend.core.llm import create_response
 from data.market.fetcher import get_technical_indicators, get_stock_info, get_market_index, get_news_async

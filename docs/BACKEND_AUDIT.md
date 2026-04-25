@@ -5,7 +5,7 @@
 - 포함 범위:
   - backend/main.py
   - backend/core/config.py
-  - backend/core/user_settings.py
+  - backend/core/user_runtime_settings.py
   - backend/core/events.py
   - backend/core/llm.py
   - agents/analyst/analysts.py
@@ -19,7 +19,7 @@
 ## 2) 파트별 역할 정의
 - [x] backend/main.py: REST/SSE 라우팅, 세션 상태 관리, 요청 검증, 각 도메인 모듈 오케스트레이션
 - [x] backend/core/config.py: 런타임 설정 로딩(.env)
-- [x] backend/core/user_settings.py: 사용자 설정 JSON 영속화/재적용
+- [x] backend/core/user_runtime_settings.py: 사용자 설정 Mongo 영속화/복호화 런타임 주입
 - [x] backend/core/events.py: 에이전트 사고 스트림 큐 및 SSE 직렬화
 - [x] backend/core/llm.py: OpenAI Responses API 클라이언트 래퍼
 - [x] agents/analyst/analysts.py: 기술/펀더멘털/감성/매크로 분석 에이전트 + 백테스트용 경량 시그널
@@ -132,6 +132,6 @@
 - [ ] 통합 E2E 시나리오(실제 OpenAI/KIS 실호출) 수동 검증: 환경 키 필요로 미실행
 
 ## 7) 잔여 리스크 / 후속 권장
-- [ ] 인메모리 세션(`_active_sessions`, `_backtest_sessions`)의 장기 누적 정리 정책(TTL/최대 개수) 미구현
+- [ ] 자동/포트폴리오 루프의 실행 상태는 프로세스 메모리(`AutoTradingSupervisor._loops`, `PortfolioSupervisor._loops`) 기반이며 재시작 시 복원되지 않음
 - [ ] 자동 테스트(pytest, API integration test) 부재
 - [ ] KIS 주문 사전검증(시장가/지정가 price 규칙) 세분화 여지

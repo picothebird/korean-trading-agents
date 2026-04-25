@@ -15,12 +15,13 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from agents.orchestrator.orchestrator import run_analysis
 from backend.core.events import clear_thought_queue
+from backend.core.user_runtime_settings import runtime_profile_context
 from data.market.fetcher import get_market_universe, get_stock_info, get_technical_indicators
 from data.market.krx_rules import (
     KrxSession,
@@ -101,6 +102,8 @@ class PortfolioLoopSettings:
     slippage_bps: float = 3.0
     tax_bps: float = 18.0
     execution_session_mode: ExecutionSessionMode = ExecutionSessionMode.REGULAR_ONLY
+    owner_user_id: str = ""
+    runtime_profile: dict[str, Any] | None = None
 
 
 @dataclass
@@ -318,62 +321,63 @@ class PortfolioSupervisor:
         rt.next_run_at = None
 
         try:
-            current_session = get_krx_session()
-            rt.current_session = current_session.value
-            include_after_hours = rt.settings.execution_session_mode == ExecutionSessionMode.REGULAR_AND_AFTER_HOURS
+            with runtime_profile_context(rt.settings.runtime_profile):
+                current_session = get_krx_session()
+                rt.current_session = current_session.value
+                include_after_hours = rt.settings.execution_session_mode == ExecutionSessionMode.REGULAR_AND_AFTER_HOURS
 
-            if rt.settings.paper_trade:
-                if not is_tradable_session(current_session, include_after_hours=include_after_hours):
+                if rt.settings.paper_trade:
+                    if not is_tradable_session(current_session, include_after_hours=include_after_hours):
+                        rt.stats.skipped_cycles += 1
+                        self._append_log(rt, "info", f"세션({current_session.value})이 실행 대상이 아니어서 대기합니다.")
+                        return
+                else:
+                    if current_session != KrxSession.REGULAR:
+                        rt.stats.skipped_cycles += 1
+                        self._append_log(rt, "warn", "실전 포트폴리오 루프는 정규장에서만 실행합니다.")
+                        return
+
+                self._append_log(rt, "info", f"포트폴리오 사이클 #{rt.stats.cycle_count} 시작")
+
+                universe = self._build_universe(rt.settings)
+                if not universe:
                     rt.stats.skipped_cycles += 1
-                    self._append_log(rt, "info", f"세션({current_session.value})이 실행 대상이 아니어서 대기합니다.")
+                    self._append_log(rt, "warn", "스캔 유니버스가 비어 이번 사이클을 보류합니다.")
                     return
-            else:
-                if current_session != KrxSession.REGULAR:
+
+                candidates = await self._rank_candidates(universe, rt.settings)
+                rt.latest_candidates = candidates[: max(1, int(rt.settings.candidate_count))]
+                rt.last_scan_at = _utc_now_iso()
+                rt.stats.scan_count += len(rt.latest_candidates)
+
+                targets = self._select_analysis_targets(rt, rt.latest_candidates)
+                if not targets:
                     rt.stats.skipped_cycles += 1
-                    self._append_log(rt, "warn", "실전 포트폴리오 루프는 정규장에서만 실행합니다.")
+                    self._append_log(rt, "warn", "분석 대상 종목이 없어 사이클을 종료합니다.")
                     return
 
-            self._append_log(rt, "info", f"포트폴리오 사이클 #{rt.stats.cycle_count} 시작")
+                decisions = await self._run_parallel_analyses(rt, targets)
+                rt.latest_decisions = decisions
+                rt.stats.analysis_count += len(decisions)
 
-            universe = self._build_universe(rt.settings)
-            if not universe:
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", "스캔 유니버스가 비어 이번 사이클을 보류합니다.")
-                return
+                quote_targets = sorted(set(targets + list(rt.account.positions.keys())))
+                quotes = await self._fetch_quotes(rt, quote_targets)
+                if not quotes:
+                    rt.stats.skipped_cycles += 1
+                    self._append_log(rt, "warn", "유효 시세를 확보하지 못해 리밸런싱을 보류합니다.")
+                    return
 
-            candidates = await self._rank_candidates(universe, rt.settings)
-            rt.latest_candidates = candidates[: max(1, int(rt.settings.candidate_count))]
-            rt.last_scan_at = _utc_now_iso()
-            rt.stats.scan_count += len(rt.latest_candidates)
+                rt.latest_quotes = {k: int(v.get("price") or 0) for k, v in quotes.items()}
+                allocations = self._build_target_allocations(rt, decisions, rt.latest_candidates, quotes)
+                rt.target_allocations = allocations
 
-            targets = self._select_analysis_targets(rt, rt.latest_candidates)
-            if not targets:
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", "분석 대상 종목이 없어 사이클을 종료합니다.")
-                return
+                orders = self._build_rebalance_orders(rt, allocations, quotes)
+                if not orders["sells"] and not orders["buys"]:
+                    rt.stats.skipped_cycles += 1
+                    self._append_log(rt, "info", "리밸런싱 임계값 이내로 주문이 필요하지 않습니다.")
+                    return
 
-            decisions = await self._run_parallel_analyses(rt, targets)
-            rt.latest_decisions = decisions
-            rt.stats.analysis_count += len(decisions)
-
-            quote_targets = sorted(set(targets + list(rt.account.positions.keys())))
-            quotes = await self._fetch_quotes(rt, quote_targets)
-            if not quotes:
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", "유효 시세를 확보하지 못해 리밸런싱을 보류합니다.")
-                return
-
-            rt.latest_quotes = {k: int(v.get("price") or 0) for k, v in quotes.items()}
-            allocations = self._build_target_allocations(rt, decisions, rt.latest_candidates, quotes)
-            rt.target_allocations = allocations
-
-            orders = self._build_rebalance_orders(rt, allocations, quotes)
-            if not orders["sells"] and not orders["buys"]:
-                rt.stats.skipped_cycles += 1
-                self._append_log(rt, "info", "리밸런싱 임계값 이내로 주문이 필요하지 않습니다.")
-                return
-
-            await self._execute_orders(rt, orders, quotes)
+                await self._execute_orders(rt, orders, quotes)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -1104,6 +1108,7 @@ class PortfolioSupervisor:
 
         return {
             "loop_id": rt.loop_id,
+            "owner_user_id": rt.settings.owner_user_id,
             "name": rt.settings.name,
             "running": rt.running,
             "cycle_running": rt.cycle_running,
@@ -1137,6 +1142,7 @@ class PortfolioSupervisor:
                 "slippage_bps": rt.settings.slippage_bps,
                 "tax_bps": rt.settings.tax_bps,
                 "execution_session_mode": rt.settings.execution_session_mode.value,
+                "owner_user_id": rt.settings.owner_user_id,
             },
             "stats": {
                 "cycle_count": rt.stats.cycle_count,

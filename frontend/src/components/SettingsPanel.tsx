@@ -1,71 +1,152 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getSettings, updateSettings } from "@/lib/api";
 
-// ── 모델 목록 ────────────────────────────────────────────────────
+export type SettingsTab = "overview" | "llm" | "analysis" | "guru" | "kis";
+
 const DEFAULT_MODELS = [
-  { value: "gpt-5.4",   label: "GPT-5.4",   desc: "최신 · 심층 추론 (권장)" },
-  { value: "o4-mini",   label: "o4-mini",   desc: "빠른 추론 모델" },
-  { value: "o3",        label: "o3",        desc: "강력한 추론" },
-  { value: "o1",        label: "o1",        desc: "고급 추론 특화" },
+  { value: "gpt-5", label: "GPT-5", desc: "기본 추천 · 심층 추론" },
+  { value: "gpt-5.4", label: "GPT-5.4", desc: "최신 · 심층 추론" },
+  { value: "o4-mini", label: "o4-mini", desc: "빠른 추론 모델" },
+  { value: "o3", label: "o3", desc: "강력한 추론" },
+  { value: "o1", label: "o1", desc: "고급 추론 특화" },
 ];
 
 const FAST_MODELS = [
-  { value: "gpt-5.4-mini", label: "GPT-5.4 mini", desc: "경량 · 빠른 응답 (권장)" },
-  { value: "gpt-4o-mini",  label: "GPT-4o mini",  desc: "저비용 · 안정적" },
-  { value: "gpt-4o",       label: "GPT-4o",       desc: "균형잡힌 성능" },
+  { value: "gpt-5-mini", label: "GPT-5 mini", desc: "기본 추천 · 경량 응답" },
+  { value: "gpt-5.4-mini", label: "GPT-5.4 mini", desc: "경량 · 빠른 응답" },
+  { value: "gpt-4o-mini", label: "GPT-4o mini", desc: "저비용 · 안정적" },
+  { value: "gpt-4o", label: "GPT-4o", desc: "균형잡힌 성능" },
 ];
 
 const EFFORT_OPTIONS = [
-  { value: "high",   label: "High",   desc: "깊은 추론\n최고 품질",  icon: "🧠", color: "#3182F6" },
-  { value: "medium", label: "Medium", desc: "균형 분석\n속도 타협",  icon: "⚖️", color: "#F5A623" },
-  { value: "low",    label: "Low",    desc: "빠른 판단\n저비용",    icon: "⚡", color: "#2FCA73" },
+  { value: "high", label: "High", desc: "깊은 추론\n최고 품질", icon: "🧠", color: "#3182F6" },
+  { value: "medium", label: "Medium", desc: "균형 분석\n속도 타협", icon: "⚖️", color: "#F5A623" },
+  { value: "low", label: "Low", desc: "빠른 판단\n저비용", icon: "⚡", color: "#2FCA73" },
 ] as const;
 
-// ── 서브 컴포넌트 ─────────────────────────────────────────────────
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+const TABS: Array<{ key: SettingsTab; label: string; icon: string; hint: string }> = [
+  { key: "overview", label: "개요", icon: "🧭", hint: "현재 상태와 빠른 진입" },
+  { key: "llm", label: "LLM", icon: "🧠", hint: "OpenAI 키와 모델" },
+  { key: "analysis", label: "분석", icon: "📊", hint: "토론 라운드/분석 강도" },
+  { key: "guru", label: "GURU", icon: "🧙", hint: "최종 정책 레이어" },
+  { key: "kis", label: "KIS", icon: "💳", hint: "실전/모의 + 인증정보" },
+];
+
+const TAB_TITLE: Record<SettingsTab, string> = {
+  overview: "설정 개요",
+  llm: "LLM 설정",
+  analysis: "분석 파라미터",
+  guru: "GURU 정책",
+  kis: "KIS 연동",
+};
+
+interface SettingsForm {
+  openai_api_key: string;
+  default_llm_model: string;
+  fast_llm_model: string;
+  reasoning_effort: "high" | "medium" | "low";
+  max_debate_rounds: number;
+  guru_enabled: boolean;
+  guru_debate_enabled: boolean;
+  guru_require_user_confirmation: boolean;
+  guru_risk_profile: "defensive" | "balanced" | "aggressive";
+  guru_investment_principles: string;
+  guru_min_confidence_to_act: number;
+  guru_max_risk_level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  guru_max_position_pct: number;
+  kis_mock: boolean;
+  kis_app_key: string;
+  kis_app_secret: string;
+  kis_account_no: string;
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: 32 }}>
-      <p style={{
-        fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)",
-        textTransform: "uppercase", letterSpacing: "0.1em",
-        marginBottom: 16, borderBottom: "1px solid var(--border-subtle)", paddingBottom: 8,
-      }}>
+    <section style={{ marginBottom: 24 }}>
+      <p
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          color: "var(--text-tertiary)",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 12,
+          paddingBottom: 8,
+          borderBottom: "1px solid var(--border-subtle)",
+        }}
+      >
         {title}
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        {children}
-      </div>
-    </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>{children}</div>
+    </section>
   );
 }
 
-function Field({ label, description, children }: {
-  label: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
     <div>
       <div style={{ marginBottom: 8 }}>
-        <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>{label}</p>
-        {description && (
-          <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.6 }}>{description}</p>
-        )}
+        <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 3 }}>{label}</p>
+        {description && <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.6 }}>{description}</p>}
       </div>
       {children}
     </div>
   );
 }
 
-function ModelSelect({ value, onChange, options }: {
+function HelpNote({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 10,
+        color: "var(--text-tertiary)",
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: 8,
+        padding: "8px 10px",
+        lineHeight: 1.6,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function StatusChip({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 10,
+        fontWeight: 700,
+        padding: "4px 10px",
+        borderRadius: 99,
+        background: ok ? "rgba(47,202,115,0.12)" : "rgba(240,68,82,0.12)",
+        border: `1px solid ${ok ? "rgba(47,202,115,0.35)" : "rgba(240,68,82,0.35)"}`,
+        color: ok ? "var(--success)" : "var(--bear)",
+      }}
+    >
+      <span style={{ fontSize: 8 }}>●</span>
+      {label}
+    </span>
+  );
+}
+
+function ModelSelect({
+  value,
+  onChange,
+  options,
+}: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string; desc: string }[];
 }) {
-  const isCustom = !options.find(o => o.value === value);
+  const isCustom = !options.some((o) => o.value === value);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -76,24 +157,39 @@ function ModelSelect({ value, onChange, options }: {
             if (e.target.value !== "__custom__") onChange(e.target.value);
           }}
           style={{
-            width: "100%", padding: "9px 32px 9px 12px",
+            width: "100%",
+            padding: "9px 32px 9px 12px",
             borderRadius: 8,
-            background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-            color: "var(--text-primary)", fontSize: 12, outline: "none", cursor: "pointer",
-            appearance: "none", WebkitAppearance: "none",
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-default)",
+            color: "var(--text-primary)",
+            fontSize: 12,
+            outline: "none",
+            cursor: "pointer",
+            appearance: "none",
+            WebkitAppearance: "none",
           }}
         >
-          {options.map(o => (
+          {options.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}  —  {o.desc}
+              {o.label}  -  {o.desc}
             </option>
           ))}
-          <option value="__custom__">✏️  직접 입력...</option>
+          <option value="__custom__">직접 입력...</option>
         </select>
-        <span style={{
-          position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-          color: "var(--text-tertiary)", fontSize: 10, pointerEvents: "none",
-        }}>▼</span>
+        <span
+          style={{
+            position: "absolute",
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "var(--text-tertiary)",
+            fontSize: 10,
+            pointerEvents: "none",
+          }}
+        >
+          ▼
+        </span>
       </div>
 
       {isCustom && (
@@ -101,12 +197,18 @@ function ModelSelect({ value, onChange, options }: {
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="모델명 직접 입력 (예: gpt-5, o4)"
+          placeholder="예: gpt-5, o4-mini"
           style={{
-            width: "100%", padding: "9px 12px", borderRadius: 8,
-            background: "var(--bg-elevated)", border: "1px solid var(--brand)",
-            color: "var(--text-primary)", fontSize: 11, outline: "none",
-            boxSizing: "border-box", fontFamily: "var(--font-mono, monospace)",
+            width: "100%",
+            padding: "9px 12px",
+            borderRadius: 8,
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--brand)",
+            color: "var(--text-primary)",
+            fontSize: 11,
+            outline: "none",
+            boxSizing: "border-box",
+            fontFamily: "monospace",
           }}
         />
       )}
@@ -114,32 +216,35 @@ function ModelSelect({ value, onChange, options }: {
   );
 }
 
-// ── 메인 패널 ─────────────────────────────────────────────────────
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  initialTab?: SettingsTab;
 }
 
-export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
-  const [form, setForm] = useState({
+export function SettingsPanel({ open, onClose, initialTab = "overview" }: SettingsPanelProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  const [isCompact, setIsCompact] = useState(false);
+  const [form, setForm] = useState<SettingsForm>({
     openai_api_key: "",
-    default_llm_model: "gpt-5.4",
-    fast_llm_model: "gpt-5.4-mini",
-    reasoning_effort: "high" as "high" | "medium" | "low",
+    default_llm_model: "gpt-5",
+    fast_llm_model: "gpt-5-mini",
+    reasoning_effort: "high",
     max_debate_rounds: 2,
     guru_enabled: false,
     guru_debate_enabled: true,
     guru_require_user_confirmation: false,
-    guru_risk_profile: "balanced" as "defensive" | "balanced" | "aggressive",
+    guru_risk_profile: "balanced",
     guru_investment_principles: "",
     guru_min_confidence_to_act: 0.72,
-    guru_max_risk_level: "HIGH" as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+    guru_max_risk_level: "HIGH",
     guru_max_position_pct: 20,
     kis_mock: true,
     kis_app_key: "",
     kis_app_secret: "",
     kis_account_no: "",
   });
+
   const [apiKeyStatus, setApiKeyStatus] = useState({ set: false, preview: "" });
   const [kisKeyStatus, setKisKeyStatus] = useState({ appKeySet: false, secretSet: false, accountNo: "" });
   const [showKey, setShowKey] = useState(false);
@@ -147,7 +252,19 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "ok" | "err">("idle");
 
-  // 패널 열릴 때 현재 설정 로드
+  useEffect(() => {
+    if (!open) return;
+    setActiveTab(initialTab);
+  }, [open, initialTab]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 980px)");
+    const sync = () => setIsCompact(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     getSettings()
@@ -158,7 +275,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           secretSet: s.kis_app_secret_set ?? false,
           accountNo: s.kis_account_no ?? "",
         });
-        setForm(prev => ({
+        setForm((prev) => ({
           ...prev,
           default_llm_model: s.default_llm_model,
           fast_llm_model: s.fast_llm_model,
@@ -179,8 +296,9 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       .catch(() => {});
   }, [open]);
 
-  const set = (key: string, val: unknown) =>
-    setForm(prev => ({ ...prev, [key]: val }));
+  const setField = <K extends keyof SettingsForm>(key: K, val: SettingsForm[K]) => {
+    setForm((prev) => ({ ...prev, [key]: val }));
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -188,22 +306,24 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     try {
       await updateSettings(form);
       setSaveStatus("ok");
+
       if (form.openai_api_key) {
         setApiKeyStatus({ set: true, preview: `sk-...${form.openai_api_key.slice(-4)}` });
-        setForm(prev => ({ ...prev, openai_api_key: "" }));
+        setForm((prev) => ({ ...prev, openai_api_key: "" }));
       }
       if (form.kis_app_key) {
-        setKisKeyStatus(prev => ({ ...prev, appKeySet: true }));
-        setForm(prev => ({ ...prev, kis_app_key: "" }));
+        setKisKeyStatus((prev) => ({ ...prev, appKeySet: true }));
+        setForm((prev) => ({ ...prev, kis_app_key: "" }));
       }
       if (form.kis_app_secret) {
-        setKisKeyStatus(prev => ({ ...prev, secretSet: true }));
-        setForm(prev => ({ ...prev, kis_app_secret: "" }));
+        setKisKeyStatus((prev) => ({ ...prev, secretSet: true }));
+        setForm((prev) => ({ ...prev, kis_app_secret: "" }));
       }
       if (form.kis_account_no) {
-        setKisKeyStatus(prev => ({ ...prev, accountNo: form.kis_account_no }));
+        setKisKeyStatus((prev) => ({ ...prev, accountNo: form.kis_account_no }));
       }
-      setTimeout(() => setSaveStatus("idle"), 3000);
+
+      setTimeout(() => setSaveStatus("idle"), 2600);
     } catch {
       setSaveStatus("err");
     } finally {
@@ -211,13 +331,12 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     }
   };
 
-  const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.35 };
+  const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.32 };
 
   return (
     <AnimatePresence>
       {open && (
         <>
-          {/* 오버레이 */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -225,568 +344,720 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             transition={{ duration: 0.2 }}
             onClick={onClose}
             style={{
-              position: "fixed", inset: 0, zIndex: 200,
-              background: "rgba(12,13,16,0.65)", backdropFilter: "blur(4px)",
+              position: "fixed",
+              inset: 0,
+              zIndex: 200,
+              background: "rgba(10,11,14,0.72)",
+              backdropFilter: "blur(6px)",
             }}
           />
 
-          {/* 패널 */}
           <motion.div
-            initial={{ x: 440 }}
-            animate={{ x: 0 }}
-            exit={{ x: 440 }}
+            initial={{ opacity: 0, y: 14, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
             transition={SPRING}
             style={{
-              position: "fixed", top: 0, right: 0, bottom: 0, width: 420, zIndex: 201,
-              background: "var(--bg-surface)", borderLeft: "1px solid var(--border-default)",
-              display: "flex", flexDirection: "column",
-              boxShadow: "-12px 0 48px rgba(0,0,0,0.5)",
+              position: "fixed",
+              zIndex: 201,
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "min(1080px, calc(100vw - 28px))",
+              maxHeight: "calc(100vh - 36px)",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--radius-2xl)",
+              boxShadow: "var(--shadow-xl)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            {/* 헤더 */}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "20px 24px", borderBottom: "1px solid var(--border-subtle)",
-              flexShrink: 0,
-            }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "16px 20px",
+                borderBottom: "1px solid var(--border-subtle)",
+                flexShrink: 0,
+                background: "linear-gradient(180deg, rgba(49,130,246,0.10) 0%, rgba(0,0,0,0) 100%)",
+              }}
+            >
               <div>
-                <p style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>⚙️ 설정</p>
-                <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
-                  API 키 · LLM 모델 · 분석 파라미터
+                <p style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)" }}>통합 설정</p>
+                <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
+                  {TAB_TITLE[activeTab]} · 맥락별 탭 진입 지원
                 </p>
               </div>
               <button
                 onClick={onClose}
                 style={{
-                  width: 32, height: 32, borderRadius: "50%",
-                  background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
-                  color: "var(--text-secondary)", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-default)",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  fontSize: 16,
                 }}
               >
                 ×
               </button>
             </div>
 
-            {/* 스크롤 가능한 본문 */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "24px 24px 8px" }}>
-
-              {/* ── OpenAI 연결 ── */}
-              <Section title="OpenAI 연결">
-                <Field
-                  label="API 키"
-                  description="모든 에이전트 LLM 호출에 사용됩니다. 변경 시에만 입력하세요."
-                >
-                  {/* 현재 키 상태 뱃지 */}
-                  {apiKeyStatus.set ? (
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
-                      padding: "4px 10px", borderRadius: 20,
-                      background: "rgba(47,202,115,0.12)", border: "1px solid rgba(47,202,115,0.3)",
-                    }}>
-                      <span style={{ fontSize: 9 }}>●</span>
-                      <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600 }}>
-                        설정됨 — {apiKeyStatus.preview}
-                      </span>
-                    </div>
-                  ) : (
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
-                      padding: "4px 10px", borderRadius: 20,
-                      background: "rgba(255,95,95,0.12)", border: "1px solid rgba(255,95,95,0.3)",
-                    }}>
-                      <span style={{ fontSize: 9, color: "var(--bear)" }}>●</span>
-                      <span style={{ fontSize: 10, color: "var(--bear)", fontWeight: 600 }}>미설정</span>
-                    </div>
-                  )}
-
-                  {/* 키 입력 */}
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showKey ? "text" : "password"}
-                      value={form.openai_api_key}
-                      onChange={(e) => set("openai_api_key", e.target.value)}
-                      placeholder={apiKeyStatus.set ? "새 키로 교체 시에만 입력" : "sk-..."}
-                      autoComplete="off"
-                      style={{
-                        width: "100%", padding: "9px 44px 9px 12px", borderRadius: 8,
-                        background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                        color: "var(--text-primary)", fontSize: 12, outline: "none",
-                        boxSizing: "border-box", fontFamily: "monospace",
-                      }}
-                    />
+            <div
+              style={{
+                display: "flex",
+                flexDirection: isCompact ? "column" : "row",
+                minHeight: 0,
+                flex: 1,
+              }}
+            >
+              <aside
+                style={{
+                  width: isCompact ? "100%" : 240,
+                  borderRight: isCompact ? "none" : "1px solid var(--border-subtle)",
+                  borderBottom: isCompact ? "1px solid var(--border-subtle)" : "none",
+                  padding: isCompact ? "8px 10px" : "12px",
+                  display: "flex",
+                  flexDirection: isCompact ? "row" : "column",
+                  gap: 8,
+                  overflowX: isCompact ? "auto" : "visible",
+                  flexShrink: 0,
+                }}
+              >
+                {TABS.map((tab) => {
+                  const active = activeTab === tab.key;
+                  return (
                     <button
-                      onClick={() => setShowKey(v => !v)}
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
                       style={{
-                        position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                        background: "none", border: "none", color: "var(--text-tertiary)",
-                        cursor: "pointer", fontSize: 14, padding: 0,
+                        minWidth: isCompact ? 154 : "100%",
+                        textAlign: "left",
+                        borderRadius: "var(--radius-lg)",
+                        border: `1px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                        background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
+                        color: active ? "var(--brand)" : "var(--text-secondary)",
+                        padding: "10px 11px",
+                        cursor: "pointer",
+                        transition: "all 120ms",
                       }}
                     >
-                      {showKey ? "🙈" : "👁"}
+                      <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 3 }}>
+                        {tab.icon} {tab.label}
+                      </p>
+                      <p style={{ fontSize: 10, color: active ? "var(--brand)" : "var(--text-tertiary)", lineHeight: 1.4 }}>
+                        {tab.hint}
+                      </p>
                     </button>
-                  </div>
-                </Field>
-              </Section>
+                  );
+                })}
+              </aside>
 
-              {/* ── LLM 모델 ── */}
-              <Section title="LLM 모델 설정">
-                <Field
-                  label="심층 분석 모델"
-                  description="기술적 분석 · 리스크 관리 · 최종 투자 판단에 사용됩니다. Reasoning 지원 모델(gpt-5*, o-series)을 권장합니다."
-                >
-                  <ModelSelect
-                    value={form.default_llm_model}
-                    onChange={(v) => set("default_llm_model", v)}
-                    options={DEFAULT_MODELS}
-                  />
-                </Field>
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 18px 10px" }}>
+                {activeTab === "overview" && (
+                  <>
+                    <Section title="현재 상태">
+                      <div style={{ display: "grid", gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr", gap: 10 }}>
+                        <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>OpenAI 연결</p>
+                          <StatusChip ok={apiKeyStatus.set} label={apiKeyStatus.set ? `설정됨 ${apiKeyStatus.preview ? `(${apiKeyStatus.preview})` : ""}` : "미설정"} />
+                        </div>
 
-                <Field
-                  label="빠른 호출 모델"
-                  description="뉴스 감성 분석 · 매크로 분석 · 강세/약세 토론에 사용됩니다. Reasoning 불필요, 속도 우선."
-                >
-                  <ModelSelect
-                    value={form.fast_llm_model}
-                    onChange={(v) => set("fast_llm_model", v)}
-                    options={FAST_MODELS}
-                  />
-                </Field>
+                        <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>KIS 인증 상태</p>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <StatusChip ok={kisKeyStatus.appKeySet} label="App Key" />
+                            <StatusChip ok={kisKeyStatus.secretSet} label="App Secret" />
+                            <StatusChip ok={Boolean(kisKeyStatus.accountNo)} label="계좌번호" />
+                          </div>
+                        </div>
 
-                <Field
-                  label="추론 강도 (Reasoning Effort)"
-                  description="심층 분석 모델에만 적용됩니다. High는 더 정확하지만 느리고 비용이 높습니다."
-                >
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {EFFORT_OPTIONS.map((opt) => {
-                      const isActive = form.reasoning_effort === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          onClick={() => set("reasoning_effort", opt.value)}
-                          style={{
-                            flex: 1, padding: "12px 8px", borderRadius: 10,
-                            border: `1.5px solid ${isActive ? opt.color : "var(--border-default)"}`,
-                            background: isActive ? `${opt.color}18` : "var(--bg-elevated)",
-                            cursor: "pointer", textAlign: "center", transition: "all 150ms",
-                          }}
-                        >
-                          <p style={{ fontSize: 18, marginBottom: 4 }}>{opt.icon}</p>
-                          <p style={{
-                            fontSize: 11, fontWeight: 700, marginBottom: 4,
-                            color: isActive ? opt.color : "var(--text-primary)",
-                          }}>
-                            {opt.label}
+                        <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>GURU 정책</p>
+                          <StatusChip ok={form.guru_enabled} label={form.guru_enabled ? "GURU ON" : "GURU OFF"} />
+                          <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6 }}>
+                            승인 강제: {form.guru_require_user_confirmation ? "ON" : "OFF"}
                           </p>
-                          <p style={{
-                            fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5,
-                            whiteSpace: "pre-line",
-                          }}>
-                            {opt.desc}
+                        </div>
+
+                        <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "10px 12px" }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>KIS 거래 모드</p>
+                          <StatusChip ok={form.kis_mock} label={form.kis_mock ? "모의투자" : "실전투자"} />
+                          <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6 }}>
+                            토론 라운드: {form.max_debate_rounds}회
                           </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Field>
-              </Section>
+                        </div>
+                      </div>
+                    </Section>
 
-              {/* ── 분석 파라미터 ── */}
-              <Section title="분석 파라미터">
-                <Field
-                  label="토론 라운드 수"
-                  description="강세/약세 연구원 간 토론 반복 횟수. 많을수록 균형 잡힌 분석이 되지만 시간이 더 걸립니다."
-                >
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {([1, 2, 3, 4] as const).map((n) => {
-                      const isActive = form.max_debate_rounds === n;
-                      const tags = ["빠름", "기본", "심층", "최심층"];
-                      return (
-                        <button
-                          key={n}
-                          onClick={() => set("max_debate_rounds", n)}
-                          style={{
-                            flex: 1, padding: "12px 6px", borderRadius: 10,
-                            border: `1.5px solid ${isActive ? "var(--brand)" : "var(--border-default)"}`,
-                            background: isActive ? "rgba(49,130,246,0.12)" : "var(--bg-elevated)",
-                            cursor: "pointer", textAlign: "center", transition: "all 150ms",
-                          }}
-                        >
-                          <p style={{
-                            fontSize: 20, fontWeight: 800, lineHeight: 1,
-                            color: isActive ? "var(--brand)" : "var(--text-primary)",
-                          }}>
-                            {n}
-                          </p>
-                          <p style={{
-                            fontSize: 9, marginTop: 4,
-                            color: isActive ? "var(--brand)" : "var(--text-tertiary)",
-                          }}>
-                            {tags[n - 1]}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Field>
+                    <Section title="빠른 이동">
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {TABS.filter((x) => x.key !== "overview").map((x) => (
+                          <button
+                            key={x.key}
+                            onClick={() => setActiveTab(x.key)}
+                            style={{
+                              borderRadius: 99,
+                              border: "1px solid var(--border-default)",
+                              background: "var(--bg-elevated)",
+                              color: "var(--text-secondary)",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: "6px 11px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {x.icon} {x.label} 열기
+                          </button>
+                        ))}
+                      </div>
+                      <HelpNote>
+                        팁: 화면 곳곳의 설정 버튼은 이 팝업을 열되, 해당 맥락의 탭(예: KIS 영역에서는 KIS 탭)으로 바로 이동합니다.
+                      </HelpNote>
+                    </Section>
+                  </>
+                )}
 
-                <Field
-                  label="KIS 투자 모드"
-                  description="한국투자증권 API 사용 시 거래 모드를 설정합니다. 모의투자는 가상 계좌, 실투자는 실제 계좌를 사용합니다."
-                >
-                  <div style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "12px 14px", borderRadius: 10,
-                    background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
-                  }}>
-                    <div>
-                      <p style={{
-                        fontSize: 12, fontWeight: 700,
-                        color: form.kis_mock ? "var(--success)" : "var(--bear)",
-                      }}>
-                        {form.kis_mock ? "🟢 모의투자 (안전)" : "🔴 실투자 (주의)"}
-                      </p>
-                      <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
-                        {form.kis_mock
-                          ? "가상 계좌 — 실제 자금 위험 없음"
-                          : "실제 계좌 — 실제 거래 발생"}
-                      </p>
-                    </div>
-                    {/* 토글 버튼 */}
-                    <button
-                      onClick={() => set("kis_mock", !form.kis_mock)}
-                      style={{
-                        width: 48, height: 26, borderRadius: 99, flexShrink: 0,
-                        background: form.kis_mock ? "var(--success)" : "#555",
-                        border: "none", cursor: "pointer", position: "relative",
-                        transition: "background 200ms",
-                      }}
-                    >
-                      <motion.div
-                        animate={{ x: form.kis_mock ? 24 : 2 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        style={{
-                          position: "absolute", top: 3, width: 20, height: 20,
-                          borderRadius: "50%", background: "#fff",
-                        }}
-                      />
-                    </button>
-                  </div>
-                </Field>
-              </Section>
+                {activeTab === "llm" && (
+                  <>
+                    <Section title="OpenAI 연결">
+                      <Field label="API 키" description="모든 에이전트 LLM 호출에 사용됩니다. 기존 키를 유지하려면 비워두고 저장하세요.">
+                        <div style={{ marginBottom: 8 }}>
+                          <StatusChip ok={apiKeyStatus.set} label={apiKeyStatus.set ? `설정됨 (${apiKeyStatus.preview})` : "미설정"} />
+                        </div>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            type={showKey ? "text" : "password"}
+                            value={form.openai_api_key}
+                            onChange={(e) => setField("openai_api_key", e.target.value)}
+                            placeholder={apiKeyStatus.set ? "새 키로 교체 시에만 입력" : "sk-..."}
+                            autoComplete="off"
+                            style={{
+                              width: "100%",
+                              padding: "9px 44px 9px 12px",
+                              borderRadius: 8,
+                              background: "var(--bg-elevated)",
+                              border: "1px solid var(--border-default)",
+                              color: "var(--text-primary)",
+                              fontSize: 12,
+                              outline: "none",
+                              boxSizing: "border-box",
+                              fontFamily: "monospace",
+                            }}
+                          />
+                          <button
+                            onClick={() => setShowKey((v) => !v)}
+                            style={{
+                              position: "absolute",
+                              right: 10,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              color: "var(--text-tertiary)",
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            {showKey ? "🙈" : "👁"}
+                          </button>
+                        </div>
+                        <HelpNote>
+                          어디서 가져오나요? OpenAI 대시보드의 API Keys 메뉴에서 새 키를 발급받아 붙여넣으세요.
+                        </HelpNote>
+                      </Field>
+                    </Section>
 
-              {/* ── GURU 커스텀 레이어 ── */}
-              <Section title="GURU 최종 결정 레이어">
-                <Field
-                  label="GURU 레이어 활성화"
-                  description="포트폴리오 매니저의 초안 결정을 사용자 투자 철학 + 룰베이스 정책으로 한 번 더 검토합니다."
-                >
-                  <div style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "12px 14px", borderRadius: 10,
-                    background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
-                  }}>
-                    <div>
-                      <p style={{
-                        fontSize: 12, fontWeight: 700,
-                        color: form.guru_enabled ? "var(--brand)" : "var(--text-secondary)",
-                      }}>
-                        {form.guru_enabled ? "🧙 GURU ON" : "GURU OFF"}
-                      </p>
-                      <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
-                        ON일 때만 GURU 토론/룰 기반 오버라이드가 적용됩니다.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => set("guru_enabled", !form.guru_enabled)}
-                      style={{
-                        width: 48, height: 26, borderRadius: 99, flexShrink: 0,
-                        background: form.guru_enabled ? "var(--brand)" : "#555",
-                        border: "none", cursor: "pointer", position: "relative",
-                        transition: "background 200ms",
-                      }}
-                    >
-                      <motion.div
-                        animate={{ x: form.guru_enabled ? 24 : 2 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        style={{
-                          position: "absolute", top: 3, width: 20, height: 20,
-                          borderRadius: "50%", background: "#fff",
-                        }}
-                      />
-                    </button>
-                  </div>
-                </Field>
+                    <Section title="모델">
+                      <Field label="심층 분석 모델" description="기술/리스크/최종판단에 사용됩니다. reasoning 지원 모델(gpt-5, o-series)을 권장합니다.">
+                        <ModelSelect value={form.default_llm_model} onChange={(v) => setField("default_llm_model", v)} options={DEFAULT_MODELS} />
+                      </Field>
 
-                <Field
-                  label="투자 성향 / 리스크 성향"
-                  description="GURU의 기본 해석 프레임입니다."
-                >
-                  <select
-                    value={form.guru_risk_profile}
-                    onChange={(e) => set("guru_risk_profile", e.target.value as "defensive" | "balanced" | "aggressive")}
-                    style={{
-                      width: "100%", padding: "9px 12px", borderRadius: 8,
-                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                      color: "var(--text-primary)", fontSize: 12, outline: "none",
-                    }}
-                  >
-                    <option value="defensive">Defensive · 손실 방어 우선</option>
-                    <option value="balanced">Balanced · 위험/수익 균형</option>
-                    <option value="aggressive">Aggressive · 기회 포착 우선</option>
-                  </select>
-                </Field>
+                      <Field label="빠른 호출 모델" description="뉴스 감성/매크로/토론 단계에 사용됩니다. 속도와 비용이 중요합니다.">
+                        <ModelSelect value={form.fast_llm_model} onChange={(v) => setField("fast_llm_model", v)} options={FAST_MODELS} />
+                      </Field>
 
-                <Field
-                  label="투자 철학 메모"
-                  description="예: 손절 엄수, FOMO 금지, 포지션 분할, 특정 섹터 선호/회피"
-                >
-                  <textarea
-                    value={form.guru_investment_principles}
-                    onChange={(e) => set("guru_investment_principles", e.target.value.slice(0, 1200))}
-                    rows={4}
-                    placeholder="나만의 투자 원칙을 적어두면 GURU가 최종 결정 시 반영합니다."
-                    style={{
-                      width: "100%", padding: "9px 12px", borderRadius: 8,
-                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                      color: "var(--text-primary)", fontSize: 12, outline: "none",
-                      boxSizing: "border-box", resize: "vertical", lineHeight: 1.6,
-                    }}
-                  />
-                </Field>
+                      <Field label="추론 강도" description="심층 분석 모델에 적용됩니다. High일수록 품질이 높지만 느리고 비용이 증가합니다.">
+                        <div style={{ display: "flex", gap: 8, flexWrap: isCompact ? "wrap" : "nowrap" }}>
+                          {EFFORT_OPTIONS.map((opt) => {
+                            const active = form.reasoning_effort === opt.value;
+                            return (
+                              <button
+                                key={opt.value}
+                                onClick={() => setField("reasoning_effort", opt.value)}
+                                style={{
+                                  flex: isCompact ? "1 1 calc(50% - 6px)" : 1,
+                                  minWidth: isCompact ? 0 : "auto",
+                                  padding: "11px 8px",
+                                  borderRadius: 10,
+                                  border: `1.5px solid ${active ? opt.color : "var(--border-default)"}`,
+                                  background: active ? `${opt.color}18` : "var(--bg-elevated)",
+                                  cursor: "pointer",
+                                  textAlign: "center",
+                                }}
+                              >
+                                <p style={{ fontSize: 18, marginBottom: 4 }}>{opt.icon}</p>
+                                <p style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: active ? opt.color : "var(--text-primary)" }}>{opt.label}</p>
+                                <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{opt.desc}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </Field>
+                    </Section>
+                  </>
+                )}
 
-                <Field
-                  label="룰베이스 임계값"
-                  description="신뢰도/리스크/포지션 한계로 GURU가 자동 HOLD 또는 포지션 축소를 적용합니다."
-                >
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최소 행동 신뢰도 (%)</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={Math.round(form.guru_min_confidence_to_act * 100)}
-                        onChange={(e) => {
-                          const v = Number(e.target.value || 0);
-                          set("guru_min_confidence_to_act", Math.max(0, Math.min(1, v / 100)));
-                        }}
-                        style={{
-                          width: "100%", padding: "8px 10px", borderRadius: 8,
-                          background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                          color: "var(--text-primary)", fontSize: 12, outline: "none", boxSizing: "border-box",
-                        }}
-                      />
-                    </label>
-
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최대 포지션 (%)</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        step={0.5}
-                        value={form.guru_max_position_pct}
-                        onChange={(e) => set("guru_max_position_pct", Math.max(1, Math.min(100, Number(e.target.value || 1))))}
-                        style={{
-                          width: "100%", padding: "8px 10px", borderRadius: 8,
-                          background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                          color: "var(--text-primary)", fontSize: 12, outline: "none", boxSizing: "border-box",
-                        }}
-                      />
-                    </label>
-
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1 / -1" }}>
-                      <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>허용 최대 리스크 레벨</span>
-                      <select
-                        value={form.guru_max_risk_level}
-                        onChange={(e) => set("guru_max_risk_level", e.target.value as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL")}
-                        style={{
-                          width: "100%", padding: "8px 10px", borderRadius: 8,
-                          background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                          color: "var(--text-primary)", fontSize: 12, outline: "none",
-                        }}
+                {activeTab === "analysis" && (
+                  <>
+                    <Section title="토론/분석 품질">
+                      <Field
+                        label="토론 라운드 수"
+                        description="강세/약세 연구원 토론 횟수입니다. 많을수록 다양한 관점을 반영하지만 실행 시간이 길어집니다."
                       >
-                        <option value="LOW">LOW</option>
-                        <option value="MEDIUM">MEDIUM</option>
-                        <option value="HIGH">HIGH</option>
-                        <option value="CRITICAL">CRITICAL</option>
-                      </select>
-                    </label>
-                  </div>
-                </Field>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          {([1, 2, 3, 4] as const).map((n) => {
+                            const active = form.max_debate_rounds === n;
+                            const tags = ["빠름", "기본", "심층", "최심층"];
+                            return (
+                              <button
+                                key={n}
+                                onClick={() => setField("max_debate_rounds", n)}
+                                style={{
+                                  flex: 1,
+                                  padding: "12px 6px",
+                                  borderRadius: 10,
+                                  border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                                  background: active ? "rgba(49,130,246,0.12)" : "var(--bg-elevated)",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <p style={{ fontSize: 20, fontWeight: 800, lineHeight: 1, color: active ? "var(--brand)" : "var(--text-primary)" }}>{n}</p>
+                                <p style={{ fontSize: 9, marginTop: 4, color: active ? "var(--brand)" : "var(--text-tertiary)" }}>{tags[n - 1]}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </Field>
 
-                <Field
-                  label="GURU 동작 옵션"
-                  description="토론 기반 보정 여부와 사용자 최종 승인 강제를 선택합니다."
-                >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <button
-                      onClick={() => set("guru_debate_enabled", !form.guru_debate_enabled)}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        width: "100%", padding: "10px 12px", borderRadius: 10,
-                        border: "1px solid var(--border-default)", background: "var(--bg-elevated)",
-                        color: "var(--text-primary)", cursor: "pointer", textAlign: "left",
-                      }}
-                    >
-                      <span style={{ fontSize: 11, fontWeight: 600 }}>GURU 토론(LLM) 사용</span>
-                      <span style={{ fontSize: 10, color: form.guru_debate_enabled ? "var(--success)" : "var(--text-tertiary)" }}>
-                        {form.guru_debate_enabled ? "ON" : "OFF"}
-                      </span>
-                    </button>
+                      <HelpNote>
+                        추천값: 기본은 2회, 변동성이 큰 장세는 3회. 4회는 품질은 높지만 지연이 커집니다.
+                      </HelpNote>
+                    </Section>
+                  </>
+                )}
 
-                    <button
-                      onClick={() => set("guru_require_user_confirmation", !form.guru_require_user_confirmation)}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        width: "100%", padding: "10px 12px", borderRadius: 10,
-                        border: "1px solid var(--border-default)", background: "var(--bg-elevated)",
-                        color: "var(--text-primary)", cursor: "pointer", textAlign: "left",
-                      }}
-                    >
-                      <span style={{ fontSize: 11, fontWeight: 600 }}>BUY/SELL 시 사용자 최종 실행 승인 강제</span>
-                      <span style={{ fontSize: 10, color: form.guru_require_user_confirmation ? "var(--warning)" : "var(--text-tertiary)" }}>
-                        {form.guru_require_user_confirmation ? "ON" : "OFF"}
-                      </span>
-                    </button>
-                  </div>
-                </Field>
-              </Section>
+                {activeTab === "guru" && (
+                  <>
+                    <Section title="활성화">
+                      <Field label="GURU 레이어" description="포트폴리오 매니저 초안에 사용자 철학과 룰 기반 정책을 최종 반영합니다.">
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "12px 14px",
+                            borderRadius: 10,
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          <div>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: form.guru_enabled ? "var(--brand)" : "var(--text-secondary)" }}>
+                              {form.guru_enabled ? "GURU ON" : "GURU OFF"}
+                            </p>
+                            <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>ON일 때만 GURU 토론/룰 오버라이드가 적용됩니다.</p>
+                          </div>
+                          <button
+                            onClick={() => setField("guru_enabled", !form.guru_enabled)}
+                            style={{
+                              width: 48,
+                              height: 26,
+                              borderRadius: 99,
+                              flexShrink: 0,
+                              background: form.guru_enabled ? "var(--brand)" : "#555",
+                              border: "none",
+                              cursor: "pointer",
+                              position: "relative",
+                            }}
+                          >
+                            <motion.div
+                              animate={{ x: form.guru_enabled ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              style={{ position: "absolute", top: 3, width: 20, height: 20, borderRadius: "50%", background: "#fff" }}
+                            />
+                          </button>
+                        </div>
+                      </Field>
+                    </Section>
 
-              {/* ── KIS API 자격증명 ── */}
-              <Section title="KIS OpenAPI 자격증명">
-                <Field
-                  label="App Key"
-                  description="한국투자증권 KIS OpenAPI에서 발급받은 앱 키입니다. 변경 시에만 입력하세요."
-                >
-                  {kisKeyStatus.appKeySet && (
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
-                      padding: "4px 10px", borderRadius: 20,
-                      background: "rgba(47,202,115,0.12)", border: "1px solid rgba(47,202,115,0.3)",
-                    }}>
-                      <span style={{ fontSize: 9, color: "var(--success)" }}>●</span>
-                      <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600 }}>설정됨</span>
-                    </div>
-                  )}
-                  <input
-                    type="text"
-                    value={form.kis_app_key}
-                    onChange={(e) => set("kis_app_key", e.target.value)}
-                    placeholder={kisKeyStatus.appKeySet ? "새 키로 교체 시에만 입력" : "PS..."}
-                    autoComplete="off"
-                    style={{
-                      width: "100%", padding: "9px 12px", borderRadius: 8,
-                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                      color: "var(--text-primary)", fontSize: 12, outline: "none",
-                      boxSizing: "border-box", fontFamily: "monospace",
-                    }}
-                  />
-                </Field>
+                    <Section title="정책">
+                      <Field label="투자 성향" description="GURU가 결정을 해석하는 기본 프레임입니다.">
+                        <select
+                          value={form.guru_risk_profile}
+                          onChange={(e) => setField("guru_risk_profile", e.target.value as "defensive" | "balanced" | "aggressive")}
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-default)",
+                            color: "var(--text-primary)",
+                            fontSize: 12,
+                            outline: "none",
+                          }}
+                        >
+                          <option value="defensive">Defensive · 손실 방어 우선</option>
+                          <option value="balanced">Balanced · 위험/수익 균형</option>
+                          <option value="aggressive">Aggressive · 기회 포착 우선</option>
+                        </select>
+                      </Field>
 
-                <Field
-                  label="App Secret"
-                  description="앱 시크릿 키입니다. 변경 시에만 입력하세요."
-                >
-                  {kisKeyStatus.secretSet && (
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
-                      padding: "4px 10px", borderRadius: 20,
-                      background: "rgba(47,202,115,0.12)", border: "1px solid rgba(47,202,115,0.3)",
-                    }}>
-                      <span style={{ fontSize: 9, color: "var(--success)" }}>●</span>
-                      <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600 }}>설정됨</span>
-                    </div>
-                  )}
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showKisSecret ? "text" : "password"}
-                      value={form.kis_app_secret}
-                      onChange={(e) => set("kis_app_secret", e.target.value)}
-                      placeholder={kisKeyStatus.secretSet ? "새 시크릿으로 교체 시에만 입력" : "..."}
-                      autoComplete="off"
-                      style={{
-                        width: "100%", padding: "9px 44px 9px 12px", borderRadius: 8,
-                        background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                        color: "var(--text-primary)", fontSize: 12, outline: "none",
-                        boxSizing: "border-box", fontFamily: "monospace",
-                      }}
-                    />
-                    <button
-                      onClick={() => setShowKisSecret(v => !v)}
-                      style={{
-                        position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                        background: "none", border: "none", color: "var(--text-tertiary)",
-                        cursor: "pointer", fontSize: 14, padding: 0,
-                      }}
-                    >
-                      {showKisSecret ? "🙈" : "👁"}
-                    </button>
-                  </div>
-                </Field>
+                      <Field label="투자 철학 메모" description="원칙을 적으면 GURU가 최종 판단 시 문맥으로 반영합니다.">
+                        <textarea
+                          value={form.guru_investment_principles}
+                          onChange={(e) => setField("guru_investment_principles", e.target.value.slice(0, 1200))}
+                          rows={4}
+                          placeholder="예: 손절 엄수, 포지션 분할, 특정 섹터 회피"
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-default)",
+                            color: "var(--text-primary)",
+                            fontSize: 12,
+                            outline: "none",
+                            boxSizing: "border-box",
+                            resize: "vertical",
+                            lineHeight: 1.6,
+                          }}
+                        />
+                      </Field>
 
-                <Field
-                  label="계좌번호"
-                  description="종합 계좌번호 (예: 12345678-01). 앞 8자리-뒤 2자리 형식으로 입력하세요."
-                >
-                  {kisKeyStatus.accountNo && (
-                    <div style={{
-                      display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
-                      padding: "4px 10px", borderRadius: 20,
-                      background: "rgba(47,202,115,0.12)", border: "1px solid rgba(47,202,115,0.3)",
-                    }}>
-                      <span style={{ fontSize: 9, color: "var(--success)" }}>●</span>
-                      <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 600 }}>
-                        {kisKeyStatus.accountNo}
-                      </span>
-                    </div>
-                  )}
-                  <input
-                    type="text"
-                    value={form.kis_account_no}
-                    onChange={(e) => set("kis_account_no", e.target.value)}
-                    placeholder="12345678-01"
-                    maxLength={12}
-                    style={{
-                      width: "100%", padding: "9px 12px", borderRadius: 8,
-                      background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                      color: "var(--text-primary)", fontSize: 13, outline: "none",
-                      boxSizing: "border-box", fontVariantNumeric: "tabular-nums",
-                    }}
-                  />
-                </Field>
-              </Section>
+                      <Field label="룰 임계값" description="신뢰도·리스크·포지션 상한으로 자동 HOLD/축소를 적용합니다.">
+                        <div style={{ display: "grid", gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr", gap: 8 }}>
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최소 행동 신뢰도 (%)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={Math.round(form.guru_min_confidence_to_act * 100)}
+                              onChange={(e) => {
+                                const v = Number(e.target.value || 0);
+                                setField("guru_min_confidence_to_act", Math.max(0, Math.min(1, v / 100)));
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                background: "var(--bg-elevated)",
+                                border: "1px solid var(--border-default)",
+                                color: "var(--text-primary)",
+                                fontSize: 12,
+                                outline: "none",
+                                boxSizing: "border-box",
+                              }}
+                            />
+                          </label>
 
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>최대 포지션 (%)</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              step={0.5}
+                              value={form.guru_max_position_pct}
+                              onChange={(e) => setField("guru_max_position_pct", Math.max(1, Math.min(100, Number(e.target.value || 1))))}
+                              style={{
+                                width: "100%",
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                background: "var(--bg-elevated)",
+                                border: "1px solid var(--border-default)",
+                                color: "var(--text-primary)",
+                                fontSize: 12,
+                                outline: "none",
+                                boxSizing: "border-box",
+                              }}
+                            />
+                          </label>
+
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: isCompact ? "auto" : "1 / -1" }}>
+                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>허용 최대 리스크 레벨</span>
+                            <select
+                              value={form.guru_max_risk_level}
+                              onChange={(e) => setField("guru_max_risk_level", e.target.value as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL")}
+                              style={{
+                                width: "100%",
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                background: "var(--bg-elevated)",
+                                border: "1px solid var(--border-default)",
+                                color: "var(--text-primary)",
+                                fontSize: 12,
+                                outline: "none",
+                              }}
+                            >
+                              <option value="LOW">LOW</option>
+                              <option value="MEDIUM">MEDIUM</option>
+                              <option value="HIGH">HIGH</option>
+                              <option value="CRITICAL">CRITICAL</option>
+                            </select>
+                          </label>
+                        </div>
+                      </Field>
+
+                      <Field label="GURU 동작 옵션" description="토론 기반 보정과 사용자 최종 승인 강제를 제어합니다.">
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <button
+                            onClick={() => setField("guru_debate_enabled", !form.guru_debate_enabled)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              width: "100%",
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: "1px solid var(--border-default)",
+                              background: "var(--bg-elevated)",
+                              color: "var(--text-primary)",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>GURU 토론(LLM) 사용</span>
+                            <span style={{ fontSize: 10, color: form.guru_debate_enabled ? "var(--success)" : "var(--text-tertiary)" }}>
+                              {form.guru_debate_enabled ? "ON" : "OFF"}
+                            </span>
+                          </button>
+
+                          <button
+                            onClick={() => setField("guru_require_user_confirmation", !form.guru_require_user_confirmation)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              width: "100%",
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: "1px solid var(--border-default)",
+                              background: "var(--bg-elevated)",
+                              color: "var(--text-primary)",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>BUY/SELL 사용자 최종 실행 승인 강제</span>
+                            <span style={{ fontSize: 10, color: form.guru_require_user_confirmation ? "var(--warning)" : "var(--text-tertiary)" }}>
+                              {form.guru_require_user_confirmation ? "ON" : "OFF"}
+                            </span>
+                          </button>
+                        </div>
+                      </Field>
+                    </Section>
+                  </>
+                )}
+
+                {activeTab === "kis" && (
+                  <>
+                    <Section title="거래 모드">
+                      <Field label="KIS 투자 모드" description="모의투자는 가상 계좌, 실투자는 실제 계좌를 사용합니다.">
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "12px 14px",
+                            borderRadius: 10,
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          <div>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: form.kis_mock ? "var(--success)" : "var(--bear)" }}>
+                              {form.kis_mock ? "모의투자 (안전)" : "실전투자 (주의)"}
+                            </p>
+                            <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
+                              {form.kis_mock ? "가상 체결 - 자금 위험 없음" : "실제 체결 - 실계좌 주문 발생"}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setField("kis_mock", !form.kis_mock)}
+                            style={{
+                              width: 48,
+                              height: 26,
+                              borderRadius: 99,
+                              flexShrink: 0,
+                              background: form.kis_mock ? "var(--success)" : "#555",
+                              border: "none",
+                              cursor: "pointer",
+                              position: "relative",
+                            }}
+                          >
+                            <motion.div
+                              animate={{ x: form.kis_mock ? 24 : 2 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              style={{ position: "absolute", top: 3, width: 20, height: 20, borderRadius: "50%", background: "#fff" }}
+                            />
+                          </button>
+                        </div>
+                        <HelpNote>
+                          실전투자 모드에서는 계좌/키가 정확하지 않으면 주문 승인/실행 API가 실패할 수 있습니다.
+                        </HelpNote>
+                      </Field>
+                    </Section>
+
+                    <Section title="KIS 인증 정보">
+                      <Field label="App Key" description="KIS OpenAPI 포털에서 발급받는 앱 키입니다. 변경 시에만 입력하세요.">
+                        <div style={{ marginBottom: 8 }}>
+                          <StatusChip ok={kisKeyStatus.appKeySet} label={kisKeyStatus.appKeySet ? "설정됨" : "미설정"} />
+                        </div>
+                        <input
+                          type="text"
+                          value={form.kis_app_key}
+                          onChange={(e) => setField("kis_app_key", e.target.value)}
+                          placeholder={kisKeyStatus.appKeySet ? "새 키로 교체 시에만 입력" : "PS..."}
+                          autoComplete="off"
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-default)",
+                            color: "var(--text-primary)",
+                            fontSize: 12,
+                            outline: "none",
+                            boxSizing: "border-box",
+                            fontFamily: "monospace",
+                          }}
+                        />
+                      </Field>
+
+                      <Field label="App Secret" description="KIS OpenAPI 포털에서 발급받는 시크릿 키입니다. 변경 시에만 입력하세요.">
+                        <div style={{ marginBottom: 8 }}>
+                          <StatusChip ok={kisKeyStatus.secretSet} label={kisKeyStatus.secretSet ? "설정됨" : "미설정"} />
+                        </div>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            type={showKisSecret ? "text" : "password"}
+                            value={form.kis_app_secret}
+                            onChange={(e) => setField("kis_app_secret", e.target.value)}
+                            placeholder={kisKeyStatus.secretSet ? "새 시크릿으로 교체 시에만 입력" : "..."}
+                            autoComplete="off"
+                            style={{
+                              width: "100%",
+                              padding: "9px 44px 9px 12px",
+                              borderRadius: 8,
+                              background: "var(--bg-elevated)",
+                              border: "1px solid var(--border-default)",
+                              color: "var(--text-primary)",
+                              fontSize: 12,
+                              outline: "none",
+                              boxSizing: "border-box",
+                              fontFamily: "monospace",
+                            }}
+                          />
+                          <button
+                            onClick={() => setShowKisSecret((v) => !v)}
+                            style={{
+                              position: "absolute",
+                              right: 10,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              color: "var(--text-tertiary)",
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            {showKisSecret ? "🙈" : "👁"}
+                          </button>
+                        </div>
+                      </Field>
+
+                      <Field label="계좌번호" description="예: 12345678-01 형식. 없으면 주문/잔고 조회가 실패합니다.">
+                        <div style={{ marginBottom: 8 }}>
+                          <StatusChip ok={Boolean(kisKeyStatus.accountNo)} label={kisKeyStatus.accountNo || "미설정"} />
+                        </div>
+                        <input
+                          type="text"
+                          value={form.kis_account_no}
+                          onChange={(e) => setField("kis_account_no", e.target.value)}
+                          placeholder="12345678-01"
+                          maxLength={12}
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-default)",
+                            color: "var(--text-primary)",
+                            fontSize: 13,
+                            outline: "none",
+                            boxSizing: "border-box",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        />
+                      </Field>
+
+                      <HelpNote>
+                        어디서 가져오나요? 한국투자증권 KIS 개발자센터에서 App Key/App Secret을 발급받고,
+                        HTS/MTS 계좌의 종합 계좌번호를 입력하세요.
+                      </HelpNote>
+                    </Section>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* 푸터 */}
-            <div style={{
-              padding: "16px 24px 20px", borderTop: "1px solid var(--border-subtle)",
-              display: "flex", flexDirection: "column", gap: 10, flexShrink: 0,
-            }}>
+            <div
+              style={{
+                padding: "12px 18px 16px",
+                borderTop: "1px solid var(--border-subtle)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                flexShrink: 0,
+              }}
+            >
               {saveStatus !== "idle" && (
                 <motion.p
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   style={{
-                    fontSize: 11, fontWeight: 600, textAlign: "center",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textAlign: "center",
                     color: saveStatus === "ok" ? "var(--success)" : "var(--bear)",
                   }}
                 >
-                  {saveStatus === "ok"
-                    ? "✓ 설정이 저장되었습니다 (즉시 적용)"
-                    : "✗ 저장 실패 — 백엔드 연결을 확인하세요"}
+                  {saveStatus === "ok" ? "설정이 저장되었습니다 (즉시 적용)" : "저장 실패 - 백엔드 연결을 확인하세요"}
                 </motion.p>
               )}
+
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={onClose}
                   style={{
-                    flex: 1, padding: 10, borderRadius: 10,
-                    background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
-                    color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    flex: 1,
+                    padding: 10,
+                    borderRadius: 10,
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border-default)",
+                    color: "var(--text-secondary)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
                   }}
                 >
                   닫기
@@ -795,13 +1066,15 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   onClick={handleSave}
                   disabled={saving}
                   style={{
-                    flex: 2, padding: 10, borderRadius: 10,
+                    flex: 2,
+                    padding: 10,
+                    borderRadius: 10,
                     background: saving ? "var(--bg-elevated)" : "var(--brand)",
                     border: "none",
                     color: saving ? "var(--text-tertiary)" : "#fff",
-                    fontSize: 13, fontWeight: 700,
+                    fontSize: 13,
+                    fontWeight: 800,
                     cursor: saving ? "not-allowed" : "pointer",
-                    transition: "all 150ms",
                   }}
                 >
                   {saving ? "저장 중..." : "저장"}

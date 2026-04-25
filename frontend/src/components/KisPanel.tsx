@@ -25,6 +25,8 @@ const SPRING = { type: "spring" as const, stiffness: 340, damping: 30 };
 interface KisPanelProps {
   /** 분석 탭에서 넘어온 종목코드 (주문 폼 자동 채우기) */
   prefillTicker?: string;
+  /** 설정 팝업 열기 (맥락 탭 지정) */
+  onOpenSettings?: (tab: "kis" | "guru") => void;
 }
 
 // ── 내부 컴포넌트: 상태 배지 ────────────────────────────────────
@@ -98,7 +100,7 @@ function HoldingRow({ h }: { h: KisHolding }) {
 }
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────
-export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
+export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) {
   const [status, setStatus] = useState<KisStatus | null>(null);
   const [balance, setBalance] = useState<KisBalance | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -337,18 +339,32 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
               </p>
             )}
           </div>
-          <button
-            onClick={loadStatus}
-            disabled={statusLoading}
-            style={{
-              padding: "7px 14px", borderRadius: "var(--radius-lg)", border: "none",
-              background: "var(--bg-elevated)", color: "var(--text-secondary)",
-              fontSize: 12, fontWeight: 600, cursor: statusLoading ? "not-allowed" : "pointer",
-              transition: "all 150ms",
-            }}
-          >
-            {statusLoading ? "확인 중..." : "연결 테스트"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {onOpenSettings && (
+              <button
+                onClick={() => onOpenSettings("kis")}
+                style={{
+                  padding: "7px 12px", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-default)",
+                  background: "var(--bg-elevated)", color: "var(--text-secondary)",
+                  fontSize: 11, fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                ⚙ KIS 설정
+              </button>
+            )}
+            <button
+              onClick={loadStatus}
+              disabled={statusLoading}
+              style={{
+                padding: "7px 14px", borderRadius: "var(--radius-lg)", border: "none",
+                background: "var(--bg-elevated)", color: "var(--text-secondary)",
+                fontSize: 12, fontWeight: 600, cursor: statusLoading ? "not-allowed" : "pointer",
+                transition: "all 150ms",
+              }}
+            >
+              {statusLoading ? "확인 중..." : "연결 테스트"}
+            </button>
+          </div>
         </div>
         {status?.error && (
           <div style={{ padding: "10px 20px", background: "rgba(239,68,68,0.08)" }}>
@@ -356,6 +372,24 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
             <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 4 }}>
               설정 패널에서 KIS API 키와 계좌번호를 입력해주세요.
             </p>
+            {onOpenSettings && (
+              <button
+                onClick={() => onOpenSettings("kis")}
+                style={{
+                  marginTop: 8,
+                  padding: "5px 10px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid rgba(239,68,68,0.35)",
+                  background: "rgba(239,68,68,0.14)",
+                  color: "var(--bear)",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                KIS 설정 열기
+              </button>
+            )}
           </div>
         )}
         {!status?.error && status?.connected && (
@@ -478,9 +512,29 @@ export function KisPanel({ prefillTicker = "" }: KisPanelProps) {
             </p>
           )}
           {!isMock && guruRequireUserConfirmation && (
-            <p style={{ fontSize: 10, color: "var(--warning)", marginTop: 4, fontWeight: 700 }}>
-              🛡 GURU 승인 강제 ON — 주문 전 승인요청 생성 후 승인/거절 버튼으로 최종 실행됩니다.
-            </p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 4 }}>
+              <p style={{ fontSize: 10, color: "var(--warning)", fontWeight: 700 }}>
+                🛡 GURU 승인 강제 ON — 주문 전 승인요청 생성 후 승인/거절 버튼으로 최종 실행됩니다.
+              </p>
+              {onOpenSettings && (
+                <button
+                  onClick={() => onOpenSettings("guru")}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid rgba(245,166,35,0.4)",
+                    background: "rgba(245,166,35,0.14)",
+                    color: "var(--warning)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  승인 규칙
+                </button>
+              )}
+            </div>
           )}
         </div>
 

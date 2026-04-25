@@ -19,6 +19,7 @@ from backend.core.events import (
     emit_thought
 )
 from backend.core.llm import create_response
+from backend.core.user_runtime_settings import get_runtime_setting
 from agents.analyst.analysts import technical_analyst, fundamental_analyst, sentiment_analyst, macro_analyst
 from data.market.fetcher import get_stock_info, get_technical_indicators, get_news_async
 
@@ -468,7 +469,7 @@ async def guru_manager(
     session_id: str,
 ) -> TradeDecision:
     """사용자 철학 + 룰 기반 정책을 반영하는 최종 GURU 레이어."""
-    if not bool(getattr(settings, "guru_enabled", False)):
+    if not bool(get_runtime_setting("guru_enabled", settings.guru_enabled, use_global_when_unset=True)):
         return base_decision
 
     await emit_thought(session_id, AgentThought(
@@ -478,13 +479,25 @@ async def guru_manager(
         content="GURU 에이전트가 사용자 투자 철학과 리스크 룰을 반영해 최종 결정을 검토 중...",
     ))
 
-    risk_profile = str(getattr(settings, "guru_risk_profile", "balanced") or "balanced")
-    principles = str(getattr(settings, "guru_investment_principles", "") or "").strip()
-    min_confidence = _clamp01(float(getattr(settings, "guru_min_confidence_to_act", 0.72)))
-    max_risk_level = str(getattr(settings, "guru_max_risk_level", "HIGH") or "HIGH").upper().strip()
-    max_position_pct = max(1.0, min(100.0, float(getattr(settings, "guru_max_position_pct", 20.0))))
-    debate_enabled = bool(getattr(settings, "guru_debate_enabled", True))
-    require_user_confirmation = bool(getattr(settings, "guru_require_user_confirmation", False))
+    risk_profile = str(get_runtime_setting("guru_risk_profile", settings.guru_risk_profile, use_global_when_unset=True) or "balanced")
+    principles = str(get_runtime_setting("guru_investment_principles", settings.guru_investment_principles, use_global_when_unset=True) or "").strip()
+    min_confidence = _clamp01(float(get_runtime_setting("guru_min_confidence_to_act", settings.guru_min_confidence_to_act, use_global_when_unset=True)))
+    max_risk_level = str(get_runtime_setting("guru_max_risk_level", settings.guru_max_risk_level, use_global_when_unset=True) or "HIGH").upper().strip()
+    max_position_pct = max(
+        1.0,
+        min(
+            100.0,
+            float(get_runtime_setting("guru_max_position_pct", settings.guru_max_position_pct, use_global_when_unset=True)),
+        ),
+    )
+    debate_enabled = bool(get_runtime_setting("guru_debate_enabled", settings.guru_debate_enabled, use_global_when_unset=True))
+    require_user_confirmation = bool(
+        get_runtime_setting(
+            "guru_require_user_confirmation",
+            settings.guru_require_user_confirmation,
+            use_global_when_unset=True,
+        )
+    )
 
     llm_action = _normalize_action(base_decision.action)
     llm_confidence = _clamp01(float(base_decision.confidence))
@@ -662,7 +675,9 @@ async def run_analysis(ticker: str, session_id: str) -> TradeDecision:
     }
 
     # 2단계: 연구원 토론
-    debate = await researcher_debate(ticker, analyst_results, session_id, rounds=settings.max_debate_rounds)
+    rounds = int(get_runtime_setting("max_debate_rounds", settings.max_debate_rounds, use_global_when_unset=True) or settings.max_debate_rounds)
+    rounds = max(1, min(8, rounds))
+    debate = await researcher_debate(ticker, analyst_results, session_id, rounds=rounds)
 
     # 3단계: 리스크 매니저
     risk = await risk_manager(ticker, analyst_results, debate, session_id)

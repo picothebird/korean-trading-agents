@@ -9,6 +9,9 @@ KIS OpenAPI 주요 매매 기능
 import logging
 from typing import Literal
 
+from backend.core.config import settings
+from backend.core.user_runtime_settings import get_runtime_setting
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,45 +32,52 @@ def _parse_account(account_no: str) -> tuple[str, str]:
 
 
 def _kis_params() -> dict:
-    """settings에서 KIS 인증 파라미터 추출"""
-    from backend.core.config import settings
+    """런타임 컨텍스트(없으면 전역 설정)에서 KIS 인증 파라미터 추출"""
+
+    app_key = str(get_runtime_setting("kis_app_key", settings.kis_app_key, use_global_when_unset=True) or "").strip()
+    app_secret = str(get_runtime_setting("kis_app_secret", settings.kis_app_secret, use_global_when_unset=True) or "").strip()
+    is_mock = bool(get_runtime_setting("kis_mock", settings.kis_mock, use_global_when_unset=True))
+
     return {
-        "app_key": settings.kis_app_key,
-        "app_secret": settings.kis_app_secret,
-        "is_mock": settings.kis_mock,
+        "app_key": app_key,
+        "app_secret": app_secret,
+        "is_mock": is_mock,
     }
+
+
+def _kis_account_no() -> str:
+    return str(get_runtime_setting("kis_account_no", settings.kis_account_no, use_global_when_unset=True) or "").strip()
 
 
 def _has_credentials() -> tuple[bool, str]:
     """KIS 자격증명 유효성 확인"""
-    from backend.core.config import settings
-    if not settings.kis_app_key:
+    params = _kis_params()
+    if not params["app_key"]:
         return False, "KIS_APP_KEY가 설정되지 않았습니다"
-    if not settings.kis_app_secret:
+    if not params["app_secret"]:
         return False, "KIS_APP_SECRET가 설정되지 않았습니다"
-    if not settings.kis_account_no:
+    if not _kis_account_no():
         return False, "KIS_ACCOUNT_NO가 설정되지 않았습니다"
     return True, ""
 
 
 async def get_connection_status() -> dict:
     """KIS API 연결 상태 확인 (토큰 발급 테스트)"""
-    from backend.core.config import settings
     ok, err = _has_credentials()
+    params = _kis_params()
     if not ok:
-        return {"connected": False, "is_mock": settings.kis_mock, "error": err}
+        return {"connected": False, "is_mock": params["is_mock"], "error": err}
 
     try:
         from data.kis.client import get_access_token
-        p = _kis_params()
-        token = await get_access_token(p["app_key"], p["app_secret"], p["is_mock"])
+        token = await get_access_token(params["app_key"], params["app_secret"], params["is_mock"])
         return {
             "connected": True,
-            "is_mock": settings.kis_mock,
+            "is_mock": params["is_mock"],
             "token_preview": token[:10] + "...",
         }
     except Exception as e:
-        return {"connected": False, "is_mock": settings.kis_mock, "error": str(e)}
+        return {"connected": False, "is_mock": params["is_mock"], "error": str(e)}
 
 
 async def get_current_price(ticker: str) -> dict:
@@ -129,7 +139,6 @@ async def get_balance() -> dict:
     주식 잔고 조회
     TR: TTTC8434R (실전) / VTTC8434R (모의, 자동 변환)
     """
-    from backend.core.config import settings
     from data.kis.client import call_api
 
     ok, err = _has_credentials()
@@ -137,7 +146,7 @@ async def get_balance() -> dict:
         raise Exception(err)
 
     p = _kis_params()
-    cano, prod = _parse_account(settings.kis_account_no)
+    cano, prod = _parse_account(_kis_account_no())
 
     data = await call_api(
         api_url="/uapi/domestic-stock/v1/trading/inquire-balance",
@@ -212,7 +221,7 @@ async def get_balance() -> dict:
         "total_purchase": _sum_int("pchs_amt_smtl_amt"),
         "total_profit_loss": _sum_int("evlu_pfls_smtl_amt"),
         "total_profit_loss_pct": _sum_float("asst_icdc_rt"),
-        "is_mock": settings.kis_mock,
+        "is_mock": p["is_mock"],
     }
 
 
@@ -227,7 +236,6 @@ async def place_order(
     주식 현금 주문 (매수/매도)
     TR: TTTC0802U (매수) / TTTC0801U (매도) — 모의 자동 변환
     """
-    from backend.core.config import settings
     from data.kis.client import call_api
 
     ok, err = _has_credentials()
@@ -235,7 +243,7 @@ async def place_order(
         raise Exception(err)
 
     p = _kis_params()
-    cano, prod = _parse_account(settings.kis_account_no)
+    cano, prod = _parse_account(_kis_account_no())
 
     # 시장가 주문은 가격 0
     actual_price = "0" if order_type == "01" else str(price)
@@ -271,5 +279,5 @@ async def place_order(
         "qty": qty,
         "price": price,
         "order_type_label": "지정가" if order_type == "00" else "시장가",
-        "is_mock": settings.kis_mock,
+        "is_mock": p["is_mock"],
     }

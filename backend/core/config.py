@@ -9,8 +9,16 @@ _ENV_FILE = _ROOT / ".env"
 
 
 class Settings(BaseSettings):
+    app_secret_key: str = Field(default="dev-secret-change-me", alias="APP_SECRET_KEY")
+    data_encryption_key: str = Field(default="", alias="DATA_ENCRYPTION_KEY")
+
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+
+    # MongoDB
+    mongodb_uri: str = Field(default="", alias="MONGODB_URI")
+    mongodb_db_name: str = Field(default="korean_trading_agents", alias="MONGODB_DB_NAME")
+    mongodb_connect_timeout_ms: int = Field(default=5000, alias="MONGODB_CONNECT_TIMEOUT_MS")
 
     # KIS API
     kis_app_key: str = Field(default="", alias="KIS_APP_KEY")
@@ -19,8 +27,8 @@ class Settings(BaseSettings):
     kis_mock: bool = Field(default=True, alias="KIS_MOCK")
 
     # LLM 설정
-    default_llm_model: str = "gpt-5.4"
-    fast_llm_model: str = "gpt-5.4-mini"
+    default_llm_model: str = "gpt-5"
+    fast_llm_model: str = "gpt-5-mini"
     reasoning_effort: str = "high"   # "high" | "medium" | "low" (gpt-5/o-series 전용)
     max_debate_rounds: int = 2
 

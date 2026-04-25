@@ -8,7 +8,6 @@ import asyncio
 import sys
 import os
 import math
-from datetime import datetime, timedelta
 
 # 프로젝트 루트를 sys.path에 추가
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,15 +17,43 @@ if _project_root not in sys.path:
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Literal
 
+from backend.api.user_system import router as user_system_router
 from backend.core.config import settings
 from backend.core.events import stream_thoughts, AgentThought, AgentRole, AgentStatus, emit_thought
-from backend.core import user_settings as _us
+from backend.core.mongodb import connect_to_mongo, close_mongo, get_mongo_health, get_mongo_database
+from backend.core.order_approvals import (
+    ORDER_APPROVAL_EXPIRED,
+    ORDER_APPROVAL_PENDING,
+    approve_order_approval,
+    create_order_approval,
+    get_order_approval,
+    load_kis_runtime,
+    reject_order_approval,
+    serialize_approval,
+)
+from backend.core.runtime_sessions import (
+    SESSION_TYPE_AGENT_BACKTEST,
+    SESSION_TYPE_ANALYSIS,
+    create_runtime_session,
+    get_runtime_session,
+    mark_runtime_session_done,
+    mark_runtime_session_error,
+    serialize_runtime_session,
+)
+from backend.core.user_access import install_user_activity_middleware, record_trade, require_user
+from backend.core.user_runtime_settings import (
+    build_public_settings,
+    get_or_create_user_settings_doc,
+    get_runtime_profile_for_user,
+    runtime_profile_context,
+    update_user_settings_doc,
+)
 from backend.services.auto_trading import (
     auto_trading_supervisor,
     AutoLoopSettings,
@@ -48,12 +75,18 @@ from data.market.fetcher import get_stock_info, get_technical_indicators, search
 # ── 앱 시작 ──────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # user_settings.json 이 있으면 스타트업 시 적용
-    _us.apply_to_settings(settings)
+    mongo_status = await connect_to_mongo()
+    if mongo_status.get("connected"):
+        print(f"🍃 MongoDB 연결 성공 ({mongo_status.get('database')})")
+    elif mongo_status.get("configured"):
+        print(f"⚠ MongoDB 연결 실패: {mongo_status.get('error')}")
+    else:
+        print("ℹ MongoDB 미설정 (MONGODB_URI가 비어 있음)")
     print("🚀 Korean Trading Agents API 서버 시작")
     yield
     await auto_trading_supervisor.shutdown()
     await portfolio_supervisor.shutdown()
+    await close_mongo()
     print("👋 서버 종료")
 
 
@@ -72,6 +105,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+install_user_activity_middleware(app)
+app.include_router(user_system_router)
+
 
 # ── 스키마 ───────────────────────────────────────────────
 class AnalysisRequest(BaseModel):
@@ -89,8 +125,8 @@ class BacktestRequest(BaseModel):
 
 class SettingsUpdateRequest(BaseModel):
     openai_api_key: str = ""            # 빈 문자열이면 기존 유지
-    default_llm_model: str = "gpt-5.4"
-    fast_llm_model: str = "gpt-5.4-mini"
+    default_llm_model: str = "gpt-5"
+    fast_llm_model: str = "gpt-5-mini"
     reasoning_effort: Literal["high", "medium", "low"] = "high"
     max_debate_rounds: int = Field(default=2, ge=1, le=8)
     kis_mock: bool = True
@@ -173,53 +209,9 @@ class PortfolioLoopStartRequest(BaseModel):
     execution_session_mode: Literal["regular_only", "regular_and_after_hours"] = "regular_only"
 
 
-# ── 실행 중인 세션 저장 (간단한 인메모리) ─────────────────
-_active_sessions: dict[str, dict] = {}
-_backtest_sessions: dict[str, dict] = {}  # 에이전트 백테스트 세션
-_kis_order_approvals: dict[str, dict] = {}
-
 _KIS_APPROVAL_TTL_MIN = 15
 _KIS_APPROVAL_MAX_KEEP_HOURS = 24
-
-
-def _utc_now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-
-
-def _parse_iso_utc(ts: str) -> datetime:
-    return datetime.fromisoformat(ts.replace("Z", ""))
-
-
-def _is_kis_approval_expired(approval: dict) -> bool:
-    expires_at = str(approval.get("expires_at", "") or "")
-    if not expires_at:
-        return True
-    try:
-        return datetime.utcnow() >= _parse_iso_utc(expires_at)
-    except Exception:
-        return True
-
-
-def _cleanup_kis_order_approvals() -> None:
-    if not _kis_order_approvals:
-        return
-    now = datetime.utcnow()
-    remove_keys: list[str] = []
-    for aid, row in _kis_order_approvals.items():
-        created_at = str(row.get("created_at", "") or "")
-        status = str(row.get("status", "") or "")
-        if status == "pending" and _is_kis_approval_expired(row):
-            row["status"] = "expired"
-            row["resolved_at"] = _utc_now_iso()
-            continue
-        try:
-            created_dt = _parse_iso_utc(created_at)
-            if now - created_dt >= timedelta(hours=_KIS_APPROVAL_MAX_KEEP_HOURS):
-                remove_keys.append(aid)
-        except Exception:
-            remove_keys.append(aid)
-    for aid in remove_keys:
-        _kis_order_approvals.pop(aid, None)
+_RUNTIME_SESSION_MAX_KEEP_HOURS = 24
 
 
 def _validate_kis_order_request(side: str, qty: int, order_type: str) -> None:
@@ -274,10 +266,57 @@ def _serialize_backtest_result(result) -> dict:
     }
 
 
+def _user_id_str(user: dict) -> str:
+    return str(user.get("_id") or user.get("id") or "")
+
+
+def _user_is_master(user: dict) -> bool:
+    return str(user.get("role", "viewer") or "viewer").strip().lower() == "master"
+
+
+async def _load_user_runtime_profile(request: Request) -> tuple[dict, dict]:
+    user = await require_user(request)
+    db = _require_mongo_db()
+
+    profile = await get_runtime_profile_for_user(db, user)
+    return user, profile
+
+
+def _require_mongo_db():
+    try:
+        return get_mongo_database()
+    except Exception:
+        raise HTTPException(status_code=503, detail="MongoDB 연결이 필요합니다")
+
+
+def _has_loop_access(loop_status: dict, user: dict) -> bool:
+    if _user_is_master(user):
+        return True
+    return str(loop_status.get("owner_user_id", "") or "") == _user_id_str(user)
+
+
+def _has_approval_access(approval_row: dict, user: dict) -> bool:
+    if _user_is_master(user):
+        return True
+    return str(approval_row.get("owner_user_id", "") or "") == _user_id_str(user)
+
+
+def _has_runtime_session_access(row: dict, user: dict) -> bool:
+    if _user_is_master(user):
+        return True
+    return str(row.get("owner_user_id", "") or "") == _user_id_str(user)
+
+
 # ── 라우터 ───────────────────────────────────────────────
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/api/health/mongo")
+async def mongo_health():
+    """MongoDB 연결 상태 확인"""
+    return await get_mongo_health()
 
 
 @app.get("/api/stock/search")
@@ -325,19 +364,27 @@ async def get_stock_chart(
 
 
 @app.post("/api/analyze/start")
-async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks):
+async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks, request: Request):
     """에이전트 분석 시작 (비동기) - session_id 반환"""
+    user, runtime_profile = await _load_user_runtime_profile(request)
+    db = _require_mongo_db()
+
     session_id = req.session_id or str(uuid4())
-    _active_sessions[session_id] = {
-        "ticker": req.ticker,
-        "status": "running",
-        "decision": None,
-    }
+    await create_runtime_session(
+        db,
+        session_id=session_id,
+        session_type=SESSION_TYPE_ANALYSIS,
+        owner_user_id=_user_id_str(user),
+        ticker=req.ticker,
+        max_keep_hours=_RUNTIME_SESSION_MAX_KEEP_HOURS,
+    )
+    profile_snapshot = dict(runtime_profile)
 
     async def run():
         try:
-            decision = await run_analysis(req.ticker, session_id)
-            _active_sessions[session_id]["decision"] = {
+            with runtime_profile_context(profile_snapshot):
+                decision = await run_analysis(req.ticker, session_id)
+            decision_payload = {
                 "action": decision.action,
                 "ticker": decision.ticker,
                 "confidence": decision.confidence,
@@ -345,10 +392,20 @@ async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks
                 "agents_summary": decision.agents_summary,
                 "timestamp": decision.timestamp,
             }
-            _active_sessions[session_id]["status"] = "done"
+
+            await mark_runtime_session_done(
+                db,
+                session_id=session_id,
+                session_type=SESSION_TYPE_ANALYSIS,
+                decision=decision_payload,
+            )
         except Exception as e:
-            _active_sessions[session_id]["status"] = "error"
-            _active_sessions[session_id]["error"] = str(e)
+            await mark_runtime_session_error(
+                db,
+                session_id=session_id,
+                session_type=SESSION_TYPE_ANALYSIS,
+                error=str(e),
+            )
             # 스트림 종료
             from backend.core.events import get_thought_queue
             q = get_thought_queue(session_id)
@@ -359,8 +416,16 @@ async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks
 
 
 @app.get("/api/analyze/stream/{session_id}")
-async def stream_analysis(session_id: str):
+async def stream_analysis(session_id: str, request: Request):
     """에이전트 사고 과정 SSE 스트리밍"""
+    user = await require_user(request)
+    db = _require_mongo_db()
+    session_meta = await get_runtime_session(db, session_id, SESSION_TYPE_ANALYSIS)
+    if session_meta is None:
+        raise HTTPException(status_code=404, detail="세션 없음")
+    if not _has_runtime_session_access(session_meta, user):
+        raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
+
     async def event_stream():
         # 헬스체크 이벤트
         yield "data: {\"type\": \"connected\", \"session_id\": \"" + session_id + "\"}\n\n"
@@ -369,7 +434,7 @@ async def stream_analysis(session_id: str):
             yield chunk
         
         # 최종 결정 전송
-        session = _active_sessions.get(session_id, {})
+        session = await get_runtime_session(db, session_id, SESSION_TYPE_ANALYSIS) or {}
         if session.get("decision"):
             import json
             yield f"data: {json.dumps({'type': 'final_decision', **session['decision']})}\n\n"
@@ -390,12 +455,16 @@ async def stream_analysis(session_id: str):
 
 
 @app.get("/api/analyze/result/{session_id}")
-async def get_result(session_id: str):
+async def get_result(session_id: str, request: Request):
     """분석 완료 결과 조회"""
-    session = _active_sessions.get(session_id)
+    user = await require_user(request)
+    db = _require_mongo_db()
+    session = await get_runtime_session(db, session_id, SESSION_TYPE_ANALYSIS)
     if not session:
         raise HTTPException(status_code=404, detail="세션 없음")
-    return session
+    if not _has_runtime_session_access(session, user):
+        raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
+    return serialize_runtime_session(session)
 
 
 @app.post("/api/backtest")
@@ -441,31 +510,46 @@ async def market_indices():
 
 # ── AI 에이전트 백테스트 ─────────────────────────────────────────
 @app.post("/api/backtest/agent/start")
-async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: BackgroundTasks):
+async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: BackgroundTasks, request: Request):
     """AI 에이전트 백테스트 시작 (비동기 SSE 스트리밍)"""
+    user, runtime_profile = await _load_user_runtime_profile(request)
+    db = _require_mongo_db()
+
     session_id = req.session_id or str(uuid4())
-    _backtest_sessions[session_id] = {
-        "ticker": req.ticker,
-        "status": "running",
-        "result": None,
-        "error": None,
-    }
+    await create_runtime_session(
+        db,
+        session_id=session_id,
+        session_type=SESSION_TYPE_AGENT_BACKTEST,
+        owner_user_id=_user_id_str(user),
+        ticker=req.ticker,
+        max_keep_hours=_RUNTIME_SESSION_MAX_KEEP_HOURS,
+    )
+    profile_snapshot = dict(runtime_profile)
 
     async def run():
         try:
-            result = await run_agent_backtest(
-                ticker=req.ticker,
-                start_date=req.start_date,
-                end_date=req.end_date,
-                initial_capital=req.initial_capital,
-                decision_interval_days=req.decision_interval_days,
+            with runtime_profile_context(profile_snapshot):
+                result = await run_agent_backtest(
+                    ticker=req.ticker,
+                    start_date=req.start_date,
+                    end_date=req.end_date,
+                    initial_capital=req.initial_capital,
+                    decision_interval_days=req.decision_interval_days,
+                    session_id=session_id,
+                )
+            await mark_runtime_session_done(
+                db,
                 session_id=session_id,
+                session_type=SESSION_TYPE_AGENT_BACKTEST,
+                result=_serialize_backtest_result(result),
             )
-            _backtest_sessions[session_id]["result"] = _serialize_backtest_result(result)
-            _backtest_sessions[session_id]["status"] = "done"
         except Exception as e:
-            _backtest_sessions[session_id]["status"] = "error"
-            _backtest_sessions[session_id]["error"] = str(e)
+            await mark_runtime_session_error(
+                db,
+                session_id=session_id,
+                session_type=SESSION_TYPE_AGENT_BACKTEST,
+                error=str(e),
+            )
         finally:
             from backend.core.events import get_thought_queue
             q = get_thought_queue(session_id)
@@ -476,8 +560,16 @@ async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: Back
 
 
 @app.get("/api/backtest/agent/stream/{session_id}")
-async def stream_agent_backtest(session_id: str):
+async def stream_agent_backtest(session_id: str, request: Request):
     """AI 에이전트 백테스트 진행 SSE 스트리밍"""
+    user = await require_user(request)
+    db = _require_mongo_db()
+    session_meta = await get_runtime_session(db, session_id, SESSION_TYPE_AGENT_BACKTEST)
+    if session_meta is None:
+        raise HTTPException(status_code=404, detail="세션 없음")
+    if not _has_runtime_session_access(session_meta, user):
+        raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
+
     async def event_stream():
         import json as _json
         yield f"data: {{\"type\": \"connected\", \"session_id\": \"{session_id}\"}}\n\n"
@@ -485,7 +577,7 @@ async def stream_agent_backtest(session_id: str):
         async for chunk in stream_thoughts(session_id):
             yield chunk
 
-        session = _backtest_sessions.get(session_id, {})
+        session = await get_runtime_session(db, session_id, SESSION_TYPE_AGENT_BACKTEST) or {}
         if session.get("result"):
             yield f"data: {_json.dumps({'type': 'backtest_result', **session['result']})}\n\n"
         elif session.get("error"):
@@ -501,110 +593,51 @@ async def stream_agent_backtest(session_id: str):
 
 
 @app.get("/api/backtest/agent/result/{session_id}")
-async def get_agent_backtest_result(session_id: str):
+async def get_agent_backtest_result(session_id: str, request: Request):
     """에이전트 백테스트 결과 조회"""
-    session = _backtest_sessions.get(session_id)
+    user = await require_user(request)
+    db = _require_mongo_db()
+    session = await get_runtime_session(db, session_id, SESSION_TYPE_AGENT_BACKTEST)
     if not session:
         raise HTTPException(status_code=404, detail="세션 없음")
-    return session
+    if not _has_runtime_session_access(session, user):
+        raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
+    return serialize_runtime_session(session)
 
 
 # ── 설정 API ────────────────────────────────────────────
 @app.get("/api/settings")
-async def get_settings_api():
-    """현재 설정 조회 (API 키는 마스킹)"""
-    key = settings.openai_api_key
-    if key and len(key) > 8:
-        masked = f"{key[:7]}...{key[-4:]}"
-    elif key:
-        masked = "설정됨"
-    else:
-        masked = ""
-    return {
-        "openai_api_key_set": bool(key),
-        "openai_api_key_preview": masked,
-        "default_llm_model": settings.default_llm_model,
-        "fast_llm_model": settings.fast_llm_model,
-        "reasoning_effort": settings.reasoning_effort,
-        "max_debate_rounds": settings.max_debate_rounds,
-        "guru_enabled": settings.guru_enabled,
-        "guru_debate_enabled": settings.guru_debate_enabled,
-        "guru_require_user_confirmation": settings.guru_require_user_confirmation,
-        "guru_risk_profile": settings.guru_risk_profile,
-        "guru_investment_principles": settings.guru_investment_principles,
-        "guru_min_confidence_to_act": settings.guru_min_confidence_to_act,
-        "guru_max_risk_level": settings.guru_max_risk_level,
-        "guru_max_position_pct": settings.guru_max_position_pct,
-        "kis_mock": settings.kis_mock,
-        "kis_app_key_set": bool(settings.kis_app_key),
-        "kis_app_secret_set": bool(settings.kis_app_secret),
-        "kis_account_no": settings.kis_account_no,
-    }
+async def get_settings_api(request: Request):
+    """현재 로그인 사용자의 설정 조회 (민감정보 마스킹)."""
+    user = await require_user(request)
+    db = _require_mongo_db()
+
+    doc = await get_or_create_user_settings_doc(db, user)
+    return build_public_settings(doc)
 
 
 @app.post("/api/settings")
-async def update_settings_api(req: SettingsUpdateRequest):
-    """설정 저장 (메모리 즉시 반영 + user_settings.json 영구 저장)"""
-    from backend.core.llm import reset_client
+async def update_settings_api(req: SettingsUpdateRequest, request: Request):
+    """현재 로그인 사용자의 설정 저장."""
+    user = await require_user(request)
+    db = _require_mongo_db()
 
-    if req.openai_api_key:
-        object.__setattr__(settings, "openai_api_key", req.openai_api_key)
-        reset_client()  # 키 변경 시 SDK 클라이언트 재생성
+    payload = req.model_dump(exclude_unset=True)
+    doc = await update_user_settings_doc(db, user, payload)
 
-    object.__setattr__(settings, "default_llm_model", req.default_llm_model)
-    object.__setattr__(settings, "fast_llm_model", req.fast_llm_model)
-    object.__setattr__(settings, "reasoning_effort", req.reasoning_effort)
-    object.__setattr__(settings, "max_debate_rounds", req.max_debate_rounds)
-    object.__setattr__(settings, "guru_enabled", req.guru_enabled)
-    object.__setattr__(settings, "guru_debate_enabled", req.guru_debate_enabled)
-    object.__setattr__(settings, "guru_require_user_confirmation", req.guru_require_user_confirmation)
-    object.__setattr__(settings, "guru_risk_profile", req.guru_risk_profile)
-    object.__setattr__(settings, "guru_investment_principles", req.guru_investment_principles)
-    object.__setattr__(settings, "guru_min_confidence_to_act", req.guru_min_confidence_to_act)
-    object.__setattr__(settings, "guru_max_risk_level", req.guru_max_risk_level)
-    object.__setattr__(settings, "guru_max_position_pct", req.guru_max_position_pct)
-    object.__setattr__(settings, "kis_mock", req.kis_mock)
+    # 자격증명 변경 가능성이 있으므로 토큰 캐시를 보수적으로 초기화한다.
+    from data.kis.client import invalidate_token
 
-    # KIS 자격증명이 변경된 경우 토큰 캐시 무효화
-    kis_changed = False
-    if req.kis_app_key and req.kis_app_key != settings.kis_app_key:
-        object.__setattr__(settings, "kis_app_key", req.kis_app_key)
-        kis_changed = True
-    if req.kis_app_secret and req.kis_app_secret != settings.kis_app_secret:
-        object.__setattr__(settings, "kis_app_secret", req.kis_app_secret)
-        kis_changed = True
-    if req.kis_account_no and req.kis_account_no != settings.kis_account_no:
-        object.__setattr__(settings, "kis_account_no", req.kis_account_no)
-    if kis_changed:
-        from data.kis.client import invalidate_token
-        invalidate_token()
-
-    _us.save({
-        "openai_api_key": req.openai_api_key or None,  # 빈 문자열이면 저장 안 함
-        "default_llm_model": req.default_llm_model,
-        "fast_llm_model": req.fast_llm_model,
-        "reasoning_effort": req.reasoning_effort,
-        "max_debate_rounds": req.max_debate_rounds,
-        "guru_enabled": req.guru_enabled,
-        "guru_debate_enabled": req.guru_debate_enabled,
-        "guru_require_user_confirmation": req.guru_require_user_confirmation,
-        "guru_risk_profile": req.guru_risk_profile,
-        "guru_investment_principles": req.guru_investment_principles,
-        "guru_min_confidence_to_act": req.guru_min_confidence_to_act,
-        "guru_max_risk_level": req.guru_max_risk_level,
-        "guru_max_position_pct": req.guru_max_position_pct,
-        "kis_mock": req.kis_mock,
-        "kis_app_key": req.kis_app_key or None,
-        "kis_app_secret": req.kis_app_secret or None,
-        "kis_account_no": req.kis_account_no or None,
-    })
-    return {"ok": True}
+    invalidate_token()
+    return {"ok": True, "settings": build_public_settings(doc)}
 
 
 # ── 서버 상주 자동매매 루프 API ─────────────────────────
 @app.post("/api/auto-loop/start")
-async def start_auto_loop(req: AutoLoopStartRequest):
+async def start_auto_loop(req: AutoLoopStartRequest, request: Request):
     """서버에서 지속 실행되는 자동 분석/주문 루프 시작"""
+    user, runtime_profile = await _load_user_runtime_profile(request)
+
     settings_obj = AutoLoopSettings(
         ticker=req.ticker,
         interval_min=req.interval_min,
@@ -618,6 +651,8 @@ async def start_auto_loop(req: AutoLoopStartRequest):
         supervision_level=SupervisionLevel(req.supervision_level),
         execution_session_mode=ExecutionSessionMode(req.execution_session_mode),
         initial_cash=req.initial_cash,
+        owner_user_id=_user_id_str(user),
+        runtime_profile=dict(runtime_profile),
     )
     rt = await auto_trading_supervisor.start(settings_obj)
     return {
@@ -627,8 +662,15 @@ async def start_auto_loop(req: AutoLoopStartRequest):
 
 
 @app.post("/api/auto-loop/stop/{loop_id}")
-async def stop_auto_loop(loop_id: str):
+async def stop_auto_loop(loop_id: str, request: Request):
     """자동매매 루프 중지"""
+    user = await require_user(request)
+    status = await auto_trading_supervisor.status(loop_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="루프를 찾을 수 없습니다")
+    if not _has_loop_access(status, user):
+        raise HTTPException(status_code=403, detail="해당 루프를 중지할 권한이 없습니다")
+
     ok = await auto_trading_supervisor.stop(loop_id)
     if not ok:
         raise HTTPException(status_code=404, detail="루프를 찾을 수 없습니다")
@@ -636,24 +678,33 @@ async def stop_auto_loop(loop_id: str):
 
 
 @app.get("/api/auto-loop/status/{loop_id}")
-async def auto_loop_status(loop_id: str):
+async def auto_loop_status(loop_id: str, request: Request):
     """자동매매 루프 상태/로그/이력 조회"""
+    user = await require_user(request)
     status = await auto_trading_supervisor.status(loop_id)
     if status is None:
         raise HTTPException(status_code=404, detail="루프를 찾을 수 없습니다")
+    if not _has_loop_access(status, user):
+        raise HTTPException(status_code=403, detail="해당 루프 조회 권한이 없습니다")
     return status
 
 
 @app.get("/api/auto-loop/list")
-async def auto_loop_list():
+async def auto_loop_list(request: Request):
     """현재 생성된 자동매매 루프 목록"""
+    user = await require_user(request)
     loops = await auto_trading_supervisor.list_loops()
+    if not _user_is_master(user):
+        owner_id = _user_id_str(user)
+        loops = [row for row in loops if str(row.get("owner_user_id", "") or "") == owner_id]
     return {"loops": loops}
 
 
 # ── 포트폴리오 오케스트레이션 루프 API ─────────────────────────
 @app.post("/api/portfolio-loop/start")
-async def start_portfolio_loop(req: PortfolioLoopStartRequest):
+async def start_portfolio_loop(req: PortfolioLoopStartRequest, request: Request):
+    user, runtime_profile = await _load_user_runtime_profile(request)
+
     settings_obj = PortfolioLoopSettings(
         name=req.name,
         seed_tickers=req.seed_tickers,
@@ -677,6 +728,8 @@ async def start_portfolio_loop(req: PortfolioLoopStartRequest):
         slippage_bps=req.slippage_bps,
         tax_bps=req.tax_bps,
         execution_session_mode=PortfolioExecutionSessionMode(req.execution_session_mode),
+        owner_user_id=_user_id_str(user),
+        runtime_profile=dict(runtime_profile),
     )
     rt = await portfolio_supervisor.start(settings_obj)
     return {
@@ -686,7 +739,14 @@ async def start_portfolio_loop(req: PortfolioLoopStartRequest):
 
 
 @app.post("/api/portfolio-loop/stop/{loop_id}")
-async def stop_portfolio_loop(loop_id: str):
+async def stop_portfolio_loop(loop_id: str, request: Request):
+    user = await require_user(request)
+    status = await portfolio_supervisor.status(loop_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="포트폴리오 루프를 찾을 수 없습니다")
+    if not _has_loop_access(status, user):
+        raise HTTPException(status_code=403, detail="해당 포트폴리오 루프를 중지할 권한이 없습니다")
+
     ok = await portfolio_supervisor.stop(loop_id)
     if not ok:
         raise HTTPException(status_code=404, detail="포트폴리오 루프를 찾을 수 없습니다")
@@ -694,22 +754,36 @@ async def stop_portfolio_loop(loop_id: str):
 
 
 @app.get("/api/portfolio-loop/status/{loop_id}")
-async def portfolio_loop_status(loop_id: str):
+async def portfolio_loop_status(loop_id: str, request: Request):
+    user = await require_user(request)
     status = await portfolio_supervisor.status(loop_id)
     if status is None:
         raise HTTPException(status_code=404, detail="포트폴리오 루프를 찾을 수 없습니다")
+    if not _has_loop_access(status, user):
+        raise HTTPException(status_code=403, detail="해당 포트폴리오 루프 조회 권한이 없습니다")
     return status
 
 
 @app.get("/api/portfolio-loop/list")
-async def portfolio_loop_list():
+async def portfolio_loop_list(request: Request):
+    user = await require_user(request)
     loops = await portfolio_supervisor.list_loops()
+    if not _user_is_master(user):
+        owner_id = _user_id_str(user)
+        loops = [row for row in loops if str(row.get("owner_user_id", "") or "") == owner_id]
     return {"loops": loops}
 
 
 @app.post("/api/portfolio-loop/scan/{loop_id}")
-async def portfolio_loop_manual_scan(loop_id: str):
+async def portfolio_loop_manual_scan(loop_id: str, request: Request):
     """유저 요청 시 즉시 시장 스캔 수행"""
+    user = await require_user(request)
+    status = await portfolio_supervisor.status(loop_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="포트폴리오 루프를 찾을 수 없습니다")
+    if not _has_loop_access(status, user):
+        raise HTTPException(status_code=403, detail="해당 포트폴리오 루프 스캔 권한이 없습니다")
+
     try:
         status = await portfolio_supervisor.manual_scan(loop_id)
     except RuntimeError as e:
@@ -722,40 +796,51 @@ async def portfolio_loop_manual_scan(loop_id: str):
 
 # ── KIS OpenAPI ─────────────────────────────────────────────────
 @app.get("/api/kis/status")
-async def kis_status():
+async def kis_status(request: Request):
     """KIS API 연결 상태 확인"""
+    _, runtime_profile = await _load_user_runtime_profile(request)
     try:
         from data.kis.trading import get_connection_status
-        return await get_connection_status()
+        with runtime_profile_context(runtime_profile):
+            return await get_connection_status()
     except Exception as e:
-        return {"connected": False, "is_mock": settings.kis_mock, "error": str(e)}
+        runtime_is_mock = bool(runtime_profile.get("kis_mock", True))
+        return {"connected": False, "is_mock": runtime_is_mock, "error": str(e)}
 
 
 @app.get("/api/kis/balance")
-async def kis_balance():
+async def kis_balance(request: Request):
     """주식 잔고 조회"""
+    _, runtime_profile = await _load_user_runtime_profile(request)
     try:
         from data.kis.trading import get_balance
-        return await get_balance()
+        with runtime_profile_context(runtime_profile):
+            return await get_balance()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/kis/price/{ticker}")
-async def kis_price(ticker: str):
+async def kis_price(ticker: str, request: Request):
     """국내주식 현재가 조회"""
+    _, runtime_profile = await _load_user_runtime_profile(request)
     try:
         from data.kis.trading import get_current_price
-        return await get_current_price(ticker)
+        with runtime_profile_context(runtime_profile):
+            return await get_current_price(ticker)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/kis/order")
-async def kis_order(req: KisOrderRequest):
+async def kis_order(req: KisOrderRequest, request: Request):
     """주식 현금 주문 (매수/매도)"""
+    _, runtime_profile = await _load_user_runtime_profile(request)
+    runtime_is_mock = bool(runtime_profile.get("kis_mock", True))
+    runtime_require_confirm = bool(runtime_profile.get("guru_require_user_confirmation", False))
+
     _validate_kis_order_request(req.side, req.qty, req.order_type)
-    if (not settings.kis_mock) and settings.guru_require_user_confirmation:
+    if (not runtime_is_mock) and runtime_require_confirm:
         raise HTTPException(
             status_code=428,
             detail="GURU 승인 강제 옵션이 켜져 있습니다. /api/kis/order/approval/request 이후 approve/reject API를 사용하세요.",
@@ -771,21 +856,40 @@ async def kis_order(req: KisOrderRequest):
 
     try:
         from data.kis.trading import place_order
-        return await place_order(
+        with runtime_profile_context(runtime_profile):
+            order_result = await place_order(
+                ticker=payload["ticker"],
+                side=payload["side"],  # type: ignore[arg-type]
+                qty=payload["qty"],
+                price=payload["price"],
+                order_type=payload["order_type"],
+            )
+        await record_trade(
+            request=request,
+            trade_type="kis_order",
+            mode="simulated" if runtime_is_mock else "live",
+            status="executed",
             ticker=payload["ticker"],
-            side=payload["side"],  # type: ignore[arg-type]
+            side=payload["side"],
             qty=payload["qty"],
             price=payload["price"],
             order_type=payload["order_type"],
+            source="kis_direct_order",
+            meta={"order_no": order_result.get("order_no", "") if isinstance(order_result, dict) else ""},
         )
+        return order_result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/kis/order/approval/request")
-async def create_kis_order_approval(req: KisOrderApprovalCreateRequest):
+async def create_kis_order_approval(req: KisOrderApprovalCreateRequest, request: Request):
     """실전 주문 전 승인 대기 건 생성 (GURU 승인 강제 대응)"""
-    _cleanup_kis_order_approvals()
+    user, runtime_profile = await _load_user_runtime_profile(request)
+    db = _require_mongo_db()
+    runtime_is_mock = bool(runtime_profile.get("kis_mock", True))
+    runtime_require_confirm = bool(runtime_profile.get("guru_require_user_confirmation", False))
+
     _validate_kis_order_request(req.side, req.qty, req.order_type)
 
     payload = _build_kis_order_payload(
@@ -796,122 +900,193 @@ async def create_kis_order_approval(req: KisOrderApprovalCreateRequest):
         order_type=req.order_type,
     )
 
-    now = datetime.utcnow()
     approval_id = str(uuid4())
-    row = {
-        "approval_id": approval_id,
-        "status": "pending",
-        "created_at": now.replace(microsecond=0).isoformat() + "Z",
-        "expires_at": (now + timedelta(minutes=_KIS_APPROVAL_TTL_MIN)).replace(microsecond=0).isoformat() + "Z",
-        "resolved_at": None,
-        "context": str(req.context or "")[:500],
-        "order": payload,
-        "is_mock": settings.kis_mock,
-        "guru_require_user_confirmation": bool(settings.guru_require_user_confirmation),
-    }
-    _kis_order_approvals[approval_id] = row
+    try:
+        row = await create_order_approval(
+            db,
+            approval_id=approval_id,
+            owner_user_id=_user_id_str(user),
+            context=req.context,
+            order_payload=payload,
+            is_mock=runtime_is_mock,
+            guru_require_user_confirmation=runtime_require_confirm,
+            kis_runtime={
+                "kis_mock": runtime_is_mock,
+                "kis_app_key": str(runtime_profile.get("kis_app_key", "") or ""),
+                "kis_app_secret": str(runtime_profile.get("kis_app_secret", "") or ""),
+                "kis_account_no": str(runtime_profile.get("kis_account_no", "") or ""),
+            },
+            ttl_min=_KIS_APPROVAL_TTL_MIN,
+            max_keep_hours=_KIS_APPROVAL_MAX_KEEP_HOURS,
+        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="승인 요청 저장에 실패했습니다")
+
+    await record_trade(
+        request=request,
+        trade_type="kis_order_approval",
+        mode="simulated" if runtime_is_mock else "live",
+        status="pending_approval",
+        ticker=payload["ticker"],
+        side=payload["side"],
+        qty=payload["qty"],
+        price=payload["price"],
+        order_type=payload["order_type"],
+        source="kis_approval_request",
+        meta={"approval_id": approval_id},
+    )
+
+    public_row = serialize_approval(row)
 
     return {
-        "approval_id": approval_id,
-        "status": row["status"],
-        "created_at": row["created_at"],
-        "expires_at": row["expires_at"],
-        "order": row["order"],
-        "is_mock": row["is_mock"],
-        "guru_require_user_confirmation": row["guru_require_user_confirmation"],
+        "approval_id": public_row["approval_id"],
+        "status": public_row["status"],
+        "created_at": public_row["created_at"],
+        "expires_at": public_row["expires_at"],
+        "order": public_row["order"],
+        "is_mock": public_row["is_mock"],
+        "guru_require_user_confirmation": public_row["guru_require_user_confirmation"],
     }
 
 
 @app.get("/api/kis/order/approval/{approval_id}")
-async def get_kis_order_approval(approval_id: str):
+async def get_kis_order_approval(approval_id: str, request: Request):
     """주문 승인 대기 건 조회"""
-    _cleanup_kis_order_approvals()
-    row = _kis_order_approvals.get(approval_id)
+    user = await require_user(request)
+    db = _require_mongo_db()
+    row = await get_order_approval(db, approval_id)
     if row is None:
         raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+    if not _has_approval_access(row, user):
+        raise HTTPException(status_code=403, detail="해당 승인 요청 접근 권한이 없습니다")
 
-    if row.get("status") == "pending" and _is_kis_approval_expired(row):
-        row["status"] = "expired"
-        row["resolved_at"] = _utc_now_iso()
+    public_row = serialize_approval(row)
 
     return {
-        "approval_id": row.get("approval_id"),
-        "status": row.get("status"),
-        "created_at": row.get("created_at"),
-        "expires_at": row.get("expires_at"),
-        "resolved_at": row.get("resolved_at"),
-        "order": row.get("order"),
-        "is_mock": row.get("is_mock"),
-        "guru_require_user_confirmation": row.get("guru_require_user_confirmation"),
+        "approval_id": public_row.get("approval_id"),
+        "status": public_row.get("status"),
+        "created_at": public_row.get("created_at"),
+        "expires_at": public_row.get("expires_at"),
+        "resolved_at": public_row.get("resolved_at"),
+        "order": public_row.get("order"),
+        "is_mock": public_row.get("is_mock"),
+        "guru_require_user_confirmation": public_row.get("guru_require_user_confirmation"),
     }
 
 
 @app.post("/api/kis/order/approval/{approval_id}/approve")
-async def approve_kis_order_approval(approval_id: str):
+async def approve_kis_order_approval(approval_id: str, request: Request):
     """승인 대기 건을 승인하고 실제 주문 실행"""
-    _cleanup_kis_order_approvals()
-    row = _kis_order_approvals.get(approval_id)
+    user = await require_user(request)
+    db = _require_mongo_db()
+    row = await get_order_approval(db, approval_id)
     if row is None:
         raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+    if not _has_approval_access(row, user):
+        raise HTTPException(status_code=403, detail="해당 승인 요청 처리 권한이 없습니다")
 
     status = str(row.get("status", "") or "")
-    if status != "pending":
+    if status != ORDER_APPROVAL_PENDING:
+        if status == ORDER_APPROVAL_EXPIRED:
+            raise HTTPException(status_code=410, detail="승인 요청 유효시간이 만료되었습니다")
         raise HTTPException(status_code=409, detail=f"이미 처리된 승인 요청입니다: {status}")
-
-    if _is_kis_approval_expired(row):
-        row["status"] = "expired"
-        row["resolved_at"] = _utc_now_iso()
-        raise HTTPException(status_code=410, detail="승인 요청 유효시간이 만료되었습니다")
 
     payload = row.get("order", {})
     try:
+        kis_runtime = load_kis_runtime(row)
+    except Exception:
+        raise HTTPException(status_code=500, detail="승인 런타임 복호화에 실패했습니다")
+
+    try:
         from data.kis.trading import place_order
-        order_result = await place_order(
-            ticker=str(payload.get("ticker", "")),
-            side=str(payload.get("side", "buy")),  # type: ignore[arg-type]
-            qty=int(payload.get("qty", 0) or 0),
-            price=int(payload.get("price", 0) or 0),
-            order_type=str(payload.get("order_type", "00")),
-        )
+        with runtime_profile_context(kis_runtime):
+            order_result = await place_order(
+                ticker=str(payload.get("ticker", "")),
+                side=str(payload.get("side", "buy")),  # type: ignore[arg-type]
+                qty=int(payload.get("qty", 0) or 0),
+                price=int(payload.get("price", 0) or 0),
+                order_type=str(payload.get("order_type", "00")),
+            )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    row["status"] = "approved"
-    row["resolved_at"] = _utc_now_iso()
-    row["order_result"] = order_result
+    updated = await approve_order_approval(db, approval_id, order_result)
+    if updated is None:
+        latest = await get_order_approval(db, approval_id)
+        latest_status = str((latest or {}).get("status", "unknown") or "unknown")
+        raise HTTPException(status_code=409, detail=f"이미 처리된 승인 요청입니다: {latest_status}")
+
+    await record_trade(
+        request=request,
+        trade_type="kis_order_approval",
+        mode="simulated" if bool(updated.get("is_mock", True)) else "live",
+        status="approved_executed",
+        ticker=str(payload.get("ticker", "")),
+        side=str(payload.get("side", "buy")),
+        qty=int(payload.get("qty", 0) or 0),
+        price=int(payload.get("price", 0) or 0),
+        order_type=str(payload.get("order_type", "00")),
+        source="kis_approval_approve",
+        meta={
+            "approval_id": approval_id,
+            "order_no": order_result.get("order_no", "") if isinstance(order_result, dict) else "",
+        },
+    )
+
+    public_row = serialize_approval(updated)
 
     return {
         "approval_id": approval_id,
-        "status": row["status"],
-        "resolved_at": row["resolved_at"],
+        "status": public_row["status"],
+        "resolved_at": public_row["resolved_at"],
         "order_result": order_result,
     }
 
 
 @app.post("/api/kis/order/approval/{approval_id}/reject")
-async def reject_kis_order_approval(approval_id: str):
+async def reject_kis_order_approval(approval_id: str, request: Request):
     """승인 대기 건 거절"""
-    _cleanup_kis_order_approvals()
-    row = _kis_order_approvals.get(approval_id)
+    user = await require_user(request)
+    db = _require_mongo_db()
+    row = await get_order_approval(db, approval_id)
     if row is None:
         raise HTTPException(status_code=404, detail="승인 요청을 찾을 수 없습니다")
+    if not _has_approval_access(row, user):
+        raise HTTPException(status_code=403, detail="해당 승인 요청 처리 권한이 없습니다")
 
     status = str(row.get("status", "") or "")
-    if status != "pending":
+    if status != ORDER_APPROVAL_PENDING:
+        if status == ORDER_APPROVAL_EXPIRED:
+            raise HTTPException(status_code=410, detail="승인 요청 유효시간이 만료되었습니다")
         raise HTTPException(status_code=409, detail=f"이미 처리된 승인 요청입니다: {status}")
 
-    if _is_kis_approval_expired(row):
-        row["status"] = "expired"
-        row["resolved_at"] = _utc_now_iso()
-        raise HTTPException(status_code=410, detail="승인 요청 유효시간이 만료되었습니다")
+    updated = await reject_order_approval(db, approval_id)
+    if updated is None:
+        latest = await get_order_approval(db, approval_id)
+        latest_status = str((latest or {}).get("status", "unknown") or "unknown")
+        raise HTTPException(status_code=409, detail=f"이미 처리된 승인 요청입니다: {latest_status}")
 
-    row["status"] = "rejected"
-    row["resolved_at"] = _utc_now_iso()
+    payload = row.get("order", {})
+    await record_trade(
+        request=request,
+        trade_type="kis_order_approval",
+        mode="simulated" if bool(updated.get("is_mock", True)) else "live",
+        status="rejected",
+        ticker=str(payload.get("ticker", "")),
+        side=str(payload.get("side", "buy")),
+        qty=int(payload.get("qty", 0) or 0),
+        price=int(payload.get("price", 0) or 0),
+        order_type=str(payload.get("order_type", "00")),
+        source="kis_approval_reject",
+        meta={"approval_id": approval_id},
+    )
+
+    public_row = serialize_approval(updated)
 
     return {
         "approval_id": approval_id,
-        "status": row["status"],
-        "resolved_at": row["resolved_at"],
+        "status": public_row["status"],
+        "resolved_at": public_row["resolved_at"],
     }
 
 

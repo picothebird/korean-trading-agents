@@ -495,3 +495,94 @@ export interface PortfolioLoopStatus {
   trade_history: AutoLoopTradeRecord[];
   logs: AutoLoopLog[];
 }
+
+// User/Auth system
+export type UserRole = "viewer" | "trader" | "master";
+
+export interface AppUser {
+  _id: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  disabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+  last_login_at?: string | null;
+}
+
+export interface AuthBootstrapStatus {
+  bootstrapped: boolean;
+  users_count: number;
+  masters_count: number;
+}
+
+export interface AuthRegisterRequest {
+  email: string;
+  password: string;
+  username?: string;
+  role?: UserRole;
+}
+
+export interface AuthLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: "bearer";
+  expires_in_sec: number;
+  user: AppUser;
+}
+
+export interface AuthMeResponse {
+  user: AppUser;
+}
+
+export interface ActivityLogItem {
+  _id: string;
+  user_id?: string;
+  user_email?: string;
+  user_role?: UserRole;
+  action_type: string;
+  category: string;
+  method?: string;
+  path?: string;
+  status_code?: number;
+  ip?: string;
+  user_agent?: string;
+  payload?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface UserTradeItem {
+  _id: string;
+  user_id?: string;
+  user_email?: string;
+  user_role?: UserRole;
+  trade_type: string;
+  mode: "simulated" | "live" | string;
+  status: string;
+  ticker?: string;
+  side?: string;
+  qty?: number;
+  price?: number;
+  order_type?: string;
+  source?: string;
+  meta?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface MasterOverview {
+  users: {
+    total: number;
+    active: number;
+    masters: number;
+    traders: number;
+    viewers: number;
+  };
+  activity: {
+    logs_24h: number;
+    trades_24h: number;
+  };
+}

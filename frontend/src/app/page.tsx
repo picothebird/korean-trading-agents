@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators } from "@/types";
+import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators, AppUser } from "@/types";
 import { ActivityFeed } from "@/components/AgentOffice";
 import { DecisionCard } from "@/components/DecisionCard";
 import { BacktestPanel } from "@/components/BacktestPanel";
-import { SettingsPanel } from "@/components/SettingsPanel";
+import { SettingsPanel, type SettingsTab } from "@/components/SettingsPanel";
 import { KisPanel } from "@/components/KisPanel";
 import { PixelOffice } from "@/components/PixelOffice";
 import { StockChartPanel } from "@/components/StockChartPanel";
@@ -15,6 +15,7 @@ import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest,
+  getAccessToken, clearAccessToken, getMe, logoutUser,
 } from "@/lib/api";
 
 // ── Constants ────────────────────────────────────────────────────
@@ -530,10 +531,12 @@ function HumanApprovalModal({
   decision,
   onApprove,
   onReject,
+  onOpenSettings,
 }: {
   decision: TradeDecision;
   onApprove: () => void;
   onReject: () => void;
+  onOpenSettings?: () => void;
 }) {
   const cfg =
     decision.action === "BUY"
@@ -601,6 +604,26 @@ function HumanApprovalModal({
             </div>
           </div>
         </div>
+
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            style={{
+              width: "100%",
+              marginBottom: 8,
+              padding: "8px 0",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border-default)",
+              background: "var(--bg-elevated)",
+              color: "var(--text-secondary)",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            ⚙ 승인 정책 설정 열기
+          </button>
+        )}
 
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -702,11 +725,38 @@ export default function Home() {
   const [approvalModal, setApprovalModal] = useState(false);
   const [stockInfo, setStockInfo] = useState<StockIndicators | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("overview");
   const [kisOrderTicker, setKisOrderTicker] = useState("");
   const [recentStocks, setRecentStocks] = useState<SavedStock[]>([]);
   const [favoriteStocks, setFavoriteStocks] = useState<SavedStock[]>([]);
   const [autoTradeRecords, setAutoTradeRecords] = useState<AutoTradeRecord[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      setCurrentUser(null);
+      setAuthReady(true);
+      return;
+    }
+
+    getMe()
+      .then((res) => {
+        setCurrentUser(res.user);
+        setAuthError(null);
+      })
+      .catch(() => {
+        clearAccessToken();
+        setCurrentUser(null);
+        setAuthError("로그인이 필요합니다.");
+      })
+      .finally(() => {
+        setAuthReady(true);
+      });
+  }, []);
 
   // Load local stock preferences
   useEffect(() => {
@@ -737,13 +787,14 @@ export default function Home() {
 
   // Market data
   useEffect(() => {
+    if (!currentUser) return;
     const loadIndices = () => {
       getMarketIndices().then(setMarketData).catch(() => {});
     };
     loadIndices();
     const timer = setInterval(loadIndices, 60_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [currentUser]);
 
   // Responsive split layout (desktop 50/50, narrow stacked)
   useEffect(() => {
@@ -756,6 +807,7 @@ export default function Home() {
 
   // Stock info on ticker change
   useEffect(() => {
+    if (!currentUser) return;
     if (!ticker) return;
     setStockInfo(null);
     const timer = setTimeout(() => {
@@ -770,7 +822,12 @@ export default function Home() {
         });
     }, 700);
     return () => clearTimeout(timer);
-  }, [ticker]);
+  }, [ticker, currentUser]);
+
+  const openSettings = useCallback((tabKey: SettingsTab = "overview") => {
+    setSettingsInitialTab(tabKey);
+    setSettingsOpen(true);
+  }, []);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -786,6 +843,10 @@ export default function Home() {
   }, []);
 
   const handleAnalyze = useCallback(async () => {
+    if (!currentUser) {
+      setAnalysisError("로그인이 필요합니다.");
+      return;
+    }
     if (isRunning) return;
     // Close any existing SSE before starting new analysis
     analysisCleanupRef.current?.();
@@ -827,9 +888,13 @@ export default function Home() {
       setIsRunning(false);
       setAnalysisError("분석 요청 실패. 백엔드가 실행 중인지 확인하세요.");
     }
-  }, [ticker, isRunning]);
+  }, [ticker, isRunning, currentUser]);
 
   const handleBacktest = useCallback(async () => {
+    if (!currentUser) {
+      setBtError("로그인이 필요합니다.");
+      return;
+    }
     if (btLoading) return;
 
     const normalizedCapital = Number(btInitialCapital);
@@ -909,7 +974,7 @@ export default function Home() {
         setBtLoading(false);
       }
     }
-  }, [ticker, btMode, btLoading, btStartDate, btEndDate, btInitialCapital, btDecisionIntervalDays]);
+  }, [ticker, btMode, btLoading, btStartDate, btEndDate, btInitialCapital, btDecisionIntervalDays, currentUser]);
 
   // Cleanup SSE connections on unmount
   useEffect(() => {
@@ -979,6 +1044,107 @@ export default function Home() {
     }
   }, [decision]);
 
+  if (!authReady) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          background: "var(--bg-base)",
+          color: "var(--text-secondary)",
+          fontSize: 14,
+        }}
+      >
+        인증 상태를 확인하는 중입니다...
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: 24,
+          background:
+            "radial-gradient(1200px 600px at -10% -10%, rgba(49,130,246,0.16), transparent 60%), radial-gradient(1000px 500px at 110% 20%, rgba(16,185,129,0.14), transparent 55%), var(--bg-base)",
+        }}
+      >
+        <div
+          style={{
+            width: "min(720px, 100%)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-2xl)",
+            padding: 28,
+            background: "var(--bg-surface)",
+            boxShadow: "0 24px 60px rgba(0, 0, 0, 0.25)",
+          }}
+        >
+          <p style={{ color: "var(--brand)", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Korean Trading Agents
+          </p>
+          <h1 style={{ marginTop: 8, fontSize: 34, lineHeight: 1.1, color: "var(--text-primary)" }}>
+            유저 등급 기반 AI 트레이딩 워크스페이스
+          </h1>
+          <p style={{ marginTop: 12, color: "var(--text-secondary)", lineHeight: 1.6, fontSize: 14 }}>
+            사용자별 권한과 전체 액션 로그를 기반으로 실전/모의 트레이딩을 안전하게 운영할 수 있습니다.
+            로그인 후 분석, 백테스트, 주문, 관리자 모니터링까지 통합 제어하세요.
+          </p>
+
+          {authError && (
+            <div
+              style={{
+                marginTop: 16,
+                borderRadius: "var(--radius-lg)",
+                border: "1px solid rgba(240,68,82,0.3)",
+                background: "rgba(240,68,82,0.1)",
+                padding: "10px 12px",
+                color: "var(--bear)",
+                fontSize: 12,
+              }}
+            >
+              {authError}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" }}>
+            <a
+              href="/login"
+              style={{
+                textDecoration: "none",
+                borderRadius: "var(--radius-lg)",
+                padding: "11px 16px",
+                fontSize: 14,
+                fontWeight: 700,
+                background: "var(--brand)",
+                color: "#fff",
+              }}
+            >
+              로그인 / 회원가입
+            </a>
+            <a
+              href="/master"
+              style={{
+                textDecoration: "none",
+                borderRadius: "var(--radius-lg)",
+                padding: "11px 16px",
+                fontSize: 14,
+                fontWeight: 700,
+                border: "1px solid var(--border-default)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              마스터 패널 보기
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Render ────────────────────────────────────────────────────
   return (
     <div
@@ -1040,26 +1206,66 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Market indices compact */}
-          <div style={{ display: "flex", gap: 10 }}>
-            {Object.entries(marketData)
-              .slice(0, 2)
-              .map(([name, data]) => (
-                <div key={name} style={{ textAlign: "right" }}>
-                  <p style={{ fontSize: 8, color: "var(--text-tertiary)", marginBottom: 1 }}>{name}</p>
-                  <p
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: data.change_pct >= 0 ? "var(--bull)" : "var(--bear)",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {data.change_pct >= 0 ? "+" : ""}
-                    {data.change_pct.toFixed(2)}%
-                  </p>
-                </div>
-              ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ textAlign: "right" }}>
+              <p style={{ fontSize: 9, color: "var(--text-secondary)", fontWeight: 700 }}>
+                {currentUser.username || currentUser.email}
+              </p>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
+                <a href="/activity" style={{ color: "var(--brand)", fontSize: 10, textDecoration: "none", fontWeight: 700 }}>
+                  활동 로그
+                </a>
+                {currentUser.role === "master" && (
+                  <a href="/master" style={{ color: "var(--brand)", fontSize: 10, textDecoration: "none", fontWeight: 700 }}>
+                    마스터
+                  </a>
+                )}
+                <button
+                  onClick={async () => {
+                    try {
+                      await logoutUser();
+                    } catch {
+                      // best effort logout
+                    }
+                    clearAccessToken();
+                    window.location.href = "/login";
+                  }}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text-tertiary)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  로그아웃
+                </button>
+              </div>
+            </div>
+
+            {/* Market indices compact */}
+            <div style={{ display: "flex", gap: 10 }}>
+              {Object.entries(marketData)
+                .slice(0, 2)
+                .map(([name, data]) => (
+                  <div key={name} style={{ textAlign: "right" }}>
+                    <p style={{ fontSize: 8, color: "var(--text-tertiary)", marginBottom: 1 }}>{name}</p>
+                    <p
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: data.change_pct >= 0 ? "var(--bull)" : "var(--bear)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {data.change_pct >= 0 ? "+" : ""}
+                      {data.change_pct.toFixed(2)}%
+                    </p>
+                  </div>
+                ))}
+            </div>
           </div>
         </div>
 
@@ -1380,6 +1586,7 @@ export default function Home() {
                           ? () => setApprovalModal(true)
                           : undefined
                       }
+                      onOpenSettings={() => openSettings("guru")}
                     />
                     <motion.button
                       initial={{ opacity: 0, y: 4 }}
@@ -1440,6 +1647,38 @@ export default function Home() {
                       <p style={{ fontSize: 10, color: "var(--text-secondary)" }}>{d}</p>
                     </div>
                   ))}
+                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => openSettings("analysis")}
+                      style={{
+                        padding: "5px 9px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-default)",
+                        background: "var(--bg-surface)",
+                        color: "var(--text-secondary)",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      분석 설정
+                    </button>
+                    <button
+                      onClick={() => openSettings("llm")}
+                      style={{
+                        padding: "5px 9px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--border-default)",
+                        background: "var(--bg-surface)",
+                        color: "var(--text-secondary)",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      LLM 설정
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -1804,7 +2043,10 @@ export default function Home() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={SPRING}
               >
-                <KisPanel prefillTicker={kisOrderTicker || ticker} />
+                <KisPanel
+                  prefillTicker={kisOrderTicker || ticker}
+                  onOpenSettings={(tabKey) => openSettings(tabKey)}
+                />
               </motion.div>
             )}
 
@@ -1874,7 +2116,7 @@ export default function Home() {
           }}
         >
           <button
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => openSettings("overview")}
             style={{
               display: "flex",
               alignItems: "center",
@@ -2040,11 +2282,16 @@ export default function Home() {
               setApprovalModal(false);
               setDecision(null);
             }}
+            onOpenSettings={() => openSettings("guru")}
           />
         )}
       </AnimatePresence>
 
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        initialTab={settingsInitialTab}
+      />
     </div>
   );
 }

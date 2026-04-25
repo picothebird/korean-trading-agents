@@ -15,9 +15,10 @@ const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.5 };
 interface DecisionCardProps {
   decision: TradeDecision | null;
   onHumanApproval?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
+export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: DecisionCardProps) {
   if (!decision) return null;
 
   const cfg = ACTION_CFG[decision.action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
@@ -109,18 +110,32 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
                   고신뢰도 또는 대규모 포지션 — 최종 확인 필요
                 </p>
               </div>
-              {onHumanApproval && (
-                <button
-                  onClick={onHumanApproval}
-                  style={{
-                    background: "var(--warning)", color: "#000", fontSize: 11, fontWeight: 700,
-                    padding: "6px 12px", borderRadius: "var(--radius-md)", border: "none",
-                    cursor: "pointer", flexShrink: 0,
-                  }}
-                >
-                  검토하기
-                </button>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                {onOpenSettings && (
+                  <button
+                    onClick={onOpenSettings}
+                    style={{
+                      background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 10, fontWeight: 700,
+                      padding: "6px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    승인 정책
+                  </button>
+                )}
+                {onHumanApproval && (
+                  <button
+                    onClick={onHumanApproval}
+                    style={{
+                      background: "var(--warning)", color: "#000", fontSize: 11, fontWeight: 700,
+                      padding: "6px 12px", borderRadius: "var(--radius-md)", border: "none",
+                      cursor: "pointer", flexShrink: 0,
+                    }}
+                  >
+                    검토하기
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -150,6 +165,24 @@ export function DecisionCard({ decision, onHumanApproval }: DecisionCardProps) {
                 <p style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 5 }}>
                   룰 적용: {guruRules.slice(0, 2).join(" | ")}
                 </p>
+              )}
+              {onOpenSettings && (
+                <button
+                  onClick={onOpenSettings}
+                  style={{
+                    marginTop: 8,
+                    padding: "5px 10px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid rgba(49,130,246,0.35)",
+                    background: "rgba(49,130,246,0.12)",
+                    color: "var(--brand)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  GURU 설정 열기
+                </button>
               )}
             </div>
           )}

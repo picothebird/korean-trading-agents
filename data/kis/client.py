@@ -7,6 +7,7 @@ KIS OpenAPI REST 클라이언트
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -17,32 +18,38 @@ PROD_URL = "https://openapi.koreainvestment.com:9443"
 MOCK_URL = "https://openapivts.koreainvestment.com:29443"
 
 # ── Token cache (in-memory, 프로세스 단위) ────────────────────────
-_token_cache: dict = {
-    "access_token": None,
-    "expires_at": None,
-    "is_mock": None,
-}
+_token_cache: dict[tuple[str, str, bool], dict[str, Any]] = {}
 
 
 def _base_url(is_mock: bool) -> str:
     return MOCK_URL if is_mock else PROD_URL
 
 
-def _needs_token(is_mock: bool) -> bool:
-    if _token_cache["access_token"] is None:
+def _cache_key(app_key: str, app_secret: str, is_mock: bool) -> tuple[str, str, bool]:
+    return (str(app_key), str(app_secret), bool(is_mock))
+
+
+def _needs_token(app_key: str, app_secret: str, is_mock: bool) -> bool:
+    row = _token_cache.get(_cache_key(app_key, app_secret, is_mock))
+    if row is None:
         return True
-    if _token_cache["is_mock"] != is_mock:
+
+    if row.get("access_token") is None:
         return True
-    if _token_cache["expires_at"] is None:
+
+    expires_at = row.get("expires_at")
+    if not isinstance(expires_at, datetime):
         return True
+
     # 만료 10분 전 재발급
-    return datetime.now() >= _token_cache["expires_at"] - timedelta(minutes=10)
+    return datetime.now() >= expires_at - timedelta(minutes=10)
 
 
 async def get_access_token(app_key: str, app_secret: str, is_mock: bool) -> str:
     """접근토큰 발급 (캐시 활용)"""
-    if not _needs_token(is_mock):
-        return _token_cache["access_token"]  # type: ignore[return-value]
+    key = _cache_key(app_key, app_secret, is_mock)
+    if not _needs_token(app_key, app_secret, is_mock):
+        return str(_token_cache[key].get("access_token") or "")
 
     url = f"{_base_url(is_mock)}/oauth2/tokenP"
     payload = {
@@ -69,14 +76,35 @@ async def get_access_token(app_key: str, app_secret: str, is_mock: bool) -> str:
     except ValueError:
         expires_at = datetime.now() + timedelta(hours=23)
 
-    _token_cache.update({"access_token": token, "expires_at": expires_at, "is_mock": is_mock})
+    _token_cache[key] = {
+        "access_token": token,
+        "expires_at": expires_at,
+    }
     logger.info("KIS 접근토큰 발급 완료 (만료: %s, 모의: %s)", expired_str, is_mock)
     return token
 
 
-def invalidate_token() -> None:
+def invalidate_token(app_key: str | None = None, app_secret: str | None = None, is_mock: bool | None = None) -> None:
     """토큰 캐시 초기화 (앱키 변경 시 호출)"""
-    _token_cache.update({"access_token": None, "expires_at": None, "is_mock": None})
+    global _token_cache
+
+    if app_key is None and app_secret is None and is_mock is None:
+        _token_cache = {}
+        return
+
+    to_remove: list[tuple[str, str, bool]] = []
+    for key in _token_cache.keys():
+        k_app_key, k_app_secret, k_mock = key
+        if app_key is not None and str(app_key) != k_app_key:
+            continue
+        if app_secret is not None and str(app_secret) != k_app_secret:
+            continue
+        if is_mock is not None and bool(is_mock) != bool(k_mock):
+            continue
+        to_remove.append(key)
+
+    for key in to_remove:
+        _token_cache.pop(key, None)
 
 
 def _resolve_tr_id(tr_id: str, is_mock: bool) -> str:
