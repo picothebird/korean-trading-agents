@@ -1,7 +1,9 @@
 """
-OpenAI Responses API 클라이언트
-- default_llm_model (gpt-5)       : reasoning effort=high (심층 분석)
-- fast_llm_model   (gpt-5-mini)   : 빠른 호출, reasoning 미사용
+OpenAI Responses API 클라이언트 (단일 모델 통합).
+
+모든 에이전트가 동일한 default_llm_model 하나를 사용합니다.
+- fast=False : reasoning effort=reasoning_effort (심층 분석)
+- fast=True  : 동일 모델, reasoning 미사용 (빠른 호출 컨텍스트 호환용)
 
 참고: https://developers.openai.com/api/reference/resources/responses/methods/create
 """
@@ -18,6 +20,16 @@ _REASONING_PREFIXES = ("gpt-5", "o1", "o2", "o3", "o4", "o-")
 def _supports_reasoning(model: str) -> bool:
     """모델이 reasoning 파라미터를 지원하는지 여부."""
     return any(model.startswith(p) for p in _REASONING_PREFIXES)
+
+
+def _normalize_model(raw: str | None) -> str:
+    """사용자 입력 모델 ID를 표준화 (소문자 + gpt- 접두어)."""
+    v = str(raw or "").strip().lower()
+    if not v:
+        return ""
+    if v.startswith("gpt-") or v.startswith("o") or "/" in v:
+        return v
+    return f"gpt-{v}"
 
 
 def reset_client(api_key: str | None = None) -> None:
@@ -50,22 +62,16 @@ async def create_response(
 ) -> str:
     """
     OpenAI Responses API (POST /v1/responses) 로 텍스트 생성.
-
-    fast=False → default_llm_model, reasoning effort=reasoning_effort
-    fast=True  → fast_llm_model, reasoning 미사용
+    단일 모델(default_llm_model)을 사용하며, fast=True 인 경우에만 reasoning 을 비활성화한다.
     """
     api_key = str(get_runtime_setting("openai_api_key", "", use_global_when_unset=True) or "").strip()
     client = _get_client(api_key)
 
-    default_model = str(
+    raw_model = (
         get_runtime_setting("default_llm_model", settings.default_llm_model, use_global_when_unset=True)
         or settings.default_llm_model
     )
-    fast_model = str(
-        get_runtime_setting("fast_llm_model", settings.fast_llm_model, use_global_when_unset=True)
-        or settings.fast_llm_model
-    )
-    model = fast_model if fast else default_model
+    model = _normalize_model(raw_model) or _normalize_model(settings.default_llm_model) or "gpt-5.5"
 
     reasoning_effort = str(
         get_runtime_setting("reasoning_effort", settings.reasoning_effort, use_global_when_unset=True)

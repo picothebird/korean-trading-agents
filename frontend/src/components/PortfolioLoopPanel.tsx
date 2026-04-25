@@ -7,7 +7,7 @@ import {
   startPortfolioLoop,
   stopPortfolioLoop,
 } from "@/lib/api";
-import { TabPills, Icon } from "@/components/ui";
+import { TabPills, Icon, SettingsSection, FieldRow, FieldCell, fieldInputStyle as inputStyle } from "@/components/ui";
 import type {
   AutoLoopLog,
   AutoLoopTradeRecord,
@@ -415,266 +415,136 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
       </div>
 
       {innerTab === "settings" && (<>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>루프 이름</span>
-          <input
-            type="text"
-            value={settings.name}
-            onChange={(e) => setSettings((prev) => ({ ...prev, name: e.target.value }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
+      <SettingsSection
+        title="簍키 기본"
+        desc="이 루프를 부른는 이름과, 처음부터 관심 있는 종목을 적어두면 됩니다."
+      >
+        <FieldRow>
+          <FieldCell label="루프 이름" hint="대시보드에서 구별하기 위한 포트폴리오 이름입니다." example="예: 대형주 안정형">
+            <input type="text" value={settings.name} onChange={(e) => setSettings((prev) => ({ ...prev, name: e.target.value }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="모니터링 스타일" hint="시장 분위기에 따라 다르게 봐야 할 일이 달라집니다. 균형형은 무난하고, 모멘텀은 상승세 추종, 방어형은 하락 대비에 무게를 둡니다." example="종목 선정/판단 기준에 영향">
+            <select value={settings.monitoringProfile} onChange={(e) => setSettings((prev) => ({ ...prev, monitoringProfile: e.target.value as MonitoringProfile }))} style={inputStyle}>
+              <option value="balanced">균형형</option>
+              <option value="momentum">모멘텀형</option>
+              <option value="defensive">방어형</option>
+            </select>
+          </FieldCell>
+          <FieldCell label="시드 종목" full hint="처음부터 관심 종목으로 지정하고 싶은 보유/후보입니다. 콤마나 공백으로 구분하세요." example="예: 005930, 000660 (종목코드 6자리)">
+            <input type="text" value={settings.seedTickersText} onChange={(e) => setSettings((prev) => ({ ...prev, seedTickersText: e.target.value }))} placeholder="005930,000660" style={inputStyle} />
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>시드 종목(콤마/공백 구분)</span>
-          <input
-            type="text"
-            value={settings.seedTickersText}
-            onChange={(e) => setSettings((prev) => ({ ...prev, seedTickersText: e.target.value }))}
-            placeholder="005930,000660"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
+      <SettingsSection
+        title="종목 풀 (유니버스)"
+        desc="AI가 매일 검색하는 후보 종목의 범위입니다. 선호/제외 종목을 넣으면 그 만큼 우선/제외됩니다."
+      >
+        <FieldRow>
+          <FieldCell label="선호 종목" full hint="AI가 가점을 두고 고려하는 종목입니다." example="예: 005930,000660">
+            <input type="text" value={settings.preferredTickersText} onChange={(e) => setSettings((prev) => ({ ...prev, preferredTickersText: e.target.value }))} placeholder="005930,000660" style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="제외 종목" full hint="절대 매수하지 않을 종목입니다." example="예: 042660,005490">
+            <input type="text" value={settings.excludedTickersText} onChange={(e) => setSettings((prev) => ({ ...prev, excludedTickersText: e.target.value }))} placeholder="042660,005490" style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="관심 키워드" full hint="뉴스/테마를 통해 우선 노출할 키워드입니다." example="예: 반도체,AI,배당">
+            <input type="text" value={settings.interestKeywordsText} onChange={(e) => setSettings((prev) => ({ ...prev, interestKeywordsText: e.target.value }))} placeholder="반도체,AI,배당" style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="시장 구분" hint="코스피만 혹은 코스닥만 볼지, 아니면 전체에서 찾을지 선택합니다." example="관리 종목은 자동 제외됩니다">
+            <select value={settings.universeMarket} onChange={(e) => setSettings((prev) => ({ ...prev, universeMarket: e.target.value as UniverseMarket }))} style={inputStyle}>
+              <option value="ALL">전체</option>
+              <option value="KOSPI">KOSPI</option>
+              <option value="KOSDAQ">KOSDAQ</option>
+            </select>
+          </FieldCell>
+          <FieldCell label="유니버스 크기" hint="하루에 검색할 종목 수입니다. 클수록 기회는 많아지지만 분석 리소스도 더 쓰입니다." example="권장: 30~80개">
+            <input type="number" min={10} max={200} value={settings.universeLimit} onChange={(e) => setSettings((prev) => ({ ...prev, universeLimit: Number(e.target.value || 10) }))} style={inputStyle} />
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>모니터링 프로파일</span>
-          <select
-            value={settings.monitoringProfile}
-            onChange={(e) => setSettings((prev) => ({ ...prev, monitoringProfile: e.target.value as MonitoringProfile }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          >
-            <option value="balanced">균형형</option>
-            <option value="momentum">모멘텀형</option>
-            <option value="defensive">방어형</option>
-          </select>
-        </label>
+      <SettingsSection
+        title="판단 사이클"
+        desc="얼마나 자주 돌며 분석/주문을 낼지, 한번에 몇 종목을 볼지를 정합니다."
+      >
+        <FieldRow>
+          <FieldCell label="판단 주기 (분)" hint="몇 분마다 한 번씩 돌아갈지 정합니다. 트레이딩 시간이 아니면 자동으로 쉬어요." example="권장: 5·30분">
+            <input type="number" min={1} max={1440} value={settings.cycleIntervalMin} onChange={(e) => setSettings((prev) => ({ ...prev, cycleIntervalMin: Number(e.target.value || 1) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="후보 수" hint="한 사이클에서 다음 스텍으로 넘길 상위 종목 개수입니다." example="권장: 5~10개">
+            <input type="number" min={1} max={30} value={settings.candidateCount} onChange={(e) => setSettings((prev) => ({ ...prev, candidateCount: Number(e.target.value || 1) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="병렬 분석 수" hint="동시에 몇 종목을 LLM으로 분석할지입니다. 높이면 빠르지만 API 비용/한도가 높아집니다." example="권장: 2~4개">
+            <input type="number" min={1} max={8} value={settings.maxParallelAnalyses} onChange={(e) => setSettings((prev) => ({ ...prev, maxParallelAnalyses: Number(e.target.value || 1) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="최소 신뢰도 (%)" hint="AI가 이 확신도 이상일 때만 주문을 냅니다. 70%면 꿨 확신한 신호만 거래해요." example="권장: 0.65~0.80 (65~80%)">
+            <input type="number" min={0} max={1} step={0.01} value={settings.minConfidence} onChange={(e) => setSettings((prev) => ({ ...prev, minConfidence: Number(e.target.value || 0) }))} style={inputStyle} />
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>선호 종목</span>
-          <input
-            type="text"
-            value={settings.preferredTickersText}
-            onChange={(e) => setSettings((prev) => ({ ...prev, preferredTickersText: e.target.value }))}
-            placeholder="005930,000660"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
+      <SettingsSection
+        title="리스크 / 비중 관리"
+        desc="한 포트폴리오에 보유할 종목 수와 종목당 최대 투입 비중을 제한해 한둘으로 쇏리는 것을 막아줍니다."
+      >
+        <FieldRow>
+          <FieldCell label="최대 보유 종목 수" hint="동시에 보유할 수 있는 종목의 최대 개수입니다." example="권장: 5~10개">
+            <input type="number" min={1} max={20} value={settings.maxPositions} onChange={(e) => setSettings((prev) => ({ ...prev, maxPositions: Number(e.target.value || 1) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="종목당 최대 비중 (%)" hint="하나의 종목에 전체 자산 중 최대 몇 %까지 넣을지입니다. 25%는 전체의 1/4입니다." example="권장: 15~30%">
+            <input type="number" min={1} max={100} value={settings.maxSinglePositionPct} onChange={(e) => setSettings((prev) => ({ ...prev, maxSinglePositionPct: Number(e.target.value || 1) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="리밸런싱 임계치 (%)" hint="목표 비중과 현재 비중의 차이가 이 값을 넘으면 리밸런싱 주문을 냅니다." example="권장: 1~3%">
+            <input type="number" min={0} max={20} step={0.1} value={settings.rebalanceThresholdPct} onChange={(e) => setSettings((prev) => ({ ...prev, rebalanceThresholdPct: Number(e.target.value || 0) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="" empty />
+        </FieldRow>
+      </SettingsSection>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>제외 종목</span>
-          <input
-            type="text"
-            value={settings.excludedTickersText}
-            onChange={(e) => setSettings((prev) => ({ ...prev, excludedTickersText: e.target.value }))}
-            placeholder="042660,005490"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
+      <SettingsSection
+        title="거래 비용"
+        desc={<>시뮬레이션과 실제 손익을 계산할 때 쓰이는 수수료/세금입니다. <strong>1bp = 0.01%</strong>이며 100bp가 1%입니다.</>}
+      >
+        <FieldRow>
+          <FieldCell label="수수료 (bps)" hint="증권사 매수/매도 수수료입니다. 1bp = 0.01%, 10bp = 0.1%." example="권장: 1.5~3 bps">
+            <input type="number" min={0} max={500} step={0.1} value={settings.feeBps} onChange={(e) => setSettings((prev) => ({ ...prev, feeBps: Number(e.target.value || 0) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="슬리피지 (bps)" hint="주문 가격과 실제 체결 가격의 차이입니다. 거래량이 적을수록 커지는 경향이 있어요." example="권장: 2~5 bps">
+            <input type="number" min={0} max={500} value={settings.slippageBps} onChange={(e) => setSettings((prev) => ({ ...prev, slippageBps: Number(e.target.value || 0) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="거래세 (bps)" hint="매도할 때만 부과되는 세금입니다 (매수 시에는 0)." example="국내 기본: 18 bps (0.18%)">
+            <input type="number" min={0} max={1000} value={settings.taxBps} onChange={(e) => setSettings((prev) => ({ ...prev, taxBps: Number(e.target.value || 0) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="" empty />
+        </FieldRow>
+      </SettingsSection>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>관심 키워드</span>
-          <input
-            type="text"
-            value={settings.interestKeywordsText}
-            onChange={(e) => setSettings((prev) => ({ ...prev, interestKeywordsText: e.target.value }))}
-            placeholder="반도체,AI,배당"
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>주기(분)</span>
-          <input
-            type="number"
-            min={1}
-            max={1440}
-            value={settings.cycleIntervalMin}
-            onChange={(e) => setSettings((prev) => ({ ...prev, cycleIntervalMin: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>유니버스</span>
-          <input
-            type="number"
-            min={10}
-            max={200}
-            value={settings.universeLimit}
-            onChange={(e) => setSettings((prev) => ({ ...prev, universeLimit: Number(e.target.value || 10) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>후보 수</span>
-          <input
-            type="number"
-            min={1}
-            max={30}
-            value={settings.candidateCount}
-            onChange={(e) => setSettings((prev) => ({ ...prev, candidateCount: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>최대 보유 수</span>
-          <input
-            type="number"
-            min={1}
-            max={20}
-            value={settings.maxPositions}
-            onChange={(e) => setSettings((prev) => ({ ...prev, maxPositions: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>병렬 분석 수</span>
-          <input
-            type="number"
-            min={1}
-            max={8}
-            value={settings.maxParallelAnalyses}
-            onChange={(e) => setSettings((prev) => ({ ...prev, maxParallelAnalyses: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>최소 신뢰도</span>
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.01}
-            value={settings.minConfidence}
-            onChange={(e) => setSettings((prev) => ({ ...prev, minConfidence: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>종목당 최대비중(%)</span>
-          <input
-            type="number"
-            min={1}
-            max={100}
-            value={settings.maxSinglePositionPct}
-            onChange={(e) => setSettings((prev) => ({ ...prev, maxSinglePositionPct: Number(e.target.value || 1) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>리밸런싱 임계치(%)</span>
-          <input
-            type="number"
-            min={0}
-            max={20}
-            step={0.1}
-            value={settings.rebalanceThresholdPct}
-            onChange={(e) => setSettings((prev) => ({ ...prev, rebalanceThresholdPct: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>마켓</span>
-          <select
-            value={settings.universeMarket}
-            onChange={(e) => setSettings((prev) => ({ ...prev, universeMarket: e.target.value as UniverseMarket }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          >
-            <option value="ALL">전체</option>
-            <option value="KOSPI">KOSPI</option>
-            <option value="KOSDAQ">KOSDAQ</option>
-          </select>
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>세션 모델</span>
-          <select
-            value={settings.executionSessionMode}
-            onChange={(e) => setSettings((prev) => ({ ...prev, executionSessionMode: e.target.value as ExecutionSessionMode }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          >
-            <option value="regular_only">정규장 전용</option>
-            <option value="regular_and_after_hours">정규+시간외</option>
-          </select>
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>초기 자본</span>
-          <input
-            type="number"
-            min={10000}
-            value={settings.initialCash}
-            onChange={(e) => setSettings((prev) => ({ ...prev, initialCash: Number(e.target.value || 10000) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>수수료 (bps · 1bp = 0.01%)</span>
-          <input
-            type="number"
-            min={0}
-            max={500}
-            step={0.1}
-            value={settings.feeBps}
-            onChange={(e) => setSettings((prev) => ({ ...prev, feeBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>권장: 1~3 bps</span>
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>슬리피지 (bps)</span>
-          <input
-            type="number"
-            min={0}
-            max={500}
-            value={settings.slippageBps}
-            onChange={(e) => setSettings((prev) => ({ ...prev, slippageBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>주문 가격과 체결 가격 차이. 권장 2~5 bps</span>
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>거래세 (bps)</span>
-          <input
-            type="number"
-            min={0}
-            max={1000}
-            value={settings.taxBps}
-            onChange={(e) => setSettings((prev) => ({ ...prev, taxBps: Number(e.target.value || 0) }))}
-            style={{ borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "9px 10px", fontSize: 13 }}
-          />
-          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>매도 시 부과. 국내 기본 18 bps (0.18%)</span>
-        </label>
-
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={settings.marketScanEnabled}
-            onChange={(e) => setSettings((prev) => ({ ...prev, marketScanEnabled: e.target.checked }))}
-          />
-          <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>시장 스캔 사용</span>
-        </label>
-
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={settings.paperTrade}
-            onChange={(e) => setSettings((prev) => ({ ...prev, paperTrade: e.target.checked }))}
-          />
-          <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 600 }}>모의 거래</span>
-        </label>
-      </div>
+      <SettingsSection
+        title="실행 환경"
+        desc="실제 주문을 낼지 모의로 돌릴지, 다룰 시간대와 시작 자본을 설정합니다."
+      >
+        <FieldRow>
+          <FieldCell label="동작 모드" hint="실전은 실제 KIS계좌로 주문을 냅니다. 모의는 실제 돈 이동 없이 계산만 해요." example="이제 익힌 뒤 실전 전환 추천">
+            <button type="button" onClick={() => setSettings((prev) => ({ ...prev, paperTrade: !prev.paperTrade }))} style={{ ...inputStyle, cursor: "pointer", textAlign: "left", fontWeight: 600, color: settings.paperTrade ? "var(--text-primary)" : "var(--bull)", borderColor: settings.paperTrade ? "var(--border-default)" : "var(--bull)" }}>
+              {settings.paperTrade ? "모의 거래" : "실전 거래"}
+            </button>
+          </FieldCell>
+          <FieldCell label="거래 시간대" hint="정규장(09:00~15:30)만 돌릴지, 시간외까지 포함할지 선택합니다." example="처음에는 정규장 전용 추천">
+            <select value={settings.executionSessionMode} onChange={(e) => setSettings((prev) => ({ ...prev, executionSessionMode: e.target.value as ExecutionSessionMode }))} style={inputStyle}>
+              <option value="regular_only">정규장 전용</option>
+              <option value="regular_and_after_hours">정규+시간외</option>
+            </select>
+          </FieldCell>
+          <FieldCell label="모의 초기 자본 (원)" hint="모의 거래 모드에서 시작할 현금 금액입니다." example="예: 10,000,000원 = 천만원">
+            <input type="number" min={10000} value={settings.initialCash} onChange={(e) => setSettings((prev) => ({ ...prev, initialCash: Number(e.target.value || 10000) }))} style={inputStyle} />
+          </FieldCell>
+          <FieldCell label="시장 스캔" hint="켜면 종목 풀을 자동으로 쇄신/확장합니다. 끄면 시드 종목만 보게 돼요." example="처음에는 켜둘 것을 추천">
+            <button type="button" onClick={() => setSettings((prev) => ({ ...prev, marketScanEnabled: !prev.marketScanEnabled }))} style={{ ...inputStyle, cursor: "pointer", textAlign: "left", fontWeight: 600 }}>
+              {settings.marketScanEnabled ? "스캔 사용 ON" : "스캔 사용 OFF"}
+            </button>
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
       </>)}
 
       {innerTab === "activity" && (<>

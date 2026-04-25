@@ -26,9 +26,10 @@ class Settings(BaseSettings):
     kis_account_no: str = Field(default="", alias="KIS_ACCOUNT_NO")
     kis_mock: bool = Field(default=True, alias="KIS_MOCK")
 
-    # LLM 설정
-    default_llm_model: str = "gpt-5"
-    fast_llm_model: str = "gpt-5-mini"
+    # LLM 설정 (단일 모델 통합)
+    default_llm_model: str = "gpt-5.5"
+    # 호환성용 (사용되지 않음). 단일 모델로 통합된 이후 default_llm_model 만 활용된다.
+    fast_llm_model: str = "gpt-5.5"
     reasoning_effort: str = "high"   # "high" | "medium" | "low" (gpt-5/o-series 전용)
     max_debate_rounds: int = 2
 

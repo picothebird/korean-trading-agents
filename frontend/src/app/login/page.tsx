@@ -24,7 +24,9 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [username, setUsername] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [role, setRole] = useState<UserRole>("viewer");
 
   useEffect(() => {
@@ -70,6 +72,16 @@ export default function LoginPage() {
       return;
     }
 
+    if (mode === "register" && password !== passwordConfirm) {
+      setError("비밀번호가 서로 일치하지 않습니다. 다시 확인해 주세요.");
+      return;
+    }
+
+    if (mode === "register" && bootstrapped && !inviteCode.trim()) {
+      setError("이용에는 마스터가 발급한 초대 코드가 필요합니다.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -85,6 +97,7 @@ export default function LoginPage() {
         password,
         username,
         role: canChooseRole ? role : undefined,
+        invite_code: bootstrapped ? inviteCode.trim().toUpperCase() : undefined,
       });
       setAccessToken(res.access_token);
       router.replace("/");
@@ -188,6 +201,67 @@ export default function LoginPage() {
 
           {mode === "register" && (
             <>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 700 }}>비밀번호 확인</span>
+                <input
+                  type="password"
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                  required
+                  style={{
+                    border: `1px solid ${
+                      passwordConfirm.length > 0 && passwordConfirm !== password
+                        ? "var(--error-border)"
+                        : "var(--border-default)"
+                    }`,
+                    background: "var(--bg-elevated)",
+                    color: "var(--text-primary)",
+                    borderRadius: "var(--radius-lg)",
+                    padding: "11px 12px",
+                    fontSize: 14,
+                  }}
+                />
+                {passwordConfirm.length > 0 && passwordConfirm !== password && (
+                  <p style={{ fontSize: 11, color: "var(--bear)", margin: 0 }}>
+                    비밀번호가 일치하지 않습니다.
+                  </p>
+                )}
+                {passwordConfirm.length > 0 && passwordConfirm === password && password.length >= 8 && (
+                  <p style={{ fontSize: 11, color: "var(--success)", margin: 0 }}>
+                    비밀번호가 일치합니다.
+                  </p>
+                )}
+              </label>
+
+              {bootstrapped && (
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 700 }}>초대 코드</span>
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                    required
+                    placeholder="예: AB3CD7XY9P"
+                    autoComplete="off"
+                    spellCheck={false}
+                    style={{
+                      border: "1px solid var(--border-default)",
+                      background: "var(--bg-elevated)",
+                      color: "var(--text-primary)",
+                      borderRadius: "var(--radius-lg)",
+                      padding: "11px 12px",
+                      fontSize: 14,
+                      letterSpacing: "0.06em",
+                      fontFamily: "monospace",
+                      textTransform: "uppercase",
+                    }}
+                  />
+                  <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.4, margin: 0 }}>
+                    가입에는 마스터 사용자가 발급한 초대 코드가 필요합니다. 코드 1개당 1명만 가입할 수 있습니다.
+                  </p>
+                </label>
+              )}
+
               <label style={{ display: "grid", gap: 6 }}>
                 <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 700 }}>닉네임 (선택)</span>
                 <input

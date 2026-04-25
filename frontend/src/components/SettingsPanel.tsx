@@ -1,26 +1,40 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { getSettings, updateSettings } from "@/lib/api";
+import {
+  getSettings,
+  updateSettings,
+  logoutUser,
+  clearAccessToken,
+  masterListInviteCodes,
+  masterCreateInviteCode,
+  masterRevokeInviteCode,
+} from "@/lib/api";
 import { Sheet, useTheme, Icon, type ThemeMode, type IconName } from "@/components/ui";
+import type { InviteCode, UserRole } from "@/types";
 
-export type SettingsTab = "overview" | "appearance" | "llm" | "analysis" | "guru" | "kis";
+export type SettingsTab = "overview" | "appearance" | "llm" | "analysis" | "guru" | "kis" | "invites";
 
+// 단일 모델 설정. 기본값은 gpt-5.5. 직접 입력 시 "gpt-" 접두어를 자동 부착하고 소문자로 정규화합니다.
 const DEFAULT_MODELS = [
-  { value: "gpt-5", label: "GPT-5", desc: "기본 추천 · 심층 추론" },
-  { value: "gpt-5.4", label: "GPT-5.4", desc: "최신 · 심층 추론" },
-  { value: "o4-mini", label: "o4-mini", desc: "빠른 추론 모델" },
-  { value: "o3", label: "o3", desc: "강력한 추론" },
-  { value: "o1", label: "o1", desc: "고급 추론 특화" },
+  { value: "gpt-5.5", label: "GPT-5.5", desc: "기본 · 균형 (권장)" },
+  { value: "gpt-5.5-pro", label: "GPT-5.5 Pro", desc: "최고 품질 · 심층 추론" },
+  { value: "gpt-5.4", label: "GPT-5.4", desc: "안정 · 심층 추론" },
+  { value: "gpt-5.4-mini", label: "GPT-5.4 mini", desc: "경량 · 저비용" },
 ];
 
-const FAST_MODELS = [
-  { value: "gpt-5-mini", label: "GPT-5 mini", desc: "기본 추천 · 경량 응답" },
-  { value: "gpt-5.4-mini", label: "GPT-5.4 mini", desc: "경량 · 빠른 응답" },
-  { value: "gpt-4o-mini", label: "GPT-4o mini", desc: "저비용 · 안정적" },
-  { value: "gpt-4o", label: "GPT-4o", desc: "균형잡힌 성능" },
-];
+// OpenAI 모델 카탈로그 https://developers.openai.com/api/docs/models/all 참고.
+// 사용자 직접 입력값을 표준화합니다 (오타/케이스 방지).
+function normalizeModelId(raw: string): string {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (!v) return "";
+  // o1, o3, o4-mini 등 o-시리즈는 그대로
+  if (/^o\d/.test(v)) return v;
+  // 이미 gpt-/openai/ 등 접두어가 있으면 그대로
+  if (v.startsWith("gpt-") || v.includes("/")) return v;
+  return `gpt-${v.replace(/^gpt[-_ ]?/i, "")}`;
+}
 
 const EFFORT_OPTIONS = [
   { value: "high", label: "High", desc: "깊은 추론\n최고 품질", icon: "brain" as IconName, color: "#3182F6" },
@@ -28,13 +42,14 @@ const EFFORT_OPTIONS = [
   { value: "low", label: "Low", desc: "빠른 판단\n저비용", icon: "bolt" as IconName, color: "#2FCA73" },
 ] as const;
 
-const TABS: Array<{ key: SettingsTab; label: string; icon: IconName; hint: string }> = [
+const TABS: Array<{ key: SettingsTab; label: string; icon: IconName; hint: string; masterOnly?: boolean }> = [
   { key: "overview", label: "개요", icon: "compass", hint: "현재 상태와 빠른 진입" },
   { key: "appearance", label: "외관", icon: "palette", hint: "테마 (라이트/다크/시스템)" },
   { key: "llm", label: "LLM", icon: "brain", hint: "OpenAI 키와 모델" },
   { key: "analysis", label: "분석", icon: "chart-bar", hint: "토론 라운드/분석 강도" },
   { key: "guru", label: "GURU", icon: "sparkles", hint: "최종 정책 레이어" },
   { key: "kis", label: "KIS", icon: "credit-card", hint: "실전/모의 + 인증정보" },
+  { key: "invites", label: "초대 코드", icon: "key", hint: "마스터 전용 · 초대 코드 발급/관리", masterOnly: true },
 ];
 
 const TAB_TITLE: Record<SettingsTab, string> = {
@@ -44,12 +59,12 @@ const TAB_TITLE: Record<SettingsTab, string> = {
   analysis: "분석 파라미터",
   guru: "GURU 정책",
   kis: "KIS 연동",
+  invites: "초대 코드",
 };
 
 interface SettingsForm {
   openai_api_key: string;
   default_llm_model: string;
-  fast_llm_model: string;
   reasoning_effort: "high" | "medium" | "low";
   max_debate_rounds: number;
   guru_enabled: boolean;
@@ -212,24 +227,46 @@ function ModelSelect({
       </div>
 
       {isCustom && (
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="예: gpt-5, o4-mini"
-          style={{
-            width: "100%",
-            padding: "9px 12px",
-            borderRadius: 8,
-            background: "var(--bg-elevated)",
-            border: "1px solid var(--brand)",
-            color: "var(--text-primary)",
-            fontSize: 11,
-            outline: "none",
-            boxSizing: "border-box",
-            fontFamily: "monospace",
-          }}
-        />
+        <>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={(e) => {
+              const norm = normalizeModelId(e.target.value);
+              if (norm && norm !== e.target.value) onChange(norm);
+            }}
+            placeholder="예: 5.5-pro, 5.4-mini, o4-mini"
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            style={{
+              width: "100%",
+              padding: "9px 12px",
+              borderRadius: 8,
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--brand)",
+              color: "var(--text-primary)",
+              fontSize: 11,
+              outline: "none",
+              boxSizing: "border-box",
+              fontFamily: "monospace",
+            }}
+          />
+          <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+            저장 시 자동으로 <code style={{ background: "var(--bg-overlay)", padding: "1px 4px", borderRadius: 4 }}>{normalizeModelId(value) || "gpt-..."}</code> 형태로 정규화됩니다.
+            <br />
+            전체 모델 목록:&nbsp;
+            <a
+              href="https://developers.openai.com/api/docs/models/all"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--brand)", textDecoration: "underline" }}
+            >
+              OpenAI 모델 카탈로그
+            </a>
+          </p>
+        </>
       )}
     </div>
   );
@@ -239,16 +276,16 @@ interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
   initialTab?: SettingsTab;
+  userRole?: UserRole;
 }
 
-export function SettingsPanel({ open, onClose, initialTab = "overview" }: SettingsPanelProps) {
+export function SettingsPanel({ open, onClose, initialTab = "overview", userRole }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [isCompact, setIsCompact] = useState(false);
   const { mode: themeMode, resolved: themeResolved, setMode: setThemeMode } = useTheme();
   const [form, setForm] = useState<SettingsForm>({
     openai_api_key: "",
-    default_llm_model: "gpt-5",
-    fast_llm_model: "gpt-5-mini",
+    default_llm_model: "gpt-5.5",
     reasoning_effort: "high",
     max_debate_rounds: 2,
     guru_enabled: false,
@@ -272,10 +309,76 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "ok" | "err">("idle");
 
+  // 마스터 전용: 초대 코드 관리 상태
+  const [invites, setInvites] = useState<InviteCode[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [invitesError, setInvitesError] = useState("");
+  const [inviteForm, setInviteForm] = useState<{ note: string; role: UserRole }>({ note: "", role: "viewer" });
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string>("");
+
+  const refreshInvites = useCallback(async () => {
+    setInvitesLoading(true);
+    setInvitesError("");
+    try {
+      const res = await masterListInviteCodes(200);
+      setInvites(res.items);
+    } catch (err) {
+      setInvitesError(err instanceof Error ? err.message : "초대 코드 목록을 불러오지 못했습니다.");
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     setActiveTab(initialTab);
   }, [open, initialTab]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (activeTab !== "invites") return;
+    if (userRole !== "master") return;
+    void refreshInvites();
+  }, [open, activeTab, userRole, refreshInvites]);
+
+  const handleCreateInvite = useCallback(async () => {
+    if (inviteBusy) return;
+    setInviteBusy(true);
+    setInvitesError("");
+    try {
+      const created = await masterCreateInviteCode({
+        note: inviteForm.note.trim() || undefined,
+        role: inviteForm.role,
+      });
+      setInvites((prev) => [created.invite, ...prev]);
+      setInviteForm({ note: "", role: "viewer" });
+    } catch (err) {
+      setInvitesError(err instanceof Error ? err.message : "초대 코드 발급 실패");
+    } finally {
+      setInviteBusy(false);
+    }
+  }, [inviteBusy, inviteForm]);
+
+  const handleRevokeInvite = useCallback(async (id: string) => {
+    if (!window.confirm("이 초대 코드를 폐기하시겠습니까? 폐기된 코드로는 회원가입할 수 없습니다.")) return;
+    try {
+      await masterRevokeInviteCode(id);
+      setInvites((prev) => prev.filter((x) => x.id !== id));
+    } catch (err) {
+      setInvitesError(err instanceof Error ? err.message : "폐기 실패");
+    }
+  }, []);
+
+  const handleCopyCode = useCallback(async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode((cur) => (cur === code ? "" : cur)), 1600);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 980px)");
@@ -297,8 +400,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
         });
         setForm((prev) => ({
           ...prev,
-          default_llm_model: s.default_llm_model,
-          fast_llm_model: s.fast_llm_model,
+          default_llm_model: s.default_llm_model || "gpt-5.5",
           reasoning_effort: s.reasoning_effort,
           max_debate_rounds: s.max_debate_rounds,
           guru_enabled: s.guru_enabled ?? false,
@@ -324,7 +426,12 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
     setSaving(true);
     setSaveStatus("idle");
     try {
-      await updateSettings(form);
+      const normalizedModel = normalizeModelId(form.default_llm_model) || "gpt-5.5";
+      const payload = { ...form, default_llm_model: normalizedModel };
+      if (normalizedModel !== form.default_llm_model) {
+        setForm((prev) => ({ ...prev, default_llm_model: normalizedModel }));
+      }
+      await updateSettings(payload);
       setSaveStatus("ok");
 
       if (form.openai_api_key) {
@@ -384,6 +491,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                 }}
               >
                 {TABS.map((tab) => {
+                  if (tab.masterOnly && userRole !== "master") return null;
                   const active = activeTab === tab.key;
                   return (
                     <button
@@ -450,34 +558,39 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                       </div>
                     </Section>
 
-                    <Section title="빠른 이동">
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {TABS.filter((x) => x.key !== "overview").map((x) => (
-                          <button
-                            key={x.key}
-                            onClick={() => setActiveTab(x.key)}
-                            style={{
-                              borderRadius: 99,
-                              border: "1px solid var(--border-default)",
-                              background: "var(--bg-elevated)",
-                              color: "var(--text-secondary)",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              padding: "6px 11px",
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                            }}
-                          >
-                            <Icon name={x.icon} size={12} decorative />
-                            {x.label} 열기
-                          </button>
-                        ))}
-                      </div>
-                      <HelpNote>
-                        팁: 화면 곳곳의 설정 버튼은 이 팝업을 열되, 해당 맥락의 탭(예: KIS 영역에서는 KIS 탭)으로 바로 이동합니다.
-                      </HelpNote>
+                    <Section title="계정">
+                      <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 10 }}>
+                        현재 세션을 종료하고 로그인 화면으로 돌아갑니다. 다시 로그인하면 모든 설정이 그대로 유지됩니다.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await logoutUser();
+                          } catch {
+                            // best effort
+                          }
+                          clearAccessToken();
+                          window.location.href = "/login";
+                        }}
+                        style={{
+                          alignSelf: "flex-start",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 7,
+                          padding: "9px 14px",
+                          borderRadius: "var(--radius-md)",
+                          border: "1px solid var(--error-border)",
+                          background: "var(--error-subtle)",
+                          color: "var(--bear)",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Icon name="logout" size={14} decorative />
+                        로그아웃
+                      </button>
                     </Section>
                   </>
                 )}
@@ -624,12 +737,8 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                     </Section>
 
                     <Section title="모델">
-                      <Field label="심층 분석 모델" description="기술/리스크/최종판단에 사용됩니다. reasoning 지원 모델(gpt-5, o-series)을 권장합니다.">
+                      <Field label="LLM 모델 (단일)" description="모든 에이전트(분석/토론/뉴스/최종판단 등)가 이 모델 하나를 사용합니다. 기본값: gpt-5.5">
                         <ModelSelect value={form.default_llm_model} onChange={(v) => setField("default_llm_model", v)} options={DEFAULT_MODELS} />
-                      </Field>
-
-                      <Field label="빠른 호출 모델" description="뉴스 감성/매크로/토론 단계에 사용됩니다. 속도와 비용이 중요합니다.">
-                        <ModelSelect value={form.fast_llm_model} onChange={(v) => setField("fast_llm_model", v)} options={FAST_MODELS} />
                       </Field>
 
                       <Field label="추론 강도" description="심층 분석 모델에 적용됩니다. High일수록 품질이 높지만 느리고 비용이 증가합니다.">
@@ -1069,6 +1178,196 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                         어디서 가져오나요? 한국투자증권 KIS 개발자센터에서 App Key/App Secret을 발급받고,
                         HTS/MTS 계좌의 종합 계좌번호를 입력하세요.
                       </HelpNote>
+                    </Section>
+                  </>
+                )}
+
+                {activeTab === "invites" && userRole === "master" && (
+                  <>
+                    <Section title="새 초대 코드 발급">
+                      <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 10 }}>
+                        회원가입에는 초대 코드가 1개씩 필요합니다. 발급된 코드는 1명만 사용할 수 있고, 사용 즉시 자동으로 소진됩니다.
+                      </p>
+                      <Field label="권한" description="이 코드를 사용해 가입하는 사용자에게 부여될 권한입니다.">
+                        <div style={{ display: "flex", gap: 8 }}>
+                          {(["viewer", "trader", "master"] as UserRole[]).map((r) => {
+                            const active = inviteForm.role === r;
+                            const labelKor = r === "viewer" ? "관전자" : r === "trader" ? "트레이더" : "마스터";
+                            return (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => setInviteForm((prev) => ({ ...prev, role: r }))}
+                                style={{
+                                  flex: 1,
+                                  padding: "9px 10px",
+                                  borderRadius: 10,
+                                  border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                                  background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
+                                  color: active ? "var(--brand)" : "var(--text-primary)",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {labelKor}
+                                <span style={{ display: "block", fontSize: 9, fontWeight: 500, color: "var(--text-tertiary)", marginTop: 2 }}>
+                                  {r}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </Field>
+
+                      <Field label="메모 (선택)" description="누구에게 줄 코드인지, 언제까지 유효한지 등을 자유롭게 적어두세요.">
+                        <input
+                          type="text"
+                          value={inviteForm.note}
+                          onChange={(e) => setInviteForm((prev) => ({ ...prev, note: e.target.value }))}
+                          placeholder="예: 5월 베타테스터 김XX"
+                          maxLength={200}
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            background: "var(--bg-elevated)",
+                            border: "1px solid var(--border-default)",
+                            color: "var(--text-primary)",
+                            fontSize: 13,
+                            outline: "none",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      </Field>
+
+                      <button
+                        type="button"
+                        onClick={handleCreateInvite}
+                        disabled={inviteBusy}
+                        style={{
+                          alignSelf: "flex-start",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 7,
+                          padding: "9px 14px",
+                          borderRadius: "var(--radius-md)",
+                          border: "none",
+                          background: inviteBusy ? "var(--bg-elevated)" : "var(--brand)",
+                          color: inviteBusy ? "var(--text-tertiary)" : "#fff",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: inviteBusy ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <Icon name="key" size={14} decorative />
+                        {inviteBusy ? "발급 중..." : "초대 코드 발급"}
+                      </button>
+
+                      {invitesError && (
+                        <p style={{ fontSize: 11, color: "var(--bear)", fontWeight: 600 }}>{invitesError}</p>
+                      )}
+                    </Section>
+
+                    <Section title={`발급된 초대 코드 (${invites.length})`}>
+                      {invitesLoading && (
+                        <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>불러오는 중…</p>
+                      )}
+                      {!invitesLoading && invites.length === 0 && (
+                        <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                          아직 발급된 초대 코드가 없습니다. 위에서 새로 발급해보세요.
+                        </p>
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {invites.map((inv) => {
+                          const used = !!inv.used_by;
+                          const revoked = !!inv.revoked;
+                          const status = revoked ? "폐기됨" : used ? "사용됨" : "미사용";
+                          const tone: ChipTone = revoked ? "warn" : used ? "info" : "on";
+                          const usedByLabel = inv.used_by_user
+                            ? inv.used_by_user.username || inv.used_by_user.email
+                            : "";
+                          return (
+                            <div
+                              key={inv.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                background: "var(--bg-elevated)",
+                                border: "1px solid var(--border-subtle)",
+                              }}
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                                  <span
+                                    style={{
+                                      fontFamily: "monospace",
+                                      fontSize: 14,
+                                      fontWeight: 700,
+                                      color: "var(--text-primary)",
+                                      letterSpacing: "0.05em",
+                                    }}
+                                  >
+                                    {inv.code}
+                                  </span>
+                                  <StatusChip tone={tone} label={status} />
+                                  <StatusChip tone="info" label={inv.role} />
+                                </div>
+                                <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                                  {inv.note || "메모 없음"}
+                                  {used && usedByLabel && <> · 사용: {usedByLabel}</>}
+                                  {inv.created_at && <> · 발급: {new Date(inv.created_at).toLocaleDateString("ko-KR")}</>}
+                                </p>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyCode(inv.code)}
+                                  title="코드 복사"
+                                  style={{
+                                    padding: "6px 10px",
+                                    borderRadius: 8,
+                                    border: "1px solid var(--border-default)",
+                                    background: "var(--bg-surface)",
+                                    color: "var(--text-secondary)",
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <Icon name={copiedCode === inv.code ? "check-circle" : "key"} size={12} decorative />
+                                  {copiedCode === inv.code ? "복사됨" : "복사"}
+                                </button>
+                                {!used && !revoked && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevokeInvite(inv.id)}
+                                    title="코드 폐기"
+                                    style={{
+                                      padding: "6px 10px",
+                                      borderRadius: 8,
+                                      border: "1px solid var(--error-border)",
+                                      background: "var(--error-subtle)",
+                                      color: "var(--bear)",
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    폐기
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </Section>
                   </>
                 )}

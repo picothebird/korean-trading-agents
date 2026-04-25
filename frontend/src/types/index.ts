@@ -164,7 +164,8 @@ export interface UserSettings {
   openai_api_key_set: boolean;
   openai_api_key_preview: string;
   default_llm_model: string;
-  fast_llm_model: string;
+  /** @deprecated 단일 모델로 통합되었습니다. 백엔드 호환을 위해 응답에서만 받습니다. */
+  fast_llm_model?: string;
   reasoning_effort: "high" | "medium" | "low";
   max_debate_rounds: number;
   guru_enabled: boolean;
@@ -521,6 +522,7 @@ export interface AuthRegisterRequest {
   password: string;
   username?: string;
   role?: UserRole;
+  invite_code?: string;
 }
 
 export interface AuthLoginRequest {
@@ -537,6 +539,28 @@ export interface AuthResponse {
 
 export interface AuthMeResponse {
   user: AppUser;
+}
+
+export interface InviteCode {
+  id: string;
+  code: string;
+  role: UserRole;
+  note: string;
+  created_at: string;
+  created_by?: string | null;
+  used_by?: string | null;
+  used_at?: string | null;
+  revoked: boolean;
+  used_by_user?: AppUser;
+}
+
+export interface InviteCodeListResponse {
+  items: InviteCode[];
+}
+
+export interface CreateInviteCodeRequest {
+  note?: string;
+  role?: UserRole;
 }
 
 export interface ActivityLogItem {

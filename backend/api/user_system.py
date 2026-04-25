@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import secrets
 from datetime import timedelta
 from typing import Any, Literal
 
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from backend.core.mongodb import get_mongo_database
 from backend.core.user_access import (
+    _as_datetime,
     create_session_token,
     hash_password,
     hash_session_token,
@@ -19,6 +21,7 @@ from backend.core.user_access import (
     require_user,
     sanitize_user,
     serialize_doc,
+    utc_iso,
     utc_now,
     verify_password,
 )
@@ -34,6 +37,12 @@ class AuthRegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     username: str = Field(default="", max_length=40)
     role: Literal["viewer", "trader", "master"] | None = None
+    invite_code: str = Field(default="", max_length=64)
+
+
+class CreateInviteCodeRequest(BaseModel):
+    note: str = Field(default="", max_length=200)
+    role: Literal["viewer", "trader", "master"] = "viewer"
 
 
 class AuthLoginRequest(BaseModel):
@@ -104,12 +113,27 @@ async def auth_register(req: AuthRegisterRequest, request: Request):
     current_user = getattr(request.state, "current_user", None)
 
     role = "viewer"
+    invite_doc: dict[str, Any] | None = None
+    invite_code_value = (req.invite_code or "").strip().upper()
+
     if users_count == 0:
+        # Bootstrap: first user becomes master without invite code requirement.
         role = normalize_role(req.role or "master")
     elif isinstance(current_user, dict) and normalize_role(str(current_user.get("role", "viewer"))) == "master":
+        # Master creating accounts directly (e.g. via master console) does not need a code.
         role = normalize_role(req.role or "viewer")
-    elif req.role:
-        role = "viewer"
+    else:
+        # All other public signups require an unused invite code.
+        if not invite_code_value:
+            raise HTTPException(status_code=422, detail="초대 코드가 필요합니다")
+        invite_doc = await db.invite_codes.find_one({"code": invite_code_value})
+        if not invite_doc:
+            raise HTTPException(status_code=404, detail="존재하지 않는 초대 코드입니다")
+        if invite_doc.get("used_by"):
+            raise HTTPException(status_code=409, detail="이미 사용된 초대 코드입니다")
+        if bool(invite_doc.get("revoked", False)):
+            raise HTTPException(status_code=403, detail="비활성화된 초대 코드입니다")
+        role = normalize_role(str(invite_doc.get("role", "viewer")))
 
     now = utc_now()
     salt_hex, pw_hash = hash_password(req.password)
@@ -127,6 +151,12 @@ async def auth_register(req: AuthRegisterRequest, request: Request):
 
     insert_res = await db.users.insert_one(user_doc)
     user_id = insert_res.inserted_id
+
+    if invite_doc is not None:
+        await db.invite_codes.update_one(
+            {"_id": invite_doc["_id"], "used_by": None},
+            {"$set": {"used_by": user_id, "used_at": now}},
+        )
 
     token, session_doc = _build_session_doc(user_id)
     await db.auth_sessions.insert_one(session_doc)
@@ -407,3 +437,128 @@ async def master_trades(
     cursor = db.user_trades.find(q).sort("created_at", -1).limit(limit)
     items = [serialize_doc(doc) async for doc in cursor]
     return {"items": items}
+
+
+# ── Invite codes ────────────────────────────────────────────────
+
+
+def _generate_invite_code() -> str:
+    # 10 characters, uppercase A-Z + digits, ambiguous chars removed.
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(10))
+
+
+def _serialize_invite(doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(doc.get("_id")),
+        "code": str(doc.get("code", "")),
+        "role": normalize_role(str(doc.get("role", "viewer"))),
+        "note": str(doc.get("note", "")),
+        "created_at": utc_iso(_as_datetime(doc.get("created_at")) or utc_now()),
+        "created_by": str(doc.get("created_by")) if doc.get("created_by") else None,
+        "used_by": str(doc.get("used_by")) if doc.get("used_by") else None,
+        "used_at": utc_iso(_as_datetime(doc.get("used_at"))) if doc.get("used_at") else None,
+        "revoked": bool(doc.get("revoked", False)),
+    }
+
+
+@router.get("/master/invite-codes")
+async def master_invite_codes_list(
+    request: Request,
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    db = await _ensure_db()
+    await require_master(request)
+
+    cursor = db.invite_codes.find({}).sort("created_at", -1).limit(limit)
+    items: list[dict[str, Any]] = []
+    user_ids: set[ObjectId] = set()
+    raw_docs: list[dict[str, Any]] = []
+    async for doc in cursor:
+        raw_docs.append(doc)
+        if doc.get("used_by"):
+            user_ids.add(doc["used_by"])
+
+    user_lookup: dict[str, dict[str, Any]] = {}
+    if user_ids:
+        users_cursor = db.users.find({"_id": {"$in": list(user_ids)}})
+        async for u in users_cursor:
+            user_lookup[str(u["_id"])] = sanitize_user(u)
+
+    for doc in raw_docs:
+        item = _serialize_invite(doc)
+        used_by = item.get("used_by")
+        if used_by and used_by in user_lookup:
+            item["used_by_user"] = user_lookup[used_by]
+        items.append(item)
+
+    return {"items": items}
+
+
+@router.post("/master/invite-codes")
+async def master_invite_codes_create(req: CreateInviteCodeRequest, request: Request):
+    db = await _ensure_db()
+    acting_user = await require_master(request)
+
+    # Try a few times in the unlikely event of a collision.
+    for _ in range(8):
+        code = _generate_invite_code()
+        existing = await db.invite_codes.find_one({"code": code})
+        if not existing:
+            break
+    else:
+        raise HTTPException(status_code=500, detail="초대 코드 생성 실패")
+
+    now = utc_now()
+    doc = {
+        "code": code,
+        "role": normalize_role(req.role),
+        "note": req.note.strip(),
+        "created_at": now,
+        "created_by": acting_user.get("_id"),
+        "used_by": None,
+        "used_at": None,
+        "revoked": False,
+    }
+    res = await db.invite_codes.insert_one(doc)
+    doc["_id"] = res.inserted_id
+
+    await record_activity(
+        request=request,
+        action_type="master_create_invite",
+        category="master",
+        payload={"invite_id": str(res.inserted_id), "role": doc["role"]},
+        status_code=200,
+    )
+
+    return {"invite": _serialize_invite(doc)}
+
+
+@router.delete("/master/invite-codes/{invite_id}")
+async def master_invite_codes_revoke(invite_id: str, request: Request):
+    db = await _ensure_db()
+    await require_master(request)
+
+    try:
+        oid = ObjectId(invite_id)
+    except Exception:
+        raise HTTPException(status_code=422, detail="잘못된 invite_id")
+
+    doc = await db.invite_codes.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="초대 코드를 찾을 수 없습니다")
+
+    if doc.get("used_by"):
+        raise HTTPException(status_code=409, detail="이미 사용된 초대 코드는 삭제할 수 없습니다")
+
+    await db.invite_codes.delete_one({"_id": oid})
+
+    await record_activity(
+        request=request,
+        action_type="master_revoke_invite",
+        category="master",
+        payload={"invite_id": invite_id, "code": str(doc.get("code", ""))},
+        status_code=200,
+    )
+
+    return {"ok": True}

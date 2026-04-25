@@ -18,3 +18,12 @@ export { BrandMark, BrandLockup } from "./BrandMark";
 export { ThemeProvider, useTheme, THEME_INIT_SCRIPT, type ThemeMode, type ResolvedTheme } from "./ThemeProvider";
 export { Icon, type IconName } from "./Icon";
 export { Tooltip, type TooltipProps } from "./Tooltip";
+export {
+  SettingsSection,
+  FieldRow,
+  FieldCell,
+  fieldInputStyle,
+  type SettingsSectionProps,
+  type FieldRowProps,
+  type FieldCellProps,
+} from "./FieldGroup";

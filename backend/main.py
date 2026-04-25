@@ -125,8 +125,10 @@ class BacktestRequest(BaseModel):
 
 class SettingsUpdateRequest(BaseModel):
     openai_api_key: str = ""            # 빈 문자열이면 기존 유지
-    default_llm_model: str = "gpt-5"
-    fast_llm_model: str = "gpt-5-mini"
+    default_llm_model: str = "gpt-5.5"
+    # NOTE: fast_llm_model 은 단일 모델로 통합되었으나, 구버전 클라이언트 호환을 위해
+    # 필드는 받되 무시한다. 저장 단계에서 default_llm_model 만 사용된다.
+    fast_llm_model: str = ""
     reasoning_effort: Literal["high", "medium", "low"] = "high"
     max_debate_rounds: int = Field(default=2, ge=1, le=8)
     kis_mock: bool = True

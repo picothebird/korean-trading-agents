@@ -11,7 +11,14 @@ import {
   CartesianGrid,
 } from "recharts";
 import { getAutoLoopStatus, startAutoLoop, stopAutoLoop } from "@/lib/api";
-import { TabPills, Icon, Tooltip as Hint } from "@/components/ui";
+import {
+  TabPills,
+  Icon,
+  SettingsSection,
+  FieldRow,
+  FieldCell,
+  fieldInputStyle as inputStyle,
+} from "@/components/ui";
 import type { AutoLoopStatus, ExecutionSessionMode, SupervisionLevel, TradeDecision } from "@/types";
 
 interface AutoLoopPanelProps {
@@ -711,97 +718,5 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         </div>
       )}
     </div>
-  );
-}
-
-// ── Settings layout primitives ───────────────────────────────────
-const inputStyle: React.CSSProperties = {
-  borderRadius: "var(--radius-md)",
-  border: "1px solid var(--border-default)",
-  background: "var(--bg-input)",
-  color: "var(--text-primary)",
-  padding: "9px 10px",
-  fontSize: 13,
-  width: "100%",
-  fontFamily: "inherit",
-};
-
-function SettingsSection({
-  title,
-  desc,
-  children,
-}: {
-  title: string;
-  desc?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      style={{
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--border-subtle)",
-        borderRadius: "var(--radius-lg)",
-        padding: "14px 16px",
-        marginBottom: 14,
-      }}
-    >
-      <header style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 3 }}>{title}</p>
-        {desc && (
-          <p style={{ fontSize: 11.5, color: "var(--text-tertiary)", lineHeight: 1.55 }}>{desc}</p>
-        )}
-      </header>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{children}</div>
-    </section>
-  );
-}
-
-function FieldRow({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>{children}</div>
-  );
-}
-
-function FieldCell({
-  label,
-  hint,
-  example,
-  children,
-  empty,
-}: {
-  label: string;
-  hint: string;
-  example: string;
-  children?: React.ReactNode;
-  empty?: boolean;
-}) {
-  if (empty) return <div aria-hidden />;
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>
-        {label}
-        {hint && (
-          <Hint content={hint} maxWidth={260}>
-            <button
-              type="button"
-              aria-label="설명 보기"
-              style={{
-                width: 16, height: 16, borderRadius: "50%",
-                border: "1px solid var(--border-default)",
-                background: "var(--bg-surface)",
-                color: "var(--text-tertiary)",
-                cursor: "help",
-                padding: 0,
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <Icon name="info" size={10} decorative />
-            </button>
-          </Hint>
-        )}
-      </span>
-      {children}
-      {example && <span style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>{example}</span>}
-    </label>
   );
 }

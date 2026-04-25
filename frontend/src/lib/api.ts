@@ -166,7 +166,7 @@ export async function getSettings(): Promise<import("@/types").UserSettings> {
 export async function updateSettings(data: {
   openai_api_key?: string;
   default_llm_model: string;
-  fast_llm_model: string;
+  fast_llm_model?: string;
   reasoning_effort: "high" | "medium" | "low";
   max_debate_rounds: number;
   guru_enabled: boolean;
@@ -520,6 +520,41 @@ export async function getMyActivity(limit = 100): Promise<{ items: import("@/typ
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Failed to load activity" }));
     throw new Error(err.detail ?? "Failed to load activity");
+  }
+  return res.json();
+}
+
+export async function masterListInviteCodes(limit = 200): Promise<import("@/types").InviteCodeListResponse> {
+  const res = await apiFetch(`${BASE_URL}/api/master/invite-codes?limit=${encodeURIComponent(String(limit))}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to load invite codes" }));
+    throw new Error(err.detail ?? "Failed to load invite codes");
+  }
+  return res.json();
+}
+
+export async function masterCreateInviteCode(
+  payload: import("@/types").CreateInviteCodeRequest
+): Promise<{ invite: import("@/types").InviteCode }> {
+  const res = await apiFetch(`${BASE_URL}/api/master/invite-codes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to create invite code" }));
+    throw new Error(err.detail ?? "Failed to create invite code");
+  }
+  return res.json();
+}
+
+export async function masterRevokeInviteCode(inviteId: string): Promise<{ ok: boolean }> {
+  const res = await apiFetch(`${BASE_URL}/api/master/invite-codes/${encodeURIComponent(inviteId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Failed to revoke invite code" }));
+    throw new Error(err.detail ?? "Failed to revoke invite code");
   }
   return res.json();
 }

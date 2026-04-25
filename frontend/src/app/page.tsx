@@ -12,12 +12,12 @@ import { PixelOffice } from "@/components/PixelOffice";
 import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
 import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
-import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip } from "@/components/ui";
+import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip, Dialog } from "@/components/ui";
 import { useRouter } from "next/navigation";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest,
-  getAccessToken, clearAccessToken, getMe, logoutUser,
+  getAccessToken, clearAccessToken, getMe,
 } from "@/lib/api";
 
 // ── Constants ────────────────────────────────────────────────────
@@ -732,6 +732,7 @@ export default function Home() {
   const [btInitialCapital, setBtInitialCapital] = useState(10_000_000);
   const [btDecisionIntervalDays, setBtDecisionIntervalDays] = useState(20);
   const [btProgress, setBtProgress] = useState<Array<{ date: string; signal: string; confidence: number; step: number; total: number }>>([]);
+  const [btConfirmOpen, setBtConfirmOpen] = useState(false);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
   const [approvalModal, setApprovalModal] = useState(false);
@@ -1015,7 +1016,7 @@ export default function Home() {
           if (isRunning) handleCancelAnalysis();
           else handleAnalyze();
         } else if (tab === "backtest") {
-          handleBacktest();
+          if (!btLoading && !btResult) setBtConfirmOpen(true);
         }
       }
       if (e.key === "Escape") {
@@ -1025,7 +1026,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [tab, handleAnalyze, handleBacktest, handleCancelAnalysis, isRunning]);
+  }, [tab, handleAnalyze, handleBacktest, handleCancelAnalysis, isRunning, btLoading, btResult]);
 
   const activeCount = activeAgents.size;
 
@@ -1186,28 +1187,6 @@ export default function Home() {
                     마스터
                   </a>
                 )}
-                <button
-                  onClick={async () => {
-                    try {
-                      await logoutUser();
-                    } catch {
-                      // best effort logout
-                    }
-                    clearAccessToken();
-                    window.location.href = "/login";
-                  }}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "var(--text-tertiary)",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  로그아웃
-                </button>
               </div>
             </div>
 
@@ -1691,11 +1670,6 @@ export default function Home() {
                             <InfoTip tip={tip} subtle={!active} />
                           </div>
                           <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>{desc}</p>
-                          {key === "agent" && (
-                            <p style={{ fontSize: 10, color: "var(--brand)", marginTop: 4, fontWeight: 600 }}>
-                              gpt-5.4-mini · ~24회/월
-                            </p>
-                          )}
                         </button>
                       );
                     })}
@@ -1806,10 +1780,10 @@ export default function Home() {
                     </div>
                   )}
 
-                {/* Run button */}
+                {/* Run button → opens pre-run review dialog */}
                 {!btResult && (
                   <motion.button
-                    onClick={handleBacktest}
+                    onClick={() => setBtConfirmOpen(true)}
                     disabled={btLoading}
                     whileTap={{ scale: 0.97 }}
                     style={{
@@ -1826,7 +1800,7 @@ export default function Home() {
                       transition: "all 200ms",
                     }}
                   >
-                    {btLoading ? "실행 중..." : "시뮬레이션 실행"}
+                    {btLoading ? "실행 중..." : "시뮬레이션 검토 후 실행"}
                     {!btLoading && <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}>Space</span>}
                   </motion.button>
                 )}
@@ -2078,29 +2052,8 @@ export default function Home() {
             gap: 8,
           }}
         >
-          <button
-            onClick={() => openSettings("overview")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "7px 12px",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--border-default)",
-              background: "var(--bg-elevated)",
-              color: "var(--text-secondary)",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "all 150ms",
-              flexShrink: 0,
-            }}
-          >
-            <Icon name="settings" size={12} decorative />
-            설정
-          </button>
-          <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <Icon name="warning" size={10} decorative />
+          <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <Icon name="warning" size={11} decorative />
             투자 참고용. 실제 투자는 본인 책임.
           </p>
         </div>
@@ -2154,8 +2107,8 @@ export default function Home() {
             </span>
           </div>
 
-          {/* Status badge */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Status badge + Settings */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {isRunning && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -2184,6 +2137,27 @@ export default function Home() {
                 )}
               </span>
             )}
+            <button
+              onClick={() => openSettings("overview")}
+              title="설정"
+              aria-label="설정 열기"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 11px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-elevated)",
+                color: "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <Icon name="settings" size={13} decorative />
+              설정
+            </button>
           </div>
         </div>
 
@@ -2243,6 +2217,121 @@ export default function Home() {
         </div>
       </main>
 
+      {/* ── Backtest Pre-run Review Dialog ─────────────────── */}
+      {(() => {
+        const startMs = Date.parse(btStartDate);
+        const endMs = Date.parse(btEndDate);
+        const calendarDays = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs
+          ? Math.round((endMs - startMs) / 86_400_000)
+          : 0;
+        const tradingDays = Math.round(calendarDays * (5 / 7));
+        const interval = Math.max(1, Math.floor(btDecisionIntervalDays));
+        const decisionsEstimate = tradingDays > 0 ? Math.max(1, Math.ceil(tradingDays / interval)) : 0;
+        const fmtKRW = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
+        const intervalLabel = interval === 1 ? "매 거래일" : interval >= 20 ? `약 ${Math.round(interval / 20)}개월에 한 번` : interval >= 5 ? `약 ${(interval / 5).toFixed(0)}주에 한 번` : `${interval}거래일마다`;
+        return (
+          <Dialog
+            open={btConfirmOpen}
+            onClose={() => setBtConfirmOpen(false)}
+            title="시뮬레이션 실행 전 확인"
+            description={`아래 설정으로 ${btMode === "agent" ? "AI 에이전트" : "MA 교차"} 백테스트를 시작합니다.`}
+            width={520}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={() => setBtConfirmOpen(false)}
+                  style={{
+                    padding: "9px 14px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-default)",
+                    background: "var(--bg-elevated)",
+                    color: "var(--text-secondary)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBtConfirmOpen(false);
+                    void handleBacktest();
+                  }}
+                  style={{
+                    padding: "9px 16px",
+                    borderRadius: "var(--radius-md)",
+                    border: "none",
+                    background: "var(--brand)",
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  시뮬레이션 시작
+                </button>
+              </>
+            }
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 10px" }}>
+                <span style={{ color: "var(--text-tertiary)" }}>전략</span>
+                <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                  {btMode === "agent" ? "AI 에이전트 (LLM 기반 BUY/SELL/HOLD 판단)" : "MA 교차 (5일/20일 이동평균)"}
+                </span>
+
+                <span style={{ color: "var(--text-tertiary)" }}>종목</span>
+                <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                  {ticker}{companyName ? ` · ${companyName}` : ""}
+                </span>
+
+                <span style={{ color: "var(--text-tertiary)" }}>기간</span>
+                <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                  {btStartDate} ~ {btEndDate} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>(약 {calendarDays}일)</span>
+                </span>
+
+                <span style={{ color: "var(--text-tertiary)" }}>초기 자본</span>
+                <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{fmtKRW(btInitialCapital)}</span>
+
+                <span style={{ color: "var(--text-tertiary)" }}>판단 주기</span>
+                <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                  {interval}거래일 <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>({intervalLabel})</span>
+                </span>
+
+                {btMode === "agent" && (
+                  <>
+                    <span style={{ color: "var(--text-tertiary)" }}>예상 판단 횟수</span>
+                    <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                      약 {decisionsEstimate}회 <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>(거래일 ≈ {tradingDays}일)</span>
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: btMode === "agent" ? "var(--warning-subtle)" : "var(--bg-overlay)",
+                  border: `1px solid ${btMode === "agent" ? "var(--warning-border)" : "var(--border-subtle)"}`,
+                  fontSize: 12,
+                  color: btMode === "agent" ? "var(--warning)" : "var(--text-secondary)",
+                  lineHeight: 1.55,
+                }}
+              >
+                {btMode === "agent"
+                  ? `각 판단 시점마다 LLM 호출이 1회 발생합니다. 약 ${decisionsEstimate}회의 OpenAI API 호출이 발생하므로 사용자의 OpenAI 키에 비용이 부과됩니다. 진행하시겠습니까?`
+                  : "MA 교차 전략은 LLM을 사용하지 않으므로 API 비용이 발생하지 않습니다. 과거 가격 데이터만 사용합니다."}
+              </div>
+            </div>
+          </Dialog>
+        );
+      })()}
+
       {/* ── Human Approval Modal ────────────────────────────── */}
       <AnimatePresence>
         {approvalModal && decision && (
@@ -2266,6 +2355,7 @@ export default function Home() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         initialTab={settingsInitialTab}
+        userRole={currentUser?.role}
       />
     </div>
   );

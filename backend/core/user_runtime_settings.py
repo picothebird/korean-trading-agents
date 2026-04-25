@@ -82,8 +82,8 @@ def _as_text(v: Any, default: str = "") -> str:
 def _default_profile() -> dict[str, Any]:
     return {
         "openai_api_key": "",
-        "default_llm_model": "gpt-5",
-        "fast_llm_model": "gpt-5-mini",
+        "default_llm_model": "gpt-5.5",
+        "fast_llm_model": "gpt-5.5",
         "reasoning_effort": "high",
         "max_debate_rounds": 2,
         "guru_enabled": False,
@@ -120,8 +120,8 @@ def normalize_profile(source: dict[str, Any] | None) -> dict[str, Any]:
 
     return {
         "openai_api_key": _as_text(merged.get("openai_api_key"), ""),
-        "default_llm_model": _as_text(merged.get("default_llm_model"), "gpt-5") or "gpt-5",
-        "fast_llm_model": _as_text(merged.get("fast_llm_model"), "gpt-5-mini") or "gpt-5-mini",
+        "default_llm_model": _as_text(merged.get("default_llm_model"), "gpt-5.5") or "gpt-5.5",
+        "fast_llm_model": _as_text(merged.get("fast_llm_model"), "") or _as_text(merged.get("default_llm_model"), "gpt-5.5") or "gpt-5.5",
         "reasoning_effort": reasoning,
         "max_debate_rounds": _as_int(merged.get("max_debate_rounds"), 2, 1, 8),
         "guru_enabled": _as_bool(merged.get("guru_enabled"), False),
