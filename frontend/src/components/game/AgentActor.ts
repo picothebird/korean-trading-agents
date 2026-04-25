@@ -86,12 +86,17 @@ export class AgentActor {
   // MS8 thought particles
   private particles: Array<{ obj: Phaser.GameObjects.Arc; born: number }> = [];
   private lastEmit = 0;
+  // MS3+ wander 오프셋 (책상 주변 ±2px 자유 이동)
+  private wanderPhase: number;
+  private wanderX = 0;
+  private wanderY = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, role: AgentRole) {
     this.scene = scene;
     this.role = role;
     this.x = x;
     this.y = y;
+    this.wanderPhase = Math.random() * Math.PI * 2;
 
     const shirtColor = parseInt(AGENT_COLOR[role].replace("#", ""), 16);
 
@@ -217,6 +222,37 @@ export class AgentActor {
 
   /** Scene update에서 명시 호출. 글로우 펄스 + 활성 상태 머리/몸통 호흡 bob + MS8 생각 파티클. */
   pulse(time: number): void {
+    // MS3+ wander — 활성 상태에서 책상 주변 ±2px / ±1px 자유 이동
+    // 모든 GameObject에 delta로 적용 (현재 wander와 직전 wander 차이만 일괄 추가)
+    let nextWx = 0;
+    let nextWy = 0;
+    if (ACTIVE_STATUSES.has(this.currentStatus)) {
+      const tw = time / 2400; // 2.4초 주기
+      nextWx = Math.round(Math.cos(tw + this.wanderPhase) * 2);
+      nextWy = Math.round(Math.sin(tw * 1.3 + this.wanderPhase) * 1);
+    }
+    const dx = nextWx - this.wanderX;
+    const dy = nextWy - this.wanderY;
+    if (dx !== 0 || dy !== 0) {
+      this.shadow.setX(this.shadow.x + dx);
+      this.legs.setX(this.legs.x + dx).setY(this.legs.y + dy);
+      this.body.setX(this.body.x + dx);
+      this.bodyOutline.setX(this.bodyOutline.x + dx);
+      this.head.setX(this.head.x + dx);
+      this.hair.setX(this.hair.x + dx);
+      this.headOutline.setX(this.headOutline.x + dx);
+      this.stateDot.setX(this.stateDot.x + dx);
+      this.glow.setX(this.glow.x + dx).setY(this.glow.y + dy);
+      this.hitRect.setX(this.hitRect.x + dx).setY(this.hitRect.y + dy);
+      // bob baseY를 dy만큼 이동시켜 bob과 wander가 함께 동작
+      this.bodyBaseY += dy;
+      this.headBaseY += dy;
+      this.hairBaseY += dy;
+      this.headOutlineBaseY += dy;
+    }
+    this.wanderX = nextWx;
+    this.wanderY = nextWy;
+
     // 활성 상태에서만 머리/몸통 ±1px bob (1200ms)
     if (this.currentStatus !== "idle") {
       const tb = (time % 1200) / 1200;

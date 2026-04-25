@@ -104,7 +104,7 @@ export class OfficeScene extends Phaser.Scene {
     this.bootText = this.add.text(
       width / 2,
       height - 24,
-      `MS8 파티클 OK · 활성 액터 머리 위 사고 입자 · 휠 줌 / 드래그 팬`,
+      `MS3+ wander OK · 활성 액터 책상 주변 자유 이동 · 휠 줌 / 드래그 팬`,
       {
         fontFamily: "Pretendard, system-ui, sans-serif",
         fontSize: "12px",
