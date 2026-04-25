@@ -41,6 +41,8 @@ interface AutoLoopSettings {
   supervisionLevel: SupervisionLevel;
   executionSessionMode: ExecutionSessionMode;
   initialCash: number;
+  dailyMaxOrders: number; // 0 = 제한 없음
+  dailyMaxLossKrw: number; // 0 = 제한 없음
 }
 
 interface LoopLog {
@@ -107,6 +109,8 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
     supervisionLevel: "balanced",
     executionSessionMode: "regular_only",
     initialCash: 10_000_000,
+    dailyMaxOrders: 0,
+    dailyMaxLossKrw: 0,
   });
   const [loopId, setLoopId] = useState<string | null>(null);
   const [runningCycle, setRunningCycle] = useState(false);
@@ -124,6 +128,7 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
 
   const lastDecisionTsRef = useRef<string>("");
   const lastTradeKeyRef = useRef<string>("");
+  const dayBaselineRef = useRef<{ day: string; realizedPnl: number }>({ day: "", realizedPnl: 0 });
   const warnedTickerRef = useRef<string>("");
 
   const appendUiLog = useCallback((level: LoopLog["level"], message: string) => {
@@ -309,6 +314,37 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
     return [...serverLogs, ...uiLogs].slice(-150);
   }, [serverLogs, uiLogs]);
 
+  // ── 일일 한도 추적 ──
+  const todayKey = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+  const todayOrderCount = useMemo(() => {
+    return tradeHistory.filter((t) => (t.timestamp || "").startsWith(todayKey)).length;
+  }, [tradeHistory, todayKey]);
+  const todayRealizedDelta = useMemo(() => {
+    if (!paperAccount) return 0;
+    if (dayBaselineRef.current.day !== todayKey) {
+      dayBaselineRef.current = { day: todayKey, realizedPnl: paperAccount.realized_pnl };
+      return 0;
+    }
+    return paperAccount.realized_pnl - dayBaselineRef.current.realizedPnl;
+  }, [paperAccount, todayKey]);
+
+  // 일일 한도 초과 시 자동 일시중지
+  useEffect(() => {
+    if (!settings.enabled) return;
+    const overOrders = settings.dailyMaxOrders > 0 && todayOrderCount >= settings.dailyMaxOrders;
+    const overLoss = settings.dailyMaxLossKrw > 0 && todayRealizedDelta <= -Math.abs(settings.dailyMaxLossKrw);
+    if (overOrders || overLoss) {
+      const reason = overOrders
+        ? `일일 주문 한도(${settings.dailyMaxOrders}건) 도달`
+        : `일일 손실 한도(-${settings.dailyMaxLossKrw.toLocaleString("ko-KR")}원) 도달`;
+      appendUiLog("warn", `${reason} → 자동 일시중지`);
+      void toggleAutoLoop();
+    }
+  }, [settings.enabled, settings.dailyMaxOrders, settings.dailyMaxLossKrw, todayOrderCount, todayRealizedDelta, appendUiLog, toggleAutoLoop]);
+
   return (
     <div
       style={{
@@ -415,6 +451,39 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         </div>
       )}
 
+      {/* 일일 한도 표시 칩 */}
+      {(settings.dailyMaxOrders > 0 || settings.dailyMaxLossKrw > 0) && (
+        <div style={{
+          padding: "8px 12px",
+          marginBottom: 10,
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: "var(--radius-lg)",
+          display: "flex",
+          gap: 14,
+          alignItems: "center",
+          fontSize: 10,
+          color: "var(--text-secondary)",
+          flexWrap: "wrap",
+        }}>
+          <span style={{ fontWeight: 700, color: "var(--text-tertiary)" }}>오늘 한도</span>
+          {settings.dailyMaxOrders > 0 && (
+            <span>
+              주문 <b style={{ color: todayOrderCount >= settings.dailyMaxOrders ? "var(--bear)" : "var(--text-primary)" }}>
+                {todayOrderCount}/{settings.dailyMaxOrders}
+              </b>건
+            </span>
+          )}
+          {settings.dailyMaxLossKrw > 0 && (
+            <span>
+              손실 <b style={{ color: todayRealizedDelta <= -settings.dailyMaxLossKrw ? "var(--bear)" : "var(--text-primary)" }}>
+                {todayRealizedDelta >= 0 ? "+" : ""}{Math.round(todayRealizedDelta).toLocaleString("ko-KR")}
+              </b> / 한도 -{settings.dailyMaxLossKrw.toLocaleString("ko-KR")}원
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Internal tab pills — split dense settings/activity/trades */}
       <div style={{ marginBottom: 12 }}>
         <TabPills<InnerTab>
@@ -500,6 +569,43 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
               max={100}
               value={settings.maxPositionPct}
               onChange={(e) => setSettings((prev) => ({ ...prev, maxPositionPct: Number(e.target.value || 25) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+        </FieldRow>
+      </SettingsSection>
+
+      {/* ── 섹션 2.5: 일일 안전 한도 ──────────────────────── */}
+      <SettingsSection
+        title="일일 안전 한도"
+        desc="하루 동안 자동매매가 낼 수 있는 주문 수와 손실 한도를 정합니다. 한도에 닿으면 자동으로 일시중지됩니다. 0 = 제한 없음."
+      >
+        <FieldRow>
+          <FieldCell
+            label="일일 최대 주문 수 (건)"
+            hint="하루에 자동매매가 낼 수 있는 주문(매수+매도)의 최대 횟수입니다. 너무 자주 주문이 나가는 것을 막아줘요."
+            example="권장: 5~20건 / 무제한은 0"
+          >
+            <input
+              type="number"
+              min={0}
+              max={1000}
+              value={settings.dailyMaxOrders}
+              onChange={(e) => setSettings((prev) => ({ ...prev, dailyMaxOrders: Number(e.target.value || 0) }))}
+              style={inputStyle}
+            />
+          </FieldCell>
+          <FieldCell
+            label="일일 최대 손실 (원)"
+            hint="당일 실현손익이 이 금액만큼 마이너스가 되면 자동매매가 즉시 일시중지됩니다."
+            example="권장: 자산의 1~2% / 무제한은 0"
+          >
+            <input
+              type="number"
+              min={0}
+              step={10000}
+              value={settings.dailyMaxLossKrw}
+              onChange={(e) => setSettings((prev) => ({ ...prev, dailyMaxLossKrw: Number(e.target.value || 0) }))}
               style={inputStyle}
             />
           </FieldCell>
