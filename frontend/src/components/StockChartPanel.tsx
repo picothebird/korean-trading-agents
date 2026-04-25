@@ -93,6 +93,8 @@ export function StockChartPanel({
   compact = false,
 }: StockChartPanelProps) {
   const [timeframe, setTimeframe] = useState<Timeframe>("6m");
+  // 차트 간단/상세 토글 (P3.C1)
+  const [detailedMode, setDetailedMode] = useState(false);
   const [data, setData] = useState<StockChartPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -253,7 +255,9 @@ export function StockChartPanel({
                 <Tooltip content={<PriceTooltip />} />
                 <Line type="monotone" dataKey="close" stroke="var(--text-primary)" strokeWidth={2.2} dot={false} />
                 <Line type="monotone" dataKey="ma20" stroke="var(--brand)" strokeWidth={1.4} dot={false} />
-                <Line type="monotone" dataKey="ma60" stroke="var(--text-tertiary)" strokeWidth={1.2} dot={false} strokeDasharray="4 4" />
+                {detailedMode && (
+                  <Line type="monotone" dataKey="ma60" stroke="var(--text-tertiary)" strokeWidth={1.2} dot={false} strokeDasharray="4 4" />
+                )}
                 {mergedMarkers.map((m) => (
                   <ReferenceDot
                     key={m.id}
@@ -291,9 +295,35 @@ export function StockChartPanel({
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginTop: 8, fontSize: 11, color: "var(--text-secondary)" }}>
             <LegendSwatch color="var(--text-primary)" label="종가" kind="line" />
             <LegendSwatch color="var(--brand)" label="20일 평균" kind="line" />
-            <LegendSwatch color="var(--text-tertiary)" label="60일 평균" kind="dashed" />
+            {detailedMode && <LegendSwatch color="var(--text-tertiary)" label="60일 평균" kind="dashed" />}
             <LegendSwatch color="var(--bull)" label="예측·체결" kind="dot" />
+            <button
+              type="button"
+              onClick={() => setDetailedMode((v) => !v)}
+              style={{
+                marginLeft: "auto",
+                padding: "2px 8px", borderRadius: 99,
+                border: "1px solid var(--border-default)",
+                background: detailedMode ? "var(--brand-subtle)" : "transparent",
+                color: detailedMode ? "var(--brand)" : "var(--text-tertiary)",
+                fontSize: 9, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              {detailedMode ? "간단 모드" : "상세 모드"}
+            </button>
           </div>
+          {/* 색상/지표 의미 호버 설명 (P3.C2/C3) */}
+          <details style={{ marginTop: 6 }}>
+            <summary style={{ fontSize: 9, color: "var(--text-tertiary)", cursor: "pointer", listStyle: "none" }}>
+              ❓ 선과 점의 의미
+            </summary>
+            <ul style={{ marginTop: 4, paddingLeft: 14, fontSize: 9, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+              <li><b>종가(검은 선)</b> — 매일 장 마감 시점의 가격</li>
+              <li><b>20일 평균(파란 선)</b> — 단기 추세. 종가가 평균 위면 단기 강세</li>
+              {detailedMode && <li><b>60일 평균(회색 점선)</b> — 중기 추세. 20일 평균이 60일을 위로 뚫으면 골든크로스</li>}
+              <li><b>빨간 점</b> — AI 예측 지점 또는 실제 매수/매도 체결 지점</li>
+            </ul>
+          </details>
         </>
       )}
     </div>
