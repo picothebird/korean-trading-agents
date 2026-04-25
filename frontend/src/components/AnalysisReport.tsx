@@ -162,6 +162,61 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
         </div>
       </div>
 
+      {/* Executive Summary — 30초 요약 (R1) */}
+      <div style={{
+        padding: "14px 16px",
+        background: "var(--bg-elevated)",
+        border: `2px solid ${SIGNAL_CFG[decision.action]?.color ?? "var(--border-default)"}`,
+        borderRadius: "var(--radius-xl)",
+      }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>
+          ⚡ 30초 요약
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10, marginBottom: 10 }}>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>판단</p>
+            <p style={{ fontSize: 16, fontWeight: 800, color: SIGNAL_CFG[decision.action]?.color }}>
+              {SIGNAL_CFG[decision.action]?.label ?? decision.action}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>신뢰도</p>
+            <p style={{ fontSize: 16, fontWeight: 800, color: confidencePct >= 70 ? "var(--success)" : confidencePct >= 50 ? "var(--warning)" : "var(--text-secondary)" }}>
+              {confidencePct}%
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>권장 비중</p>
+            <p style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>
+              {kelly.toFixed(1)}%
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>예시 투입금</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+              {positionWon.toLocaleString("ko-KR")}원
+            </p>
+          </div>
+        </div>
+        <ul style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.7, paddingLeft: 16, margin: 0 }}>
+          <li>
+            <b>무엇을?</b> {decision.ticker} {SIGNAL_CFG[decision.action]?.label ?? decision.action}
+            {decision.action === "BUY" ? ` · 자산의 ${kelly.toFixed(1)}% 비중 권장` : decision.action === "SELL" ? " · 보유분 일부/전부 정리 권장" : " · 추가 매수/매도 보류 권장"}
+          </li>
+          <li>
+            <b>왜?</b> 9개 AI 에이전트 합의 신뢰도 {confidencePct}%
+            {confidencePct >= 70 ? " — 의견 비교적 일치" : confidencePct >= 50 ? " — 의견 부분 합의" : " — 의견 분산"}
+            {risk?.guru_action_changed ? " · GURU 정책으로 결정 보정됨" : ""}
+          </li>
+          <li>
+            <b>다음 행동?</b>{" "}
+            {decision.action === "HOLD"
+              ? "관망. 백테스트로 다른 기간에서 어땠는지 확인해보세요."
+              : `먼저 모의로 1주 시도 → 만족 시 실거래 ${kelly.toFixed(0)}%까지 단계적 진입 권장.`}
+          </li>
+        </ul>
+      </div>
+
       {/* 1. 한 줄 요약 (사람의 말) */}
       <Section title="1. 한 줄 요약" index={0}>
         <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.7 }}>

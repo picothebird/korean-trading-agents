@@ -17,9 +17,12 @@ interface DecisionCardProps {
   decision: TradeDecision | null;
   onHumanApproval?: () => void;
   onOpenSettings?: () => void;
+  onGoTrading?: () => void;
+  onGoBacktest?: () => void;
+  onGoAutoLoop?: () => void;
 }
 
-export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: DecisionCardProps) {
+export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTrading, onGoBacktest, onGoAutoLoop }: DecisionCardProps) {
   if (!decision) return null;
 
   const cfg = ACTION_CFG[decision.action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
@@ -305,6 +308,59 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
               </div>
             )}
           </div>
+
+          {/* 다음 행동 CTA — 분석→행동 연결 (D5 + P3) */}
+          {(onGoTrading || onGoBacktest || onGoAutoLoop) && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--border-subtle)" }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 8 }}>
+                이제 무엇을 할까요?
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                {onGoTrading && (
+                  <button
+                    onClick={onGoTrading}
+                    style={{
+                      padding: "10px 8px", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-default)",
+                      background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3, lineHeight: 1.3,
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>📝</span>
+                    <span>모의로 1주 시도</span>
+                    <span style={{ fontSize: 9, fontWeight: 500, color: "var(--text-tertiary)" }}>실제 돈 X</span>
+                  </button>
+                )}
+                {onGoBacktest && (
+                  <button
+                    onClick={onGoBacktest}
+                    style={{
+                      padding: "10px 8px", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-default)",
+                      background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3, lineHeight: 1.3,
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>📊</span>
+                    <span>백테스트로 검증</span>
+                    <span style={{ fontSize: 9, fontWeight: 500, color: "var(--text-tertiary)" }}>과거 성과 확인</span>
+                  </button>
+                )}
+                {onGoAutoLoop && (
+                  <button
+                    onClick={onGoAutoLoop}
+                    style={{
+                      padding: "10px 8px", borderRadius: "var(--radius-lg)", border: `1px solid ${cfg.color}`,
+                      background: cfg.bg, color: cfg.color, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3, lineHeight: 1.3,
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>🤖</span>
+                    <span>자동매매 설정</span>
+                    <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>루프에 접속</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </motion.div>
     </AnimatePresence>

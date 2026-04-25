@@ -759,6 +759,18 @@ function AnalysisEmptyState({
 // ── Main Page ────────────────────────────────────────────────────
 export default function Home() {
   const [tab, setTab] = useState<Tab>("analysis");
+  // 마지막 탭 위치 복원 (P2.P4)
+  useEffect(() => {
+    try {
+      const saved = typeof window !== "undefined" ? window.localStorage.getItem("kta_last_tab_v1") : null;
+      if (saved && (["analysis", "backtest", "trading", "portfolio"] as const).includes(saved as Tab)) {
+        setTab(saved as Tab);
+      }
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem("kta_last_tab_v1", tab); } catch { /* ignore */ }
+  }, [tab]);
   const [ticker, setTicker] = useState("005930");
   const [companyName, setCompanyName] = useState("삼성전자");
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
@@ -1773,6 +1785,9 @@ export default function Home() {
                           : undefined
                       }
                       onOpenSettings={() => openSettings("guru")}
+                      onGoTrading={() => { setKisOrderTicker(decision.ticker); handleTabChange("trading"); }}
+                      onGoBacktest={() => handleTabChange("backtest")}
+                      onGoAutoLoop={() => { setKisOrderTicker(decision.ticker); handleTabChange("trading"); }}
                     />
                     <AnalysisReport decision={decision} />
                     <motion.button

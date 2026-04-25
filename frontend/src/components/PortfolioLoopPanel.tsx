@@ -343,6 +343,24 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
         padding: "14px 14px 12px",
       }}
     >
+      {/* 역할 안내 배너 — 단일종목 자동매매와의 차이 명시 (PF1) */}
+      <div style={{
+        padding: "10px 12px",
+        marginBottom: 12,
+        background: "var(--info-subtle, var(--bg-elevated))",
+        border: "1px solid var(--info-border, var(--border-subtle))",
+        borderRadius: "var(--radius-lg)",
+        fontSize: 11,
+        color: "var(--text-secondary)",
+        lineHeight: 1.55,
+      }}>
+        <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>
+          🧭 포트폴리오 루프란?
+        </p>
+        후보 종목군(Universe)을 주기적으로 스캔해서 <b>여러 종목 사이에서 사고팔 후보를 발굴</b>하고, 비중·상관관계·세션을 함께 관리합니다.
+        단일 종목을 정해놓고 매수/매도하는 “자동매매 루프”와 달리, <b>“무엇을 살 것인가”부터 자동화</b>한다는 점이 핵심입니다.
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
         <div>
           <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>포트폴리오 오케스트레이션 루프</p>

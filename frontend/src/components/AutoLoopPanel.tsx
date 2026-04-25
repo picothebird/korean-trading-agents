@@ -355,6 +355,25 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         marginBottom: 14,
       }}
     >
+      {/* 역할 안내 배너 — 단일종목 자동매매 (PF1) */}
+      <div style={{
+        padding: "10px 12px",
+        marginBottom: 12,
+        background: "var(--info-subtle, var(--bg-elevated))",
+        border: "1px solid var(--info-border, var(--border-subtle))",
+        borderRadius: "var(--radius-lg)",
+        fontSize: 11,
+        color: "var(--text-secondary)",
+        lineHeight: 1.55,
+      }}>
+        <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>
+          🤖 단일 종목 자동매매란?
+        </p>
+        지금 분석 중인 한 종목({ticker})에 대해 정해진 주기마다 매수/매도 판단을 반복합니다.
+        “어떤 종목을 살지”는 사용자가 정하고, 시점·수량·매도 타이밍을 자동화하는 도구입니다.
+        여러 종목을 동시에 굴리려면 <b>포트폴리오 루프</b>를 사용하세요.
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
         <div>
           <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>자동 분석·주문 루프</p>
