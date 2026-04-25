@@ -11,6 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { getAutoLoopStatus, startAutoLoop, stopAutoLoop } from "@/lib/api";
+import { TabPills } from "@/components/ui";
 import type { AutoLoopStatus, ExecutionSessionMode, SupervisionLevel, TradeDecision } from "@/types";
 
 interface AutoLoopPanelProps {
@@ -117,6 +118,8 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
   const [paperAccount, setPaperAccount] = useState<AutoLoopStatus["paper_account"]>(null);
   const [statusInfo, setStatusInfo] = useState<AutoLoopStatus["stats"] | null>(null);
   const [busy, setBusy] = useState(false);
+  type InnerTab = "settings" | "activity" | "trades";
+  const [innerTab, setInnerTab] = useState<InnerTab>("settings");
 
   const lastDecisionTsRef = useRef<string>("");
   const lastTradeKeyRef = useRef<string>("");
@@ -329,8 +332,8 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
           }}
           disabled={busy}
           style={{
-            border: "1px solid var(--border-default)",
-            background: settings.enabled ? "rgba(47,202,115,0.15)" : "var(--bg-elevated)",
+            border: settings.enabled ? "1px solid var(--success-border)" : "1px solid var(--border-default)",
+            background: settings.enabled ? "var(--success-subtle)" : "var(--bg-overlay)",
             color: settings.enabled ? "var(--success)" : "var(--text-secondary)",
             borderRadius: 99,
             padding: "5px 11px",
@@ -344,6 +347,23 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         </button>
       </div>
 
+      {/* Internal tab pills — split dense settings/activity/trades */}
+      <div style={{ marginBottom: 12 }}>
+        <TabPills<InnerTab>
+          ariaLabel="자동 루프 내부 탭"
+          size="sm"
+          fullWidth
+          value={innerTab}
+          onChange={(v) => setInnerTab(v)}
+          items={[
+            { value: "settings", label: "설정", icon: <span aria-hidden>⚙️</span> },
+            { value: "activity", label: "활동", icon: <span aria-hidden>📡</span> },
+            { value: "trades", label: "거래내역", icon: <span aria-hidden>📒</span> },
+          ]}
+        />
+      </div>
+
+      {innerTab === "settings" && (<>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>판단 주기(분)</span>
@@ -473,8 +493,8 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
             onClick={() => setSettings((prev) => ({ ...prev, paperTrade: !prev.paperTrade }))}
             style={{
               borderRadius: "var(--radius-md)",
-              border: "1px solid var(--border-default)",
-              background: settings.paperTrade ? "rgba(245,166,35,0.12)" : "rgba(240,68,82,0.14)",
+              border: settings.paperTrade ? "1px solid var(--warning-border)" : "1px solid var(--error-border)",
+              background: settings.paperTrade ? "var(--warning-subtle)" : "var(--error-subtle)",
               color: settings.paperTrade ? "var(--warning)" : "var(--error)",
               padding: "6px 8px",
               fontSize: 11,
@@ -490,7 +510,9 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
       <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 10, lineHeight: 1.5 }}>
         루프: 서버에서 분석 → 감독 규칙/신뢰도 체크 → 부분 매수/매도 주문 → 로그/이력/계좌 상태 업데이트를 반복합니다.
       </p>
+      </>)}
 
+      {innerTab === "activity" && (<>
       {paperAccount && (
         <div
           style={{
@@ -536,7 +558,7 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
       )}
 
       {showVisuals && (
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
           <div
             style={{
               background: "var(--bg-elevated)",
@@ -550,46 +572,15 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
             <div style={{ height: 118 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={decisionHistory} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+                  <CartesianGrid stroke="var(--border-default)" strokeDasharray="3 3" />
                   <XAxis dataKey="timestamp" tick={{ fontSize: 8, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} />
                   <YAxis yAxisId="conf" domain={[0, 100]} tick={{ fontSize: 8, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} width={30} />
                   <YAxis yAxisId="act" orientation="right" domain={[-1.2, 1.2]} hide />
                   <Tooltip />
-                  <Line yAxisId="conf" dataKey="confidence" stroke="#3182F6" strokeWidth={2} dot={false} name="신뢰도(%)" />
-                  <Line yAxisId="act" dataKey="actionScore" stroke="#F5A623" strokeWidth={1.5} dot={false} name="행동점수" />
+                  <Line yAxisId="conf" dataKey="confidence" stroke="var(--brand)" strokeWidth={2} dot={false} name="신뢰도(%)" />
+                  <Line yAxisId="act" dataKey="actionScore" stroke="var(--warning)" strokeWidth={1.5} dot={false} name="행동점수" />
                 </LineChart>
               </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--border-subtle)",
-              borderRadius: "var(--radius-lg)",
-              padding: "8px 10px",
-              minHeight: 148,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 6 }}>최근 자동 주문</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5, overflowY: "auto", maxHeight: 112 }}>
-              {tradeHistory.length === 0 && (
-                <p style={{ fontSize: 10, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                  아직 자동 주문 이력이 없습니다.
-                </p>
-              )}
-              {tradeHistory.slice(0, 6).map((t, i) => (
-                <div key={`${t.timestamp}-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-                  <p style={{ fontSize: 10, color: "var(--text-secondary)", lineHeight: 1.4 }}>
-                    {t.side === "buy" ? "매수" : "매도"} {t.qty}주 · {t.status === "simulated" ? "모의" : t.status === "executed" ? "실주문" : "실패"}
-                  </p>
-                  <p style={{ fontSize: 10, color: t.side === "buy" ? "var(--success)" : "var(--error)", fontWeight: 700 }}>
-                    {t.price.toLocaleString("ko-KR")}
-                  </p>
-                </div>
-              ))}
             </div>
           </div>
         </div>
@@ -617,6 +608,42 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
           ))}
         </div>
       </div>
+      </>)}
+
+      {innerTab === "trades" && (
+        <div
+          style={{
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-lg)",
+            padding: "10px 12px",
+            minHeight: 200,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 8, fontWeight: 700 }}>최근 자동 주문</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", maxHeight: 360 }}>
+            {tradeHistory.length === 0 && (
+              <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                아직 자동 주문 이력이 없어요. 자동 실행을 켜면 여기에 누적됩니다.
+              </p>
+            )}
+            {tradeHistory.map((t, i) => (
+              <div key={`${t.timestamp}-${i}`} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center", padding: "6px 8px", background: "var(--bg-surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+                <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{t.timestamp.slice(11, 19)}</span>
+                <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.4 }}>
+                  <strong style={{ color: t.side === "buy" ? "var(--bull)" : "var(--bear)" }}>{t.side === "buy" ? "매수" : "매도"}</strong>{" "}
+                  {t.qty}주 · {t.status === "simulated" ? "모의" : t.status === "executed" ? "실주문" : "실패"}
+                </p>
+                <p style={{ fontSize: 11, color: "var(--text-primary)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                  {t.price.toLocaleString("ko-KR")}원
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -31,10 +31,11 @@ function Metric({ label, value, sub, positive }: MetricProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       style={{
-        background: "var(--bg-elevated)",
+        background: "var(--bg-surface)",
         borderRadius: "var(--radius-lg)",
         padding: "12px 14px",
-        border: "1px solid var(--border-subtle)",
+        border: "1px solid var(--border-default)",
+        boxShadow: "var(--shadow-sm)",
       }}
     >
       <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 500, marginBottom: 4 }}>{label}</p>
@@ -133,13 +134,38 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Metrics grid */}
+      {/* Plain-language summary line */}
+      <div
+        style={{
+          padding: "12px 16px",
+          background: m.total_return >= 0 ? "var(--bull-subtle)" : "var(--bear-subtle)",
+          border: `1px solid ${m.total_return >= 0 ? "var(--bull-border)" : "var(--bear-border)"}`,
+          borderRadius: "var(--radius-lg)",
+          fontSize: 12,
+          color: "var(--text-primary)",
+          lineHeight: 1.55,
+        }}
+      >
+        이 전략은 같은 기간 벤치마크 대비
+        {" "}<strong style={{ color: m.alpha > 0 ? "var(--bull)" : "var(--bear)" }}>
+          {m.alpha >= 0 ? "+" : ""}{m.alpha.toFixed(1)}%p
+        </strong>{" "}
+        의 초과 수익을 만들었고, 가장 컸던 손실은
+        {" "}<strong>{m.max_drawdown.toFixed(1)}%</strong>{" "}
+        였어요. 승률 <strong>{m.win_rate.toFixed(1)}%</strong> · {m.total_trades}회 거래.
+      </div>
+
+      {/* Headline KPIs (3 large) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <Metric label="총 수익률" value={`${m.total_return >= 0 ? "+" : ""}${m.total_return.toFixed(1)}%`} positive={m.total_return > 0} />
-        <Metric label="연간 수익률" value={`${m.annualized_return >= 0 ? "+" : ""}${m.annualized_return.toFixed(1)}%`} positive={m.annualized_return > 0} />
         <Metric label="초과수익 α" value={`${m.alpha >= 0 ? "+" : ""}${m.alpha.toFixed(1)}%`} positive={m.alpha > 0} sub="vs 벤치마크" />
-        <Metric label="샤프 비율" value={m.sharpe_ratio.toFixed(2)} positive={m.sharpe_ratio > 1 ? true : m.sharpe_ratio < 0 ? false : null} sub="1.0↑ 우수" />
-        <Metric label="최대 낙폭" value={`${m.max_drawdown.toFixed(1)}%`} positive={m.max_drawdown > -10} sub="낮을수록 좋음" />
+        <Metric label="샤프 비율" value={m.sharpe_ratio.toFixed(2)} positive={m.sharpe_ratio > 1 ? true : m.sharpe_ratio < 0 ? false : null} sub="1.0 이상이면 우수" />
+      </div>
+
+      {/* Secondary metrics (6 small) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <Metric label="연간 수익률" value={`${m.annualized_return >= 0 ? "+" : ""}${m.annualized_return.toFixed(1)}%`} positive={m.annualized_return > 0} />
+        <Metric label="최대 낙폭" value={`${m.max_drawdown.toFixed(1)}%`} positive={m.max_drawdown > -10} sub="작을수록 안전" />
         <Metric label="승률" value={`${m.win_rate.toFixed(1)}%`} positive={m.win_rate > 55 ? true : m.win_rate < 45 ? false : null} />
         <Metric label="칼마 비율" value={m.calmar_ratio.toFixed(2)} positive={null} />
         <Metric label="손익비" value={m.profit_factor.toFixed(2)} positive={m.profit_factor > 1.5 ? true : m.profit_factor < 1 ? false : null} />
@@ -181,8 +207,8 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
               <AreaChart data={result.equity_curve} margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={isProfit ? "#F04452" : "#2B7EF5"} stopOpacity={0.25} />
-                    <stop offset="95%" stopColor={isProfit ? "#F04452" : "#2B7EF5"} stopOpacity={0} />
+                    <stop offset="5%" stopColor={isProfit ? "var(--bull)" : "var(--bear)"} stopOpacity={0.25} />
+                    <stop offset="95%" stopColor={isProfit ? "var(--bull)" : "var(--bear)"} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis
@@ -204,7 +230,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
                 <ReferenceLine y={10000000} stroke="var(--border-strong)" strokeDasharray="4 4" />
                 <Area
                   type="monotone" dataKey="value"
-                  stroke={isProfit ? "#F04452" : "#2B7EF5"} strokeWidth={2}
+                  stroke={isProfit ? "var(--bull)" : "var(--bear)"} strokeWidth={2}
                   fill="url(#equityGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 0 }}
                 />
               </AreaChart>
@@ -253,7 +279,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
           }}>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={predictionChartData} margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+                <CartesianGrid stroke="var(--border-default)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 9, fill: "var(--text-tertiary)" }}
@@ -275,7 +301,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
                   type="monotone"
                   dataKey="actual"
                   name="실제 가격"
-                  stroke="#F04452"
+                  stroke="var(--bull)"
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
@@ -284,7 +310,7 @@ export function BacktestPanel({ result }: BacktestPanelProps) {
                   type="monotone"
                   dataKey="predicted"
                   name="예측 가격"
-                  stroke="#3182F6"
+                  stroke="var(--brand)"
                   strokeWidth={2}
                   strokeDasharray="4 4"
                   dot={false}

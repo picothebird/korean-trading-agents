@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, type ReactNode } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { getSettings, updateSettings } from "@/lib/api";
+import { Sheet, useTheme, type ThemeMode } from "@/components/ui";
 
-export type SettingsTab = "overview" | "llm" | "analysis" | "guru" | "kis";
+export type SettingsTab = "overview" | "appearance" | "llm" | "analysis" | "guru" | "kis";
 
 const DEFAULT_MODELS = [
   { value: "gpt-5", label: "GPT-5", desc: "기본 추천 · 심층 추론" },
@@ -29,6 +30,7 @@ const EFFORT_OPTIONS = [
 
 const TABS: Array<{ key: SettingsTab; label: string; icon: string; hint: string }> = [
   { key: "overview", label: "개요", icon: "🧭", hint: "현재 상태와 빠른 진입" },
+  { key: "appearance", label: "외관", icon: "🎨", hint: "테마 (라이트/다크/시스템)" },
   { key: "llm", label: "LLM", icon: "🧠", hint: "OpenAI 키와 모델" },
   { key: "analysis", label: "분석", icon: "📊", hint: "토론 라운드/분석 강도" },
   { key: "guru", label: "GURU", icon: "🧙", hint: "최종 정책 레이어" },
@@ -37,6 +39,7 @@ const TABS: Array<{ key: SettingsTab; label: string; icon: string; hint: string 
 
 const TAB_TITLE: Record<SettingsTab, string> = {
   overview: "설정 개요",
+  appearance: "외관",
   llm: "LLM 설정",
   analysis: "분석 파라미터",
   guru: "GURU 정책",
@@ -225,6 +228,7 @@ interface SettingsPanelProps {
 export function SettingsPanel({ open, onClose, initialTab = "overview" }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [isCompact, setIsCompact] = useState(false);
+  const { mode: themeMode, resolved: themeResolved, setMode: setThemeMode } = useTheme();
   const [form, setForm] = useState<SettingsForm>({
     openai_api_key: "",
     default_llm_model: "gpt-5",
@@ -331,91 +335,25 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
     }
   };
 
-  const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.32 };
-
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 200,
-              background: "rgba(10,11,14,0.72)",
-              backdropFilter: "blur(6px)",
-            }}
-          />
-
-          <motion.div
-            initial={{ opacity: 0, y: 14, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            transition={SPRING}
-            style={{
-              position: "fixed",
-              zIndex: 201,
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: "min(1080px, calc(100vw - 28px))",
-              maxHeight: "calc(100vh - 36px)",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-default)",
-              borderRadius: "var(--radius-2xl)",
-              boxShadow: "var(--shadow-xl)",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "16px 20px",
-                borderBottom: "1px solid var(--border-subtle)",
-                flexShrink: 0,
-                background: "linear-gradient(180deg, rgba(49,130,246,0.10) 0%, rgba(0,0,0,0) 100%)",
-              }}
-            >
-              <div>
-                <p style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)" }}>통합 설정</p>
-                <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>
-                  {TAB_TITLE[activeTab]} · 맥락별 탭 진입 지원
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: "50%",
-                  background: "var(--bg-elevated)",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
-                  fontSize: 16,
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: isCompact ? "column" : "row",
-                minHeight: 0,
-                flex: 1,
-              }}
-            >
+    <Sheet
+      open={open}
+      onClose={onClose}
+      side="right"
+      width={880}
+      title="통합 설정"
+      description={`${TAB_TITLE[activeTab]} · 맥락별 탭 진입 지원`}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: isCompact ? "column" : "row",
+          minHeight: 0,
+          flex: 1,
+          marginInline: -24,
+          marginTop: -20,
+        }}
+      >
               <aside
                 style={{
                   width: isCompact ? "100%" : 240,
@@ -519,6 +457,88 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                       <HelpNote>
                         팁: 화면 곳곳의 설정 버튼은 이 팝업을 열되, 해당 맥락의 탭(예: KIS 영역에서는 KIS 탭)으로 바로 이동합니다.
                       </HelpNote>
+                    </Section>
+                  </>
+                )}
+
+                {activeTab === "appearance" && (
+                  <>
+                    <Section title="테마 모드">
+                      <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 12 }}>
+                        라이트는 일반 환경에 최적화, 다크는 야간/저조도 환경에 눈의 피로를 줄입니다. 시스템을 선택하면 OS 설정을 따릅니다. 선택은 이 브라우저에 저장되어 다음 방문 시에도 유지됩니다.
+                      </p>
+                      <div role="radiogroup" aria-label="테마 모드" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                        {([
+                          { key: "light", label: "라이트", icon: "☀️", desc: "환한 배경" },
+                          { key: "dark", label: "다크", icon: "🌙", desc: "어두운 배경" },
+                          { key: "system", label: "시스템", icon: "🖥️", desc: "OS 설정 따라감" },
+                        ] as Array<{ key: ThemeMode; label: string; icon: string; desc: string }>).map((opt) => {
+                          const active = themeMode === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              onClick={() => setThemeMode(opt.key)}
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "flex-start",
+                                gap: 4,
+                                padding: "12px 14px",
+                                borderRadius: "var(--radius-lg)",
+                                border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                                background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
+                                color: active ? "var(--brand)" : "var(--text-primary)",
+                                cursor: "pointer",
+                                textAlign: "left",
+                                transition: "all 150ms",
+                              }}
+                            >
+                              <span style={{ fontSize: 20, lineHeight: 1 }}>{opt.icon}</span>
+                              <span style={{ fontSize: 13, fontWeight: 700 }}>{opt.label}</span>
+                              <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 500 }}>{opt.desc}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 12,
+                          padding: "8px 12px",
+                          borderRadius: "var(--radius-md)",
+                          background: "var(--bg-overlay)",
+                          border: "1px solid var(--border-subtle)",
+                          fontSize: 11,
+                          color: "var(--text-secondary)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>{themeResolved === "dark" ? "🌙" : "☀️"}</span>
+                        <span>
+                          현재 적용:&nbsp;
+                          <strong style={{ color: "var(--text-primary)" }}>
+                            {themeResolved === "dark" ? "다크" : "라이트"}
+                          </strong>
+                          {themeMode === "system" && <span style={{ color: "var(--text-tertiary)" }}> · 시스템 설정 기반</span>}
+                        </span>
+                      </div>
+                    </Section>
+
+                    <Section title="컬러 컨벤션 (한국 시장)">
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div style={{ padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--bull-subtle)", border: "1px solid var(--bull-border)" }}>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bull)" }}>▲ 상승 — 빨강</p>
+                          <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>한국 거래소 표준</p>
+                        </div>
+                        <div style={{ padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--bear-subtle)", border: "1px solid var(--bear-border)" }}>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bear)" }}>▼ 하락 — 파랑</p>
+                          <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>한국 거래소 표준</p>
+                        </div>
+                      </div>
                     </Section>
                   </>
                 )}
@@ -1081,9 +1101,6 @@ export function SettingsPanel({ open, onClose, initialTab = "overview" }: Settin
                 </button>
               </div>
             </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+    </Sheet>
   );
 }

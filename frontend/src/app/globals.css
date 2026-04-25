@@ -3,87 +3,103 @@
 @import "tailwindcss";
 
 /* ─────────────────────────────────────────────
-   KOREAN TRADING DASHBOARD — Dark-Mode Design System
-   Based on: Toss / Linear / Vercel aesthetics
-   Korean market: Red = Up (상승), Blue = Down (하락)
+   KOREAN TRADING DASHBOARD — Light Edition
+   Concept: docs/UI_REDESIGN_LIGHT.md
+   - 화이트톤 베이스 (cool off-white #F7F8FA), 카드는 순백
+   - 한국 시장 컨벤션 유지 (red=up, blue=down) but 살짝 차분하게
+   - Dark tokens는 [data-theme="dark"]에 보존 (향후 토글 대비)
 ───────────────────────────────────────────── */
 
-:root {
-  /* ── Backgrounds ── */
-  --bg-base:     #0C0D10;   /* deepest background */
-  --bg-surface:  #141518;   /* cards, panels */
-  --bg-elevated: #1C1E23;   /* hover state, nested card */
-  --bg-overlay:  #242730;   /* modals, dropdowns */
-  --bg-input:    #1A1C21;   /* form inputs */
+:root,
+:root[data-theme="light"] {
+  /* ── Backgrounds (3-tier light surface) ── */
+  --bg-canvas:    #F7F8FA;   /* 페이지 베이스 (살짝 cool gray) */
+  --bg-base:      #F7F8FA;   /* alias for legacy --bg-base usages */
+  --bg-surface:   #FFFFFF;   /* 카드, 패널 */
+  --bg-elevated:  #FFFFFF;   /* 떠있는 카드 (그림자로 차별화) */
+  --bg-overlay:   #F1F3F6;   /* 입력, 비활성, 코드 블록 */
+  --bg-input:     #F7F8FA;   /* 입력 필드 */
+  --bg-muted:     #F1F3F6;   /* 보조 영역 */
+  --bg-spotlight: #EEF3FF;   /* 강조 (현재 분석 중, 추천) — brand 5% 틴트 */
+  --bg-scrim:     rgba(15, 23, 42, 0.40);   /* 모달 dim */
 
   /* ── Borders ── */
-  --border-subtle:  rgba(255,255,255,0.05);
-  --border-default: rgba(255,255,255,0.09);
-  --border-strong:  rgba(255,255,255,0.16);
+  --border-subtle:  rgba(15, 23, 42, 0.06);
+  --border-default: rgba(15, 23, 42, 0.10);
+  --border-strong:  rgba(15, 23, 42, 0.16);
   --border-focus:   #3182F6;
 
-  /* ── Text ── */
-  --text-primary:   #EAEDF2;   /* headings, primary labels */
-  --text-secondary: #8B95A1;   /* secondary labels, descriptions */
-  --text-tertiary:  #4E5867;   /* placeholders, disabled */
-  --text-inverse:   #0C0D10;   /* text on colored bg */
+  /* ── Text (4 step) ── */
+  --text-primary:   #0F172A;   /* 본문, 헤더 (16.8:1) */
+  --text-secondary: #475569;   /* 라벨, 설명 (7.2:1) */
+  --text-tertiary:  #94A3B8;   /* 메타, placeholder (3.4:1) */
+  --text-quaternary:#CBD5E1;   /* disabled, decorative */
+  --text-inverse:   #FFFFFF;   /* 컬러 배경 위 */
 
-  /* ── Korean Market Price Colors ── */
-  /* RED = 상승 (up/bull)  — KRX / HTS / all Korean brokers */
-  --bull:        #F04452;
-  --bull-muted:  #C43040;
-  --bull-subtle: rgba(240, 68, 82, 0.12);
-  --bull-glow:   rgba(240, 68, 82, 0.25);
+  /* ── Korean Market Signal (light-tuned: -8% sat, -3% val) ── */
+  --bull:        #E5384A;    /* 상승 (붉은 톤) */
+  --bull-muted:  #B91C2C;
+  --bull-subtle: #FEF2F3;    /* 카드 배경 */
+  --bull-border: #FBD5D9;
+  --bull-glow:   rgba(229, 56, 74, 0.18);
 
-  /* BLUE = 하락 (down/bear) — KRX convention */
-  --bear:        #2B7EF5;
-  --bear-muted:  #1A6AE0;
-  --bear-subtle: rgba(43, 126, 245, 0.12);
-  --bear-glow:   rgba(43, 126, 245, 0.25);
+  --bear:        #1F6FEB;    /* 하락 (파란 톤) */
+  --bear-muted:  #1452B5;
+  --bear-subtle: #EEF4FE;
+  --bear-border: #CFE0FB;
+  --bear-glow:   rgba(31, 111, 235, 0.18);
 
-  /* GRAY = 보합 (flat/hold) */
-  --hold:        #8B95A1;
-  --hold-subtle: rgba(139, 149, 161, 0.12);
+  --hold:        #64748B;
+  --hold-subtle: #F1F5F9;
+  --hold-border: #E2E8F0;
 
-  /* ── Brand (Toss Blue) ── */
-  --brand:        #3182F6;   /* #3182F6 = Toss primary CTA */
-  --brand-hover:  #1A70F4;
-  --brand-subtle: rgba(49, 130, 246, 0.12);
-  --brand-glow:   rgba(49, 130, 246, 0.30);
+  /* ── Brand (Toss blue) ── */
+  --brand:        #3182F6;
+  --brand-hover:  #1E6BE0;
+  --brand-active: #1A60C9;
+  --brand-subtle: #EEF3FF;
+  --brand-border: #CFE0FB;
+  --brand-glow:   rgba(49, 130, 246, 0.18);
 
   /* ── Semantic ── */
-  --success:        #2FCA73;
-  --success-subtle: rgba(47, 202, 115, 0.12);
-  --warning:        #F5A623;
-  --warning-subtle: rgba(245, 166, 35, 0.12);
-  --error:          #F04452;
-  --error-subtle:   rgba(240, 68, 82, 0.12);
+  --success:        #16A34A;
+  --success-subtle: #ECFDF3;
+  --success-border: #BBF7D0;
+  --warning:        #D97706;
+  --warning-subtle: #FFF8EB;
+  --warning-border: #FDE68A;
+  --error:          #DC2626;
+  --error-subtle:   #FEF2F2;
+  --error-border:   #FECACA;
+  --danger:         #DC2626;
+  --danger-subtle:  #FEF2F2;
   --info:           #3182F6;
+  --info-subtle:    #EEF3FF;
 
-  /* ── Agent Status Colors (Linear-inspired) ── */
-  --status-idle:     #4E5867;
+  /* ── Agent Status (light-tuned) ── */
+  --status-idle:     #94A3B8;
   --status-thinking: #3182F6;
-  --status-analyzing:#F5A623;
-  --status-debating: #A855F7;
-  --status-deciding: #F59E0B;
-  --status-done:     #2FCA73;
+  --status-analyzing:#0EA5E9;
+  --status-debating: #8B5CF6;
+  --status-deciding: #D97706;
+  --status-done:     #16A34A;
 
   /* ── Typography ── */
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
     system-ui, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace,
     "SF Mono", Menlo, Consolas, monospace;
-
-  /* ── Numeric data (tabular figures for aligned prices) ── */
   --font-numeric: "Pretendard Variable", Pretendard, sans-serif;
   --font-feature-numeric: "tnum", "lnum";
 
   /* ── Radius ── */
-  --radius-sm:  6px;
-  --radius-md:  10px;
-  --radius-lg:  14px;
-  --radius-xl:  18px;
+  --radius-xs:  4px;
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  20px;
   --radius-2xl: 24px;
+  --radius-pill: 999px;
 
   /* ── Spacing (8-pt grid) ── */
   --space-1: 4px;
@@ -96,12 +112,13 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  /* ── Shadows (depth layers) ── */
-  --shadow-sm:  0 1px 2px rgba(0,0,0,0.4);
-  --shadow-md:  0 4px 12px rgba(0,0,0,0.5);
-  --shadow-lg:  0 8px 24px rgba(0,0,0,0.6);
-  --shadow-xl:  0 16px 48px rgba(0,0,0,0.7);
-  --shadow-focus: 0 0 0 3px rgba(49,130,246,0.35);
+  /* ── Shadows (light: thin & long) ── */
+  --shadow-sm:  0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md:  0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lg:  0 12px 32px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --shadow-xl:  0 24px 56px rgba(15, 23, 42, 0.12), 0 4px 10px rgba(15, 23, 42, 0.04);
+  --shadow-spotlight: 0 8px 24px rgba(49, 130, 246, 0.12);
+  --shadow-focus: 0 0 0 3px rgba(49, 130, 246, 0.20);
 
   /* ── Transitions ── */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -109,14 +126,106 @@
   --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
   --duration-fast:   120ms;
   --duration-base:   200ms;
-  --duration-slow:   350ms;
+  --duration-slow:   280ms;
+  --duration-page:   360ms;
+}
+
+/* ─────────────────────────────────────────────
+   Dark theme — Modern 2025/26 trend (Linear · Vercel · Toss inspired)
+   • Avoid pure black; use deep cool slate (#0E1014) with subtle blue undertone
+   • Layered surfaces via lighter overlays (Material-3 elevation pattern)
+   • Reduced saturation accents (-12% S) to ease eye strain
+   • Korean market convention preserved (red=up, blue=down)
+   • WCAG AA: text-primary 14:1, secondary 7.5:1, tertiary 4.6:1
+   Apply via <html data-theme="dark"> (set by ThemeProvider/init script).
+───────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  /* ── Backgrounds (4-tier elevation) ── */
+  --bg-canvas:    #0B0D11;   /* 페이지 베이스 — 딥 슬레이트, 살짝 블루 */
+  --bg-base:      #0B0D11;   /* alias */
+  --bg-surface:   #14171C;   /* 카드, 패널 */
+  --bg-elevated:  #1A1E25;   /* 떠있는 카드 (overlay 8%) */
+  --bg-overlay:   #232831;   /* 입력, 비활성, 호버 */
+  --bg-input:     #161A20;   /* 입력 필드 */
+  --bg-muted:     #1A1E25;   /* 보조 영역 */
+  --bg-spotlight: rgba(77, 141, 239, 0.10);   /* brand 10% tint */
+  --bg-scrim:     rgba(0, 0, 0, 0.72);        /* 모달 dim */
+
+  /* ── Borders (white alpha for clean elevation lines) ── */
+  --border-subtle:  rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-strong:  rgba(255, 255, 255, 0.16);
+  --border-focus:   #4D8DEF;
+
+  /* ── Text (4 step, never pure white) ── */
+  --text-primary:    #ECEEF2;   /* 본문/헤더 (14:1) */
+  --text-secondary:  #B6BCC7;   /* 라벨/설명 (7.5:1) */
+  --text-tertiary:   #6E7682;   /* 메타/placeholder (4.6:1) */
+  --text-quaternary: #4A4F58;   /* disabled */
+  --text-inverse:    #0B0D11;   /* 컬러 배경 위 (브랜드 버튼 등) */
+
+  /* ── Korean Market Signal (dark-tuned: slightly desaturated for low-light) ── */
+  --bull:        #FF5A6B;    /* 상승 — 살짝 라이트 */
+  --bull-muted:  #E5384A;
+  --bull-subtle: rgba(255, 90, 107, 0.12);
+  --bull-border: rgba(255, 90, 107, 0.28);
+  --bull-glow:   rgba(255, 90, 107, 0.22);
+
+  --bear:        #4D8DEF;    /* 하락 — Toss 톤 라이트 변형 */
+  --bear-muted:  #1F6FEB;
+  --bear-subtle: rgba(77, 141, 239, 0.12);
+  --bear-border: rgba(77, 141, 239, 0.28);
+  --bear-glow:   rgba(77, 141, 239, 0.22);
+
+  --hold:        #8B95A1;
+  --hold-subtle: rgba(139, 149, 161, 0.12);
+  --hold-border: rgba(139, 149, 161, 0.22);
+
+  /* ── Brand ── */
+  --brand:        #4D8DEF;   /* 라이트의 #3182F6를 다크에서 +12% L */
+  --brand-hover:  #6FA1F4;
+  --brand-active: #3F7DD9;
+  --brand-subtle: rgba(77, 141, 239, 0.12);
+  --brand-border: rgba(77, 141, 239, 0.28);
+  --brand-glow:   rgba(77, 141, 239, 0.24);
+
+  /* ── Semantic ── */
+  --success:        #34D399;
+  --success-subtle: rgba(52, 211, 153, 0.12);
+  --success-border: rgba(52, 211, 153, 0.28);
+  --warning:        #FBBF24;
+  --warning-subtle: rgba(251, 191, 36, 0.12);
+  --warning-border: rgba(251, 191, 36, 0.28);
+  --error:          #F87171;
+  --error-subtle:   rgba(248, 113, 113, 0.12);
+  --error-border:   rgba(248, 113, 113, 0.28);
+  --danger:         #F87171;
+  --danger-subtle:  rgba(248, 113, 113, 0.12);
+  --info:           #4D8DEF;
+  --info-subtle:    rgba(77, 141, 239, 0.12);
+
+  /* ── Agent Status ── */
+  --status-idle:     #6E7682;
+  --status-thinking: #4D8DEF;
+  --status-analyzing:#38BDF8;
+  --status-debating: #A78BFA;
+  --status-deciding: #FBBF24;
+  --status-done:     #34D399;
+
+  /* ── Shadows (dark: deeper but soft) ── */
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.50);
+  --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-lg:  0 12px 32px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-xl:  0 24px 56px rgba(0, 0, 0, 0.72), 0 4px 10px rgba(0, 0, 0, 0.45);
+  --shadow-spotlight: 0 8px 24px rgba(77, 141, 239, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(77, 141, 239, 0.35);
 }
 
 /* ─────────────────────────────────────────────
    Tailwind v4 theme extension
 ───────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--bg-base);
+  --color-background: var(--bg-canvas);
   --color-foreground: var(--text-primary);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -132,38 +241,43 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
 
 body {
-  background-color: var(--bg-base);
+  background-color: var(--bg-canvas);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
-  /* Prevent layout shift during font load */
   font-display: optional;
 }
 
 /* ─────────────────────────────────────────────
-   Scrollbar (Vercel/Linear style — subtle)
+   Scrollbar (subtle, light-tuned)
 ───────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12);
+  background: var(--border-default);
   border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.20);
+  background: var(--border-strong);
+  background-clip: content-box;
 }
 
 /* ─────────────────────────────────────────────
@@ -171,7 +285,7 @@ body {
 ───────────────────────────────────────────── */
 ::selection {
   background: var(--brand-subtle);
-  color: var(--text-primary);
+  color: var(--brand-active);
 }
 
 /* ─────────────────────────────────────────────
@@ -181,6 +295,17 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+
+/* Prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ─────────────────────────────────────────────
@@ -193,14 +318,13 @@ body {
 }
 
 /* ─────────────────────────────────────────────
-   Utility: Glass card (Toss modal / Linear panel)
-   backdrop-blur + semi-transparent bg + bright border
+   Utility: Glass card (light-tuned)
 ───────────────────────────────────────────── */
 .glass {
-  background: rgba(20, 21, 24, 0.75);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid var(--border-default);
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-subtle);
 }
 
 /* ─────────────────────────────────────────────
@@ -211,14 +335,14 @@ body {
 .price-flat { color: var(--hold); }
 
 /* ─────────────────────────────────────────────
-   Utility: Glow effects for active states
+   Utility: Glow (subtle on light)
 ───────────────────────────────────────────── */
-.glow-bull { box-shadow: 0 0 20px var(--bull-glow); }
-.glow-bear { box-shadow: 0 0 20px var(--bear-glow); }
-.glow-brand { box-shadow: 0 0 20px var(--brand-glow); }
+.glow-bull { box-shadow: 0 0 24px var(--bull-glow); }
+.glow-bear { box-shadow: 0 0 24px var(--bear-glow); }
+.glow-brand { box-shadow: 0 0 24px var(--brand-glow); }
 
 /* ─────────────────────────────────────────────
-   Utility: Agent status dot (Linear-style)
+   Utility: Agent status dot
 ───────────────────────────────────────────── */
 .status-dot {
   display: inline-block;
@@ -241,7 +365,6 @@ body {
 
 /* ─────────────────────────────────────────────
    Utility: Number flash on price update
-   Usage: add/remove class via JS on price change
 ───────────────────────────────────────────── */
 @keyframes flash-up {
   0%   { background: var(--bull-subtle); }
@@ -251,11 +374,11 @@ body {
   0%   { background: var(--bear-subtle); }
   100% { background: transparent; }
 }
-.flash-up   { animation: flash-up   0.6s var(--ease-out-expo) forwards; }
-.flash-down { animation: flash-down 0.6s var(--ease-out-expo) forwards; }
+.flash-up   { animation: flash-up   0.9s var(--ease-out-expo) forwards; }
+.flash-down { animation: flash-down 0.9s var(--ease-out-expo) forwards; }
 
 /* ─────────────────────────────────────────────
-   Utility: Skeleton shimmer (Vercel-style)
+   Utility: Skeleton shimmer (light)
 ───────────────────────────────────────────── */
 @keyframes shimmer {
   from { background-position: -200% 0; }
@@ -264,9 +387,9 @@ body {
 .skeleton {
   background: linear-gradient(
     90deg,
-    var(--bg-surface) 0%,
-    var(--bg-elevated) 50%,
-    var(--bg-surface) 100%
+    var(--bg-overlay) 0%,
+    var(--bg-muted) 50%,
+    var(--bg-overlay) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 1.6s ease-in-out infinite;
@@ -274,13 +397,13 @@ body {
 }
 
 /* ─────────────────────────────────────────────
-   Utility: Sidebar active item (Linear-style)
+   Utility: Sidebar nav item
 ───────────────────────────────────────────── */
 .nav-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-size: 13px;
@@ -290,31 +413,32 @@ body {
   cursor: pointer;
 }
 .nav-item:hover {
-  background: var(--bg-elevated);
+  background: var(--bg-overlay);
   color: var(--text-primary);
 }
 .nav-item.active {
-  background: rgba(49, 130, 246, 0.10);
-  color: var(--brand);
+  background: var(--brand-subtle);
+  color: var(--brand-active);
+  font-weight: 600;
 }
 
 /* ─────────────────────────────────────────────
-   Utility: Market ticker chip (KOSPI/KOSDAQ bar)
+   Utility: Market ticker chip
 ───────────────────────────────────────────── */
 .ticker-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: var(--bg-elevated);
+  background: var(--bg-overlay);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 /* ─────────────────────────────────────────────
-   Activity feed (LangSmith trace / Linear activity)
+   Utility: Activity feed line
 ───────────────────────────────────────────── */
 .activity-line {
   position: absolute;
@@ -326,10 +450,95 @@ body {
 }
 
 /* ─────────────────────────────────────────────
-   Candlestick chart conventions
-   Korean: red=up (#F04452), blue=down (#2B7EF5)
-   Wick: same color, 1px
+   Candlestick chart conventions (Korean)
 ───────────────────────────────────────────── */
 .candle-up   { fill: var(--bull); stroke: var(--bull); }
 .candle-down { fill: var(--bear); stroke: var(--bear); }
 .candle-flat { fill: var(--hold); stroke: var(--hold); }
+
+/* ─────────────────────────────────────────────
+   Reusable button surfaces (used by ui/Button.tsx
+   but also as utility classes)
+───────────────────────────────────────────── */
+.btn-primary {
+  background: var(--brand);
+  color: var(--text-inverse);
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background var(--duration-fast) ease, transform var(--duration-fast) ease;
+  cursor: pointer;
+}
+.btn-primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+.btn-primary:active { transform: scale(0.98); background: var(--brand-active); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: var(--bg-overlay); border-color: var(--border-strong); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-weight: 500;
+  font-size: 13px;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+  cursor: pointer;
+}
+.btn-ghost:hover { background: var(--bg-overlay); color: var(--text-primary); }
+
+/* ─────────────────────────────────────────────
+   Card surface helpers
+───────────────────────────────────────────── */
+.surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+.surface-elevated {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+.surface-spotlight {
+  background: var(--bg-spotlight);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ─────────────────────────────────────────────
+   Pill / Chip / Badge baseline
+───────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill-neutral { background: var(--bg-overlay); color: var(--text-secondary); border: 1px solid var(--border-subtle); }
+.pill-brand   { background: var(--brand-subtle); color: var(--brand-active); border: 1px solid var(--brand-border); }
+.pill-bull    { background: var(--bull-subtle); color: var(--bull-muted); border: 1px solid var(--bull-border); }
+.pill-bear    { background: var(--bear-subtle); color: var(--bear-muted); border: 1px solid var(--bear-border); }
+.pill-success { background: var(--success-subtle); color: var(--success); border: 1px solid var(--success-border); }
+.pill-warning { background: var(--warning-subtle); color: var(--warning); border: 1px solid var(--warning-border); }
+.pill-danger  { background: var(--danger-subtle); color: var(--danger); border: 1px solid var(--error-border); }

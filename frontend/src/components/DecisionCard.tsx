@@ -39,14 +39,14 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
         transition={SPRING}
         style={{
           background: "var(--bg-surface)",
-          border: `1px solid ${cfg.hex}44`,
+          border: `1px solid var(--border-default)`,
           borderRadius: "var(--radius-2xl)",
-          boxShadow: `0 0 32px ${cfg.glow}, var(--shadow-lg)`,
+          boxShadow: "var(--shadow-lg)",
           overflow: "hidden",
         }}
       >
-        {/* top color bar */}
-        <div style={{ height: 3, background: cfg.color, opacity: 0.9 }} />
+        {/* top color bar — slightly thicker for the new light surface */}
+        <div style={{ height: 6, background: cfg.color }} />
 
         <div style={{ padding: 20 }}>
           {/* Header */}
@@ -99,15 +99,15 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               style={{
-                background: "rgba(245,166,35,0.1)", border: "1px solid rgba(245,166,35,0.3)",
+                background: "var(--warning-subtle)", border: "1px solid var(--warning-border)",
                 borderRadius: "var(--radius-lg)", padding: "10px 14px", marginBottom: 12,
-                display: "flex", alignItems: "center", justifyContent: "space-between",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
               }}
             >
               <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)" }}>⚠ 인간 승인 필요</p>
-                <p style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 2 }}>
-                  고신뢰도 또는 대규모 포지션 — 최종 확인 필요
+                <p style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)" }}>승인이 필요해요</p>
+                <p style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 2, lineHeight: 1.5 }}>
+                  신뢰도가 높거나 한 번에 들어가는 자금이 커서, 직접 확인한 뒤 실행할 수 있어요.
                 </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -115,7 +115,7 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
                   <button
                     onClick={onOpenSettings}
                     style={{
-                      background: "var(--bg-elevated)", color: "var(--text-secondary)", fontSize: 10, fontWeight: 700,
+                      background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 10, fontWeight: 700,
                       padding: "6px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)",
                       cursor: "pointer",
                     }}
@@ -127,9 +127,9 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
                   <button
                     onClick={onHumanApproval}
                     style={{
-                      background: "var(--warning)", color: "#000", fontSize: 11, fontWeight: 700,
-                      padding: "6px 12px", borderRadius: "var(--radius-md)", border: "none",
-                      cursor: "pointer", flexShrink: 0,
+                      background: "var(--warning)", color: "var(--text-inverse)", fontSize: 11, fontWeight: 700,
+                      padding: "7px 14px", borderRadius: "var(--radius-md)", border: "none",
+                      cursor: "pointer", flexShrink: 0, boxShadow: "var(--shadow-sm)",
                     }}
                   >
                     검토하기
@@ -142,15 +142,15 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
           {guruEnabled && (
             <div
               style={{
-                background: "rgba(49,130,246,0.10)",
-                border: "1px solid rgba(49,130,246,0.28)",
+                background: "var(--brand-subtle)",
+                border: "1px solid var(--brand-border)",
                 borderRadius: "var(--radius-lg)",
                 padding: "10px 12px",
                 marginBottom: 12,
               }}
             >
-              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", marginBottom: 4 }}>
-                🧙 GURU 정책 레이어 적용
+              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--brand-active)", marginBottom: 4 }}>
+                GURU 정책이 함께 검토했어요
               </p>
               <p style={{ fontSize: 10, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                 성향: {guru?.risk_profile} · 최소신뢰도: {Math.round((guru?.min_confidence_to_act ?? 0) * 100)}% ·
@@ -173,9 +173,9 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings }: Deci
                     marginTop: 8,
                     padding: "5px 10px",
                     borderRadius: "var(--radius-md)",
-                    border: "1px solid rgba(49,130,246,0.35)",
-                    background: "rgba(49,130,246,0.12)",
-                    color: "var(--brand)",
+                    border: "1px solid var(--brand-border)",
+                    background: "var(--bg-surface)",
+                    color: "var(--brand-active)",
                     fontSize: 10,
                     fontWeight: 700,
                     cursor: "pointer",

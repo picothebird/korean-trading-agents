@@ -162,7 +162,7 @@ export default function MasterPage() {
         </header>
 
         {error && (
-          <div style={{ borderRadius: "var(--radius-lg)", border: "1px solid rgba(240,68,82,0.35)", background: "rgba(240,68,82,0.1)", color: "var(--bear)", padding: "9px 11px", fontSize: 12 }}>
+          <div style={{ borderRadius: "var(--radius-lg)", border: "1px solid var(--error-border)", background: "var(--error-subtle)", color: "var(--bear)", padding: "9px 11px", fontSize: 12 }}>
             {error}
           </div>
         )}
@@ -230,7 +230,7 @@ export default function MasterPage() {
                             onClick={() => handleDisabledChange(u, !u.disabled)}
                             style={{
                               border: "1px solid var(--border-default)",
-                              background: u.disabled ? "rgba(16,185,129,0.12)" : "rgba(240,68,82,0.1)",
+                              background: u.disabled ? "var(--success-subtle)" : "var(--error-subtle)",
                               color: u.disabled ? "var(--success)" : "var(--bear)",
                               borderRadius: 8,
                               fontSize: 11,

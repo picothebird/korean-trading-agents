@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { getStockChart } from "@/lib/api";
 import type { StockChartPoint } from "@/types";
+import { Empty } from "@/components/ui";
 
 type Timeframe = "1m" | "3m" | "6m" | "1y" | "2y";
 
@@ -140,7 +141,7 @@ export function StockChartPanel({
       id: `trade-${idx}-${m.timestamp}`,
       date: m.timestamp.slice(0, 10),
       type: m.side === "buy" ? "BUY" : "SELL",
-      color: m.side === "buy" ? "#22c55e" : "#ef4444",
+      color: m.side === "buy" ? "var(--bull)" : "var(--bear)",
       label: m.side === "buy" ? "체결 매수" : "체결 매도",
     }));
     return [...preds, ...trades].filter((m) => closeByDate.has(m.date));
@@ -149,10 +150,11 @@ export function StockChartPanel({
   return (
     <div
       style={{
-        background: "var(--bg-elevated)",
+        background: "var(--bg-surface)",
         borderRadius: "var(--radius-xl)",
-        border: "1px solid var(--border-subtle)",
-        padding: compact ? "10px 10px 8px" : "12px 12px 10px",
+        border: "1px solid var(--border-default)",
+        boxShadow: "var(--shadow-sm)",
+        padding: compact ? "10px 10px 8px" : "14px 14px 12px",
         marginTop: compact ? 0 : 10,
       }}
     >
@@ -201,19 +203,29 @@ export function StockChartPanel({
 
       {loading && (
         <div style={{ height: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>차트 불러오는 중...</p>
+          <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>차트를 불러오는 중…</p>
         </div>
       )}
 
       {!loading && error && (
-        <div style={{ height: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p style={{ fontSize: 11, color: "var(--bear)" }}>⚠ {error}</p>
+        <div style={{ minHeight: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Empty
+            icon="⚠"
+            title="차트를 불러오지 못했어요"
+            body={error}
+            compact
+          />
         </div>
       )}
 
       {!loading && !error && data.length === 0 && (
-        <div style={{ height: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>차트 데이터가 없습니다.</p>
+        <div style={{ minHeight: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Empty
+            icon="📈"
+            title="차트 데이터가 아직 없어요"
+            body="다른 기간을 선택하거나 잠시 뒤 다시 시도해주세요."
+            compact
+          />
         </div>
       )}
 
@@ -222,7 +234,7 @@ export function StockChartPanel({
           <div style={{ height: compact ? 145 : 190 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data} margin={{ top: 6, right: 10, left: 4, bottom: 2 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+                <CartesianGrid stroke="rgba(15,23,42,0.06)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
                   tickFormatter={fmtDate}
@@ -239,9 +251,9 @@ export function StockChartPanel({
                   width={48}
                 />
                 <Tooltip content={<PriceTooltip />} />
-                <Line type="monotone" dataKey="close" stroke="#3182F6" strokeWidth={2.2} dot={false} />
-                <Line type="monotone" dataKey="ma20" stroke="#F5A623" strokeWidth={1.2} dot={false} />
-                <Line type="monotone" dataKey="ma60" stroke="#8B95A1" strokeWidth={1.2} dot={false} strokeDasharray="4 4" />
+                <Line type="monotone" dataKey="close" stroke="var(--text-primary)" strokeWidth={2.2} dot={false} />
+                <Line type="monotone" dataKey="ma20" stroke="var(--brand)" strokeWidth={1.4} dot={false} />
+                <Line type="monotone" dataKey="ma60" stroke="var(--text-tertiary)" strokeWidth={1.2} dot={false} strokeDasharray="4 4" />
                 {mergedMarkers.map((m) => (
                   <ReferenceDot
                     key={m.id}
@@ -271,13 +283,13 @@ export function StockChartPanel({
                   formatter={(value: unknown) => [Number(value).toLocaleString("ko-KR"), "거래량"]}
                   labelFormatter={(v) => String(v)}
                 />
-                <Bar dataKey="volume" fill="rgba(49,130,246,0.42)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="volume" fill="var(--brand-border)" radius={[2, 2, 0, 0]} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
 
           <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 6 }}>
-            파랑 종가 · 주황 MA20 · 회색 MA60 · 점 표시: 예측/거래 포인트
+            검정 종가 · 파랑 MA20 · 회색 MA60 · 동그라미 표시: 예측 / 체결 포인트
           </p>
         </>
       )}

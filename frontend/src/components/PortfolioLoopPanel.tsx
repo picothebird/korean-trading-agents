@@ -7,6 +7,7 @@ import {
   startPortfolioLoop,
   stopPortfolioLoop,
 } from "@/lib/api";
+import { TabPills } from "@/components/ui";
 import type {
   AutoLoopLog,
   AutoLoopTradeRecord,
@@ -131,6 +132,8 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
   const [busy, setBusy] = useState(false);
   const [statusData, setStatusData] = useState<PortfolioLoopStatus | null>(null);
   const [uiLogs, setUiLogs] = useState<AutoLoopLog[]>([]);
+  type InnerTab = "settings" | "activity" | "trades";
+  const [innerTab, setInnerTab] = useState<InnerTab>("settings");
 
   const lastTradeKeyRef = useRef<string>("");
 
@@ -379,8 +382,8 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
             }}
             disabled={busy}
             style={{
-              border: "1px solid var(--border-default)",
-              background: settings.enabled ? "rgba(47,202,115,0.15)" : "var(--bg-elevated)",
+              border: settings.enabled ? "1px solid var(--success-border)" : "1px solid var(--border-default)",
+              background: settings.enabled ? "var(--success-subtle)" : "var(--bg-elevated)",
               color: settings.enabled ? "var(--success)" : "var(--text-secondary)",
               borderRadius: 99,
               padding: "5px 11px",
@@ -395,6 +398,23 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
         </div>
       </div>
 
+      {/* Internal tab pills — settings / activity / trades */}
+      <div style={{ marginBottom: 12 }}>
+        <TabPills<InnerTab>
+          ariaLabel="포트폴리오 루프 내부 탭"
+          size="sm"
+          fullWidth
+          value={innerTab}
+          onChange={(v) => setInnerTab(v)}
+          items={[
+            { value: "settings", label: "설정", icon: <span aria-hidden>⚙️</span> },
+            { value: "activity", label: "활동", icon: <span aria-hidden>📡</span> },
+            { value: "trades", label: "거래내역", icon: <span aria-hidden>📒</span> },
+          ]}
+        />
+      </div>
+
+      {innerTab === "settings" && (<>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "span 2" }}>
           <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>루프 이름</span>
@@ -652,7 +672,9 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           <span style={{ fontSize: 10, color: "var(--text-secondary)" }}>모의 거래</span>
         </label>
       </div>
+      </>)}
 
+      {innerTab === "activity" && (<>
       {statusData && (
         <div
           style={{
@@ -730,7 +752,9 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           </div>
         </div>
       </div>
+      </>)}
 
+      {innerTab === "trades" && (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
         <div
           style={{
@@ -781,7 +805,9 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           </div>
         </div>
       </div>
+      )}
 
+      {innerTab === "activity" && (
       <div
         style={{
           background: "var(--bg-elevated)",
@@ -804,6 +830,7 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           {mergedLogs.length === 0 && <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>아직 로그가 없습니다.</p>}
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -47,9 +47,9 @@ function StatusBadge({ connected, isMock }: { connected: boolean; isMock: boolea
       <span style={{
         fontSize: 10, fontWeight: 700, padding: "2px 8px",
         borderRadius: 99,
-        background: isMock ? "rgba(251,191,36,0.15)" : "rgba(34,197,94,0.15)",
-        color: isMock ? "#fbbf24" : "#22c55e",
-        border: `1px solid ${isMock ? "rgba(251,191,36,0.4)" : "rgba(34,197,94,0.4)"}`,
+        background: isMock ? "var(--warning-subtle)" : "var(--success-subtle)",
+        color: isMock ? "var(--warning)" : "var(--success)",
+        border: `1px solid ${isMock ? "var(--warning-border)" : "var(--success-border)"}`,
       }}>
         {isMock ? "모의투자" : "실전투자"}
       </span>
@@ -367,7 +367,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
           </div>
         </div>
         {status?.error && (
-          <div style={{ padding: "10px 20px", background: "rgba(239,68,68,0.08)" }}>
+          <div style={{ padding: "10px 20px", background: "var(--bear-subtle)" }}>
             <p style={{ fontSize: 11, color: "var(--bear)" }}>⚠ {status.error}</p>
             <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 4 }}>
               설정 패널에서 KIS API 키와 계좌번호를 입력해주세요.
@@ -379,8 +379,8 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   marginTop: 8,
                   padding: "5px 10px",
                   borderRadius: "var(--radius-md)",
-                  border: "1px solid rgba(239,68,68,0.35)",
-                  background: "rgba(239,68,68,0.14)",
+                  border: "1px solid var(--bear-border)",
+                  background: "var(--bear-subtle)",
                   color: "var(--bear)",
                   fontSize: 10,
                   fontWeight: 700,
@@ -393,7 +393,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
           </div>
         )}
         {!status?.error && status?.connected && (
-          <div style={{ padding: "10px 20px", background: "rgba(34,197,94,0.06)" }}>
+          <div style={{ padding: "10px 20px", background: "var(--bull-subtle)" }}>
             <p style={{ fontSize: 11, color: "var(--bull)" }}>
               ✓ API 연결 정상 {status.token_preview ? `· 토큰: ${status.token_preview}` : ""}
             </p>
@@ -502,7 +502,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-subtle)" }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>빠른 주문</p>
           {isMock && (
-            <p style={{ fontSize: 10, color: "#fbbf24", marginTop: 4 }}>
+            <p style={{ fontSize: 10, color: "var(--warning)", marginTop: 4, fontWeight: 600 }}>
               ⚠ 현재 모의투자 모드입니다. 실제 주문이 체결되지 않습니다.
             </p>
           )}
@@ -522,8 +522,8 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   style={{
                     padding: "4px 8px",
                     borderRadius: "var(--radius-md)",
-                    border: "1px solid rgba(245,166,35,0.4)",
-                    background: "rgba(245,166,35,0.14)",
+                    border: "1px solid var(--warning-border)",
+                    background: "var(--warning-subtle)",
                     color: "var(--warning)",
                     fontSize: 10,
                     fontWeight: 700,
@@ -574,10 +574,10 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                     flex: 1, padding: "9px 0",
                     borderRadius: "var(--radius-lg)",
                     border: `1px solid ${orderSide === side
-                      ? side === "buy" ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"
+                      ? side === "buy" ? "var(--bull-border)" : "var(--bear-border)"
                       : "var(--border-default)"}`,
                     background: orderSide === side
-                      ? side === "buy" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)"
+                      ? side === "buy" ? "var(--bull-subtle)" : "var(--bear-subtle)"
                       : "var(--bg-elevated)",
                     color: orderSide === side
                       ? side === "buy" ? "var(--bull)" : "var(--bear)"
@@ -678,8 +678,8 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   borderRadius: "var(--radius-lg)", border: "none",
                   background: !orderTicker.trim() || orderLoading || approvalLoading || hasPendingApproval
                     ? "var(--bg-elevated)"
-                    : orderSide === "buy" ? "rgba(34,197,94,0.8)" : "rgba(239,68,68,0.8)",
-                  color: !orderTicker.trim() || orderLoading || approvalLoading || hasPendingApproval ? "var(--text-tertiary)" : "#fff",
+                    : orderSide === "buy" ? "var(--bull)" : "var(--bear)",
+                  color: !orderTicker.trim() || orderLoading || approvalLoading || hasPendingApproval ? "var(--text-tertiary)" : "var(--text-inverse)",
                   fontSize: 14, fontWeight: 700, cursor: (!orderTicker.trim() || orderLoading || approvalLoading || hasPendingApproval) ? "not-allowed" : "pointer",
                   transition: "all 200ms",
                 }}
@@ -699,7 +699,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                 transition={SPRING}
                 style={{
                   background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)",
-                  padding: "14px 16px", border: `1px solid ${orderSide === "buy" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+                  padding: "14px 16px", border: `1px solid ${orderSide === "buy" ? "var(--bull-border)" : "var(--bear-border)"}`,
                 }}
               >
                 <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>
@@ -728,8 +728,8 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                     disabled={orderLoading || approvalLoading}
                     style={{
                       flex: 2, padding: "8px 0", borderRadius: "var(--radius-md)", border: "none",
-                      background: orderSide === "buy" ? "rgba(34,197,94,0.9)" : "rgba(239,68,68,0.9)",
-                      color: "#fff", fontSize: 12, fontWeight: 700, cursor: (orderLoading || approvalLoading) ? "not-allowed" : "pointer",
+                      background: orderSide === "buy" ? "var(--bull)" : "var(--bear)",
+                      color: "var(--text-inverse)", fontSize: 12, fontWeight: 700, cursor: (orderLoading || approvalLoading) ? "not-allowed" : "pointer",
                       opacity: (orderLoading || approvalLoading) ? 0.6 : 1,
                     }}
                   >
@@ -746,15 +746,15 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
               style={{
                 padding: "12px 14px",
                 borderRadius: "var(--radius-lg)",
-                background: "rgba(251,191,36,0.08)",
-                border: "1px solid rgba(251,191,36,0.35)",
+                background: "var(--warning-subtle)",
+                border: "1px solid var(--warning-border)",
                 display: "flex",
                 flexDirection: "column",
                 gap: 8,
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <p style={{ fontSize: 12, color: "#fbbf24", fontWeight: 700 }}>
+                <p style={{ fontSize: 12, color: "var(--warning)", fontWeight: 700 }}>
                   승인 요청 상태: {approvalRequest.status.toUpperCase()}
                 </p>
                 <button
@@ -763,9 +763,9 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                   style={{
                     padding: "4px 10px",
                     borderRadius: "var(--radius-md)",
-                    border: "1px solid rgba(251,191,36,0.4)",
-                    background: "rgba(251,191,36,0.16)",
-                    color: "#fbbf24",
+                    border: "1px solid var(--warning-border)",
+                    background: "var(--warning-subtle)",
+                    color: "var(--warning)",
                     fontSize: 11,
                     fontWeight: 600,
                     cursor: approvalLoading ? "not-allowed" : "pointer",
@@ -789,8 +789,8 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                       flex: 1,
                       padding: "9px 0",
                       borderRadius: "var(--radius-md)",
-                      border: "1px solid rgba(239,68,68,0.5)",
-                      background: "rgba(239,68,68,0.14)",
+                      border: "1px solid var(--bear-border)",
+                      background: "var(--bear-subtle)",
                       color: "var(--bear)",
                       fontSize: 12,
                       fontWeight: 700,
@@ -806,8 +806,8 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                       flex: 2,
                       padding: "9px 0",
                       borderRadius: "var(--radius-md)",
-                      border: "1px solid rgba(34,197,94,0.5)",
-                      background: "rgba(34,197,94,0.16)",
+                      border: "1px solid var(--bull-border)",
+                      background: "var(--bull-subtle)",
                       color: "var(--bull)",
                       fontSize: 12,
                       fontWeight: 700,
@@ -834,7 +834,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                 exit={{ opacity: 0 }}
                 style={{
                   padding: "10px 14px", borderRadius: "var(--radius-lg)",
-                  background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)",
+                  background: "var(--bull-subtle)", border: "1px solid var(--bull-border)",
                 }}
               >
                 <p style={{ fontSize: 12, color: "var(--bull)", fontWeight: 600 }}>✓ {orderResult}</p>
@@ -847,7 +847,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                 exit={{ opacity: 0 }}
                 style={{
                   padding: "10px 14px", borderRadius: "var(--radius-lg)",
-                  background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+                  background: "var(--bear-subtle)", border: "1px solid var(--bear-border)",
                 }}
               >
                 <p style={{ fontSize: 12, color: "var(--bear)", fontWeight: 600 }}>⚠ {orderError}</p>

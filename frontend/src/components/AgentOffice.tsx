@@ -75,9 +75,9 @@ export function AgentCard({ role, thought, isActive, index = 0 }: AgentCardProps
       }}
       transition={{ ...SPRING, delay: index * 0.055 }}
       style={{
-        background: isActive ? "var(--bg-elevated)" : isDone ? "var(--bg-surface)" : "var(--bg-base)",
-        border: `1px solid ${isActive ? "var(--border-focus)" : isDone ? "rgba(47,202,115,0.2)" : "var(--border-subtle)"}`,
-        boxShadow: isActive ? "0 0 0 1px var(--border-focus), var(--shadow-md)" : isDone ? "0 0 0 1px rgba(47,202,115,0.15)" : "none",
+        background: isActive ? "var(--bg-surface)" : isDone ? "var(--bg-surface)" : "var(--bg-overlay)",
+        border: `1px solid ${isActive ? "var(--brand-border)" : isDone ? "var(--success-border)" : "var(--border-subtle)"}`,
+        boxShadow: isActive ? "0 0 0 2px var(--brand-border), var(--shadow-md)" : isDone ? "var(--shadow-sm)" : "none",
         borderRadius: "var(--radius-xl)",
         padding: isIdle ? "10px" : "12px",
         position: "relative",
@@ -217,7 +217,7 @@ export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
   ];
 
   return (
-    <div style={{ height: "100%", overflowY: "auto", padding: "2px 0", fontFamily: "'VT323', 'Press Start 2P', monospace" }}>
+    <div style={{ height: "100%", overflowY: "auto", padding: "2px 0", fontFamily: "var(--font-mono)" }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginBottom: 8 }}>
         {flowCards.map((card) => {
           const pct = Math.round((card.done / card.total) * 100);
@@ -283,7 +283,7 @@ export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
                   marginBottom: 6,
                   position: "relative",
                   background: "rgba(12,14,22,0.72)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  border: "1px solid var(--border-default)",
                   borderRadius: 2,
                   padding: "5px 7px",
                 }}
@@ -378,9 +378,9 @@ export function AgentOffice({ thoughts, activeAgents }: AgentOfficeProps) {
                   animate={{ opacity: 1, scale: 1 }}
                   style={{
                     fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
-                    background: allDone ? "var(--success-subtle)" : "var(--bg-elevated)",
+                    background: allDone ? "var(--success-subtle)" : "var(--bg-overlay)",
                     color: allDone ? "var(--success)" : "var(--text-tertiary)",
-                    border: allDone ? "1px solid rgba(47,202,115,0.3)" : "1px solid var(--border-subtle)",
+                    border: allDone ? "1px solid var(--success-border)" : "1px solid var(--border-subtle)",
                   }}
                 >
                   {allDone ? "✓ 완료" : `${doneCount} / ${layer.roles.length}`}

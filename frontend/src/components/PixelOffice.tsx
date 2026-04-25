@@ -888,10 +888,10 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
         maxWidth: "100%",
         maxHeight: "100%",
         margin: "0 auto",
-        background: "linear-gradient(180deg, #121523 0%, #171a2d 100%)",
-        border: "2px solid rgba(145,133,255,0.28)",
-        borderRadius: 4,
-        boxShadow: "3px 3px 0 rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.04)",
+        background: "linear-gradient(180deg, #FAF6EE 0%, #F0E9D8 100%)",
+        border: "2px solid var(--border-strong)",
+        borderRadius: "var(--radius-md)",
+        boxShadow: "var(--shadow-md), inset 0 0 0 1px rgba(15,23,42,0.04)",
         overflow: "hidden",
       }}
     >
@@ -908,8 +908,8 @@ export function PixelOffice({ thoughts, activeAgents }: PixelOfficeProps) {
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          background: "repeating-linear-gradient(180deg, rgba(255,255,255,0.03) 0, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 3px)",
-          opacity: 0.26,
+          background: "repeating-linear-gradient(180deg, rgba(15,23,42,0.04) 0, rgba(15,23,42,0.04) 1px, transparent 1px, transparent 3px)",
+          opacity: 0.4,
           zIndex: 2,
         }}
       />

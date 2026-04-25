@@ -12,6 +12,7 @@ import { PixelOffice } from "@/components/PixelOffice";
 import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
 import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
+import { TabPills, OnboardingTour, type CoachStep, BrandMark, BrandLockup } from "@/components/ui";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest,
@@ -485,7 +486,7 @@ function TickerSearchInput({
               border: "1px solid var(--border-default)",
               borderRadius: "var(--radius-lg)",
               overflow: "hidden",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+              boxShadow: "var(--shadow-lg)",
               maxHeight: 220,
               overflowY: "auto",
             }}
@@ -554,7 +555,7 @@ function HumanApprovalModal({
         position: "fixed",
         inset: 0,
         zIndex: 200,
-        background: "rgba(12,13,16,0.88)",
+        background: "var(--bg-scrim)",
         backdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",
@@ -650,7 +651,7 @@ function HumanApprovalModal({
               borderRadius: "var(--radius-lg)",
               background: cfg.color,
               border: "none",
-              color: "#fff",
+              color: "var(--text-inverse)",
               fontSize: 13,
               fontWeight: 700,
               cursor: "pointer",
@@ -1051,7 +1052,7 @@ export default function Home() {
           minHeight: "100vh",
           display: "grid",
           placeItems: "center",
-          background: "var(--bg-base)",
+          background: "var(--bg-canvas)",
           color: "var(--text-secondary)",
           fontSize: 14,
         }}
@@ -1070,23 +1071,21 @@ export default function Home() {
           placeItems: "center",
           padding: 24,
           background:
-            "radial-gradient(1200px 600px at -10% -10%, rgba(49,130,246,0.16), transparent 60%), radial-gradient(1000px 500px at 110% 20%, rgba(16,185,129,0.14), transparent 55%), var(--bg-base)",
+            "radial-gradient(1200px 600px at -10% -10%, rgba(49,130,246,0.10), transparent 60%), radial-gradient(1000px 500px at 110% 20%, rgba(16,185,129,0.08), transparent 55%), var(--bg-canvas)",
         }}
       >
         <div
           style={{
             width: "min(720px, 100%)",
-            border: "1px solid var(--border-subtle)",
+            border: "1px solid var(--border-default)",
             borderRadius: "var(--radius-2xl)",
             padding: 28,
             background: "var(--bg-surface)",
-            boxShadow: "0 24px 60px rgba(0, 0, 0, 0.25)",
+            boxShadow: "var(--shadow-lg)",
           }}
         >
-          <p style={{ color: "var(--brand)", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            Korean Trading Agents
-          </p>
-          <h1 style={{ marginTop: 8, fontSize: 34, lineHeight: 1.1, color: "var(--text-primary)" }}>
+          <BrandLockup size={44} />
+          <h1 style={{ marginTop: 18, fontSize: 34, lineHeight: 1.1, color: "var(--text-primary)" }}>
             유저 등급 기반 AI 트레이딩 워크스페이스
           </h1>
           <p style={{ marginTop: 12, color: "var(--text-secondary)", lineHeight: 1.6, fontSize: 14 }}>
@@ -1099,8 +1098,8 @@ export default function Home() {
               style={{
                 marginTop: 16,
                 borderRadius: "var(--radius-lg)",
-                border: "1px solid rgba(240,68,82,0.3)",
-                background: "rgba(240,68,82,0.1)",
+                border: "1px solid var(--error-border)",
+                background: "var(--error-subtle)",
                 padding: "10px 12px",
                 color: "var(--bear)",
                 fontSize: 12,
@@ -1153,9 +1152,17 @@ export default function Home() {
         flexDirection: isNarrowLayout ? "column" : "row",
         height: "100vh",
         overflow: "hidden",
-        background: "var(--bg-base)",
+        background: "var(--bg-canvas)",
       }}
     >
+      {/* Onboarding tour — first-visit only */}
+      <OnboardingTour
+        steps={[
+          { selector: '[data-tour="search"]', title: "1. 종목을 골라요", body: "관심 있는 한국 주식의 이름이나 6자리 코드로 검색하면 가격·차트가 바로 표시돼요.", placement: "bottom" },
+          { selector: '[data-tour="tab-nav"]', title: "2. 작업을 선택해요", body: "분석은 AI 에이전트 9명이 함께 검토하고, 백테스트·매매·포트폴리오로 자유롭게 전환할 수 있어요.", placement: "bottom" },
+          { selector: '[data-tour="console"]', title: "3. AI가 일하는 모습을 봐요", body: "오른쪽에서 에이전트들의 실시간 사고와 결정을 확인할 수 있어요. 분석을 시작하면 자동으로 활성화돼요.", placement: "left" },
+        ] satisfies CoachStep[]}
+      />
       {/* ═══════════════════════════════════════════════════════ */}
       {/* LEFT PANEL — Toss-style stock + controls               */}
       {/* ═══════════════════════════════════════════════════════ */}
@@ -1185,24 +1192,10 @@ export default function Home() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "var(--radius-md)",
-                background: "var(--brand)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 16,
-                flexShrink: 0,
-              }}
-            >
-              🤖
-            </div>
+            <BrandMark size={32} />
             <div>
-              <p style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.2 }}>Korean Trading</p>
-              <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>AI 멀티에이전트 투자 시스템</p>
+              <p style={{ fontSize: 14, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.2, letterSpacing: "0.04em" }}>KTA</p>
+              <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>한국 트레이딩 에이전트</p>
             </div>
           </div>
 
@@ -1281,7 +1274,7 @@ export default function Home() {
           }}
         >
           {/* Stock search + popular tickers */}
-          <div style={{ marginBottom: 10 }}>
+          <div data-tour="search" style={{ marginBottom: 10 }}>
             <TickerSearchInput
               ticker={ticker}
               companyName={companyName}
@@ -1296,7 +1289,7 @@ export default function Home() {
                 onClick={toggleFavorite}
                 style={{
                   border: "1px solid var(--border-default)",
-                  background: isFavorite ? "rgba(245,166,35,0.14)" : "transparent",
+                  background: isFavorite ? "var(--warning-subtle)" : "transparent",
                   color: isFavorite ? "var(--warning)" : "var(--text-tertiary)",
                   borderRadius: 99,
                   padding: "3px 9px",
@@ -1321,7 +1314,7 @@ export default function Home() {
                         padding: "4px 10px",
                         borderRadius: 99,
                         border: `1px solid ${ticker === code ? "var(--warning)" : "var(--border-default)"}`,
-                        background: ticker === code ? "rgba(245,166,35,0.14)" : "transparent",
+                        background: ticker === code ? "var(--warning-subtle)" : "transparent",
                         color: ticker === code ? "var(--warning)" : "var(--text-secondary)",
                         fontSize: 10,
                         fontWeight: 600,
@@ -1399,64 +1392,33 @@ export default function Home() {
 
           {/* ── Pill Tab Navigation ──────────────────────────── */}
           <div
+            data-tour="tab-nav"
             style={{
               display: "flex",
-              gap: 4,
               padding: "12px 0 10px",
               borderBottom: "1px solid var(--border-subtle)",
               marginBottom: 14,
               flexShrink: 0,
             }}
           >
-            {(["analysis", "backtest", "trading", "portfolio"] as Tab[]).map((t) => {
-              const active = tab === t;
-              const tabIcon = t === "analysis" ? "🔍" : t === "backtest" ? "📊" : t === "trading" ? "💰" : "🧺";
-              const tabLabel = t === "analysis" ? "분석" : t === "backtest" ? "백테스트" : t === "trading" ? "매매" : "포트폴리오";
-              return (
-                <button
-                  key={t}
-                  onClick={() => handleTabChange(t)}
-                  style={{
-                    flex: 1,
-                    padding: "8px 0",
-                    borderRadius: "var(--radius-md)",
-                    border: "none",
-                    background: active ? "var(--brand)" : "var(--bg-elevated)",
-                    color: active ? "#fff" : "var(--text-secondary)",
-                    fontSize: 11,
-                    fontWeight: active ? 700 : 400,
-                    cursor: "pointer",
-                    transition: "all 200ms var(--ease-out-expo)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 5,
-                    position: "relative",
-                  }}
-                >
-                  <span>{tabIcon}</span>
-                  <span>{tabLabel}</span>
-                  {t === "analysis" && activeCount > 0 && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 2,
-                        right: 4,
-                        fontSize: 8,
-                        fontWeight: 700,
-                        padding: "1px 4px",
-                        borderRadius: 99,
-                        background: active ? "rgba(255,255,255,0.3)" : "var(--brand)",
-                        color: "#fff",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {activeCount}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            <TabPills<Tab>
+              ariaLabel="작업 영역 선택"
+              fullWidth
+              size="md"
+              value={tab}
+              onChange={(v) => handleTabChange(v)}
+              items={[
+                { value: "analysis", label: "분석", icon: <span aria-hidden>🔍</span>, badge: activeCount > 0 ? (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
+                    background: "var(--brand)", color: "var(--text-inverse)", lineHeight: 1.4, marginLeft: 2,
+                  }}>{activeCount}</span>
+                ) : undefined },
+                { value: "backtest", label: "백테스트", icon: <span aria-hidden>📊</span> },
+                { value: "trading", label: "매매", icon: <span aria-hidden>💰</span> },
+                { value: "portfolio", label: "포트폴리오", icon: <span aria-hidden>🧺</span> },
+              ]}
+            />
           </div>
 
           {/* ── Tab content ─────────────────────────────────── */}
@@ -1482,7 +1444,7 @@ export default function Home() {
                       borderRadius: "var(--radius-xl)",
                       border: "none",
                       background: isRunning ? "var(--bg-elevated)" : "var(--brand)",
-                      color: isRunning ? "var(--text-tertiary)" : "#fff",
+                      color: isRunning ? "var(--text-tertiary)" : "var(--text-inverse)",
                       fontSize: 14,
                       fontWeight: 700,
                       cursor: isRunning ? "not-allowed" : "pointer",
@@ -1549,8 +1511,8 @@ export default function Home() {
                         gap: 8,
                         padding: "10px 12px",
                         borderRadius: "var(--radius-lg)",
-                        background: "rgba(240,68,82,0.1)",
-                        border: "1px solid rgba(240,68,82,0.25)",
+                        background: "var(--error-subtle)",
+                        border: "1px solid var(--error-border)",
                       }}
                     >
                       <span style={{ fontSize: 14 }}>⚠️</span>
@@ -1724,7 +1686,7 @@ export default function Home() {
                             padding: "12px 10px",
                             borderRadius: "var(--radius-xl)",
                             border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
-                            background: active ? "rgba(49,130,246,0.08)" : "var(--bg-elevated)",
+                            background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
                             cursor: "pointer",
                             textAlign: "left",
                             transition: "all 150ms",
@@ -1861,7 +1823,7 @@ export default function Home() {
                       borderRadius: "var(--radius-xl)",
                       border: "none",
                       background: btLoading ? "var(--bg-elevated)" : "var(--brand)",
-                      color: btLoading ? "var(--text-tertiary)" : "#fff",
+                      color: btLoading ? "var(--text-tertiary)" : "var(--text-inverse)",
                       fontSize: 13,
                       fontWeight: 700,
                       cursor: btLoading ? "not-allowed" : "pointer",
@@ -1930,13 +1892,13 @@ export default function Home() {
                                   flexShrink: 0,
                                   background:
                                     p.signal === "BUY"
-                                      ? "rgba(47,202,115,0.15)"
+                                      ? "var(--bull-subtle)"
                                       : p.signal === "SELL"
-                                      ? "rgba(240,68,82,0.15)"
+                                      ? "var(--bear-subtle)"
                                       : "var(--bg-surface)",
                                   color:
                                     p.signal === "BUY"
-                                      ? "var(--success)"
+                                      ? "var(--bull)"
                                       : p.signal === "SELL"
                                       ? "var(--bear)"
                                       : "var(--text-tertiary)",
@@ -1995,8 +1957,8 @@ export default function Home() {
                         gap: 8,
                         padding: "10px 12px",
                         borderRadius: "var(--radius-lg)",
-                        background: "rgba(240,68,82,0.1)",
-                        border: "1px solid rgba(240,68,82,0.25)",
+                        background: "var(--error-subtle)",
+                        border: "1px solid var(--error-border)",
                       }}
                     >
                       <span style={{ fontSize: 14 }}>⚠️</span>
@@ -2145,6 +2107,7 @@ export default function Home() {
       {/* RIGHT PANEL — Pixel Agent Office                       */}
       {/* ═══════════════════════════════════════════════════════ */}
       <main
+        data-tour="console"
         style={{
           width: isNarrowLayout ? "100%" : "50%",
           minWidth: 0,
@@ -2152,37 +2115,39 @@ export default function Home() {
           flexDirection: "column",
           height: isNarrowLayout ? "44vh" : "100vh",
           overflow: "hidden",
-          background: "var(--bg-base)",
+          background: "var(--bg-canvas)",
         }}
       >
         {/* ── Right panel header ─────────────────────────────── */}
         <div
           style={{
             padding: "12px 16px",
-            borderBottom: "1px solid var(--border-subtle)",
+            borderBottom: "1px solid var(--border-default)",
             flexShrink: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            background: "linear-gradient(180deg, rgba(116,111,255,0.14) 0%, rgba(14,15,20,0.9) 100%)",
+            background: "linear-gradient(180deg, var(--brand-subtle) 0%, var(--bg-canvas) 100%)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(231,226,255,0.94)", letterSpacing: "0.08em" }}>
-              PIXEL AGENT CONTROL ROOM
+            <BrandMark size={20} />
+            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--brand-active)", letterSpacing: "0.08em" }}>
+              에이전트 컨트롤룸
             </p>
             <span
               style={{
                 fontSize: 9,
-                color: "rgba(187,176,255,0.95)",
-                background: "rgba(16,17,26,0.88)",
-                padding: "2px 7px",
-                borderRadius: 2,
-                border: "1px solid rgba(145,133,255,0.35)",
+                color: "var(--brand-active)",
+                background: "var(--bg-surface)",
+                padding: "2px 8px",
+                borderRadius: 99,
+                border: "1px solid var(--brand-border)",
                 letterSpacing: "0.06em",
+                fontWeight: 600,
               }}
             >
-              DATA | DEBATE | DECISION
+              DATA · DEBATE · DECISION
             </span>
           </div>
 

@@ -11,6 +11,7 @@ import {
   setAccessToken,
 } from "@/lib/api";
 import type { UserRole } from "@/types";
+import { BrandLockup } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -105,23 +106,21 @@ export default function LoginPage() {
         placeItems: "center",
         padding: 20,
         background:
-          "radial-gradient(900px 400px at 10% -10%, rgba(49,130,246,0.2), transparent 60%), radial-gradient(900px 450px at 100% 10%, rgba(16,185,129,0.16), transparent 60%), var(--bg-base)",
+          "radial-gradient(900px 400px at 10% -10%, rgba(49,130,246,0.10), transparent 60%), radial-gradient(900px 450px at 100% 10%, rgba(16,185,129,0.08), transparent 60%), var(--bg-canvas)",
       }}
     >
       <section
         style={{
           width: "min(520px, 100%)",
-          border: "1px solid var(--border-subtle)",
+          border: "1px solid var(--border-default)",
           borderRadius: "var(--radius-2xl)",
           background: "var(--bg-surface)",
-          boxShadow: "0 24px 60px rgba(0, 0, 0, 0.22)",
+          boxShadow: "var(--shadow-lg)",
           padding: 24,
         }}
       >
-        <p style={{ color: "var(--brand)", fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Korean Trading Agents
-        </p>
-        <h1 style={{ marginTop: 8, fontSize: 30, lineHeight: 1.1, color: "var(--text-primary)" }}>
+        <BrandLockup size={40} />
+        <h1 style={{ marginTop: 18, fontSize: 30, lineHeight: 1.1, color: "var(--text-primary)" }}>
           {mode === "login" ? "로그인" : "회원가입"}
         </h1>
         <p style={{ marginTop: 8, fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
@@ -233,8 +232,8 @@ export default function LoginPage() {
             <div
               style={{
                 borderRadius: "var(--radius-lg)",
-                border: "1px solid rgba(240,68,82,0.3)",
-                background: "rgba(240,68,82,0.1)",
+                border: "1px solid var(--error-border)",
+                background: "var(--error-subtle)",
                 color: "var(--bear)",
                 fontSize: 12,
                 padding: "9px 11px",
@@ -252,7 +251,7 @@ export default function LoginPage() {
               border: "none",
               borderRadius: "var(--radius-lg)",
               background: loading ? "var(--bg-elevated)" : "var(--brand)",
-              color: loading ? "var(--text-tertiary)" : "#fff",
+              color: loading ? "var(--text-tertiary)" : "var(--text-inverse)",
               padding: "12px 14px",
               fontSize: 14,
               fontWeight: 800,
