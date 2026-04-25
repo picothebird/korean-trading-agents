@@ -72,6 +72,30 @@ from backtesting.backtest import run_simple_backtest, run_agent_backtest, format
 from data.market.fetcher import get_stock_info, get_technical_indicators, search_stocks, get_price_history
 
 
+# ── 백테스트 취소 시그널 레지스트리 ─────────────────────────────
+# 세션 ID 별 asyncio.Event. set() 되면 run_agent_backtest 루프에서 중단.
+_BACKTEST_CANCEL_EVENTS: dict[str, asyncio.Event] = {}
+
+
+def _get_backtest_cancel_event(session_id: str) -> asyncio.Event:
+    ev = _BACKTEST_CANCEL_EVENTS.get(session_id)
+    if ev is None:
+        ev = asyncio.Event()
+        _BACKTEST_CANCEL_EVENTS[session_id] = ev
+    return ev
+
+
+def _clear_backtest_cancel_event(session_id: str) -> None:
+    _BACKTEST_CANCEL_EVENTS.pop(session_id, None)
+
+
+class BacktestCancelled(Exception):
+    """사용자 요청으로 백테스트가 중단되었음."""
+
+    pass
+
+
+
 # ── 앱 시작 ──────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -527,6 +551,11 @@ async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: Back
         max_keep_hours=_RUNTIME_SESSION_MAX_KEEP_HOURS,
     )
     profile_snapshot = dict(runtime_profile)
+    cancel_event = _get_backtest_cancel_event(session_id)
+
+    def _check_cancelled() -> None:
+        if cancel_event.is_set():
+            raise BacktestCancelled("사용자에 의해 시뮬레이션이 중단되었습니다.")
 
     async def run():
         try:
@@ -538,12 +567,20 @@ async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: Back
                     initial_capital=req.initial_capital,
                     decision_interval_days=req.decision_interval_days,
                     session_id=session_id,
+                    cancel_check=_check_cancelled,
                 )
             await mark_runtime_session_done(
                 db,
                 session_id=session_id,
                 session_type=SESSION_TYPE_AGENT_BACKTEST,
                 result=_serialize_backtest_result(result),
+            )
+        except BacktestCancelled as ce:
+            await mark_runtime_session_error(
+                db,
+                session_id=session_id,
+                session_type=SESSION_TYPE_AGENT_BACKTEST,
+                error=str(ce),
             )
         except Exception as e:
             await mark_runtime_session_error(
@@ -553,12 +590,31 @@ async def start_agent_backtest(req: AgentBacktestRequest, background_tasks: Back
                 error=str(e),
             )
         finally:
+            _clear_backtest_cancel_event(session_id)
             from backend.core.events import get_thought_queue
             q = get_thought_queue(session_id)
             await q.put(None)  # 스트림 종료 시그널
 
     background_tasks.add_task(run)
     return {"session_id": session_id, "status": "started"}
+
+
+@app.post("/api/backtest/agent/cancel/{session_id}")
+async def cancel_agent_backtest(session_id: str, request: Request):
+    """진행 중인 AI 시뮬레이션을 사용자 요청으로 중단."""
+    user = await require_user(request)
+    db = _require_mongo_db()
+    session_meta = await get_runtime_session(db, session_id, SESSION_TYPE_AGENT_BACKTEST)
+    if session_meta is None:
+        raise HTTPException(status_code=404, detail="세션 없음")
+    if not _has_runtime_session_access(session_meta, user):
+        raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
+    ev = _BACKTEST_CANCEL_EVENTS.get(session_id)
+    if ev is None:
+        # 이미 끝난 세션 — idempotent 응답
+        return {"session_id": session_id, "status": "not_running"}
+    ev.set()
+    return {"session_id": session_id, "status": "cancelling"}
 
 
 @app.get("/api/backtest/agent/stream/{session_id}")

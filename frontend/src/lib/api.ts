@@ -206,6 +206,14 @@ export async function startAgentBacktest(params: {
   return res.json();
 }
 
+export async function cancelAgentBacktest(sessionId: string): Promise<{ session_id: string; status: string }> {
+  const res = await apiFetch(`${BASE_URL}/api/backtest/agent/cancel/${sessionId}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to cancel AI backtest");
+  return res.json();
+}
+
 export function streamAgentBacktest(
   sessionId: string,
   onProgress: (event: import("@/types").BacktestProgress) => void,

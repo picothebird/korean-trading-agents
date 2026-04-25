@@ -12,11 +12,11 @@ import { PixelOffice } from "@/components/PixelOffice";
 import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
 import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
-import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip, Dialog } from "@/components/ui";
+import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip, Dialog, Loader } from "@/components/ui";
 import { useRouter } from "next/navigation";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
-  getStock, searchStocks, startAgentBacktest, streamAgentBacktest,
+  getStock, searchStocks, startAgentBacktest, streamAgentBacktest, cancelAgentBacktest,
   getAccessToken, clearAccessToken, getMe,
 } from "@/lib/api";
 
@@ -733,6 +733,8 @@ export default function Home() {
   const [btDecisionIntervalDays, setBtDecisionIntervalDays] = useState(20);
   const [btProgress, setBtProgress] = useState<Array<{ date: string; signal: string; confidence: number; step: number; total: number }>>([]);
   const [btConfirmOpen, setBtConfirmOpen] = useState(false);
+  const [btSessionId, setBtSessionId] = useState<string | null>(null);
+  const [btCancelling, setBtCancelling] = useState(false);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
   const [approvalModal, setApprovalModal] = useState(false);
@@ -968,6 +970,7 @@ export default function Home() {
           initial_capital: normalizedCapital,
           decision_interval_days: Math.floor(normalizedInterval),
         });
+        setBtSessionId(session_id);
         const cleanup = streamAgentBacktest(
           session_id,
           (evt) => {
@@ -986,16 +989,34 @@ export default function Home() {
             }
           },
           (result) => { setBtResult(result); },
-          () => { setBtLoading(false); },
+          () => { setBtLoading(false); setBtSessionId(null); setBtCancelling(false); },
           (errMsg) => { setBtError(errMsg); }
         );
         btCleanupRef.current = cleanup;
       } catch (e: unknown) {
         setBtError(e instanceof Error ? e.message : "AI 시뮬레이션 요청 실패.");
         setBtLoading(false);
+        setBtSessionId(null);
       }
     }
   }, [ticker, btMode, btLoading, btStartDate, btEndDate, btInitialCapital, btDecisionIntervalDays, currentUser]);
+
+  const handleCancelBacktest = useCallback(async () => {
+    if (!btSessionId || btCancelling) return;
+    setBtCancelling(true);
+    try {
+      await cancelAgentBacktest(btSessionId);
+    } catch {
+      // 서버 이미 종료/접근 불가—로컬 정리로 계속 진행
+    } finally {
+      btCleanupRef.current?.();
+      btCleanupRef.current = null;
+      setBtLoading(false);
+      setBtSessionId(null);
+      setBtCancelling(false);
+      setBtError("사용자 요청으로 시뮬레이션을 중단했습니다.");
+    }
+  }, [btSessionId, btCancelling]);
 
   // Cleanup SSE connections on unmount
   useEffect(() => {
@@ -1423,13 +1444,7 @@ export default function Home() {
                   >
                     {isRunning ? (
                       <>
-                        <motion.span
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                          style={{ display: "inline-flex" }}
-                        >
-                          <Icon name="settings" size={14} decorative />
-                        </motion.span>
+                        <Loader size={16} center={false} />
                         분석 중...
                       </>
                     ) : (
@@ -1545,74 +1560,6 @@ export default function Home() {
                 ) : (
                   <AnalysisEmptyState isRunning={isRunning} activeCount={activeCount} />
                 )}
-
-                {/* System info */}
-                <div
-                  style={{
-                    background: "var(--bg-elevated)",
-                    borderRadius: "var(--radius-lg)",
-                    padding: "12px 14px",
-                    border: "1px solid var(--border-subtle)",
-                  }}
-                >
-                  <p style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-                    시스템 구성
-                  </p>
-                  {[
-                    ["Layer 1", "기술/펀더/감성/매크로 병렬 분석"],
-                    ["Layer 2", "강세 vs 약세 AI 토론"],
-                    ["Layer 3", "Kelly 기준 리스크 & 최종 결정"],
-                  ].map(([l, d]) => (
-                    <div key={l} style={{ display: "flex", gap: 7, alignItems: "flex-start", marginBottom: 5 }}>
-                      <span
-                        style={{
-                          fontSize: 8,
-                          fontWeight: 700,
-                          padding: "2px 5px",
-                          borderRadius: 99,
-                          background: "var(--brand-subtle)",
-                          color: "var(--brand)",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {l}
-                      </span>
-                      <p style={{ fontSize: 10, color: "var(--text-secondary)" }}>{d}</p>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => openSettings("analysis")}
-                      style={{
-                        padding: "5px 9px",
-                        borderRadius: "var(--radius-md)",
-                        border: "1px solid var(--border-default)",
-                        background: "var(--bg-surface)",
-                        color: "var(--text-secondary)",
-                        fontSize: 10,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      분석 설정
-                    </button>
-                    <button
-                      onClick={() => openSettings("llm")}
-                      style={{
-                        padding: "5px 9px",
-                        borderRadius: "var(--radius-md)",
-                        border: "1px solid var(--border-default)",
-                        background: "var(--bg-surface)",
-                        color: "var(--text-secondary)",
-                        fontSize: 10,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      LLM 설정
-                    </button>
-                  </div>
-                </div>
               </motion.div>
             )}
 
@@ -1808,16 +1755,34 @@ export default function Home() {
                 {/* Loading state */}
                 {btLoading && (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-                    <motion.span
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      style={{ display: "inline-flex", color: "var(--brand)" }}
-                    >
-                      <Icon name={btMode === "agent" ? "robot" : "settings"} size={36} strokeWidth={1.5} decorative />
-                    </motion.span>
-                    <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                      {btMode === "agent" ? "AI 에이전트가 과거 시점마다 판단하는 중…" : "시뮬레이션을 실행 중…"}
-                    </p>
+                    <Loader
+                      size={48}
+                      label={btMode === "agent" ? "AI 에이전트가 과거 시점마다 판단하는 중…" : "시뮬레이션을 실행 중…"}
+                    />
+                    {btMode === "agent" && btSessionId && (
+                      <button
+                        type="button"
+                        onClick={handleCancelBacktest}
+                        disabled={btCancelling}
+                        style={{
+                          marginTop: 4,
+                          padding: "8px 16px",
+                          borderRadius: "var(--radius-md)",
+                          border: "1px solid var(--bear)",
+                          background: btCancelling ? "var(--bg-elevated)" : "var(--bear-subtle, rgba(240,68,82,0.1))",
+                          color: "var(--bear)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: btCancelling ? "not-allowed" : "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <Icon name="x" size={12} decorative />
+                        {btCancelling ? "중단 요청 중…" : "시뮬레이션 중단"}
+                      </button>
+                    )}
 
                     {btMode === "agent" && btProgress.length > 0 && (
                       <div
@@ -1905,9 +1870,27 @@ export default function Home() {
                       </span>
                       <button
                         onClick={() => { setBtResult(null); setBtProgress([]); setBtError(null); }}
-                        style={{ fontSize: 9, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                        style={{
+                          marginLeft: "auto",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "#fff",
+                          background: "var(--brand)",
+                          border: "none",
+                          borderRadius: "var(--radius-md)",
+                          padding: "8px 14px",
+                          cursor: "pointer",
+                          boxShadow: "0 2px 10px var(--brand-glow)",
+                          transition: "transform 120ms ease, box-shadow 120ms ease",
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)"; }}
                       >
-                        ↩ 다시 설정
+                        <Icon name="settings" size={13} decorative />
+                        설정 변경하고 다시 실행
                       </button>
                     </div>
                     <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 10 }}>
@@ -2229,6 +2212,17 @@ export default function Home() {
         const decisionsEstimate = tradingDays > 0 ? Math.max(1, Math.ceil(tradingDays / interval)) : 0;
         const fmtKRW = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
         const intervalLabel = interval === 1 ? "매 거래일" : interval >= 20 ? `약 ${Math.round(interval / 20)}개월에 한 번` : interval >= 5 ? `약 ${(interval / 5).toFixed(0)}주에 한 번` : `${interval}거래일마다`;
+        // 토큰/비용 추정치 (gpt-5.5 기준 placeholder rate). 판단 1회당 입력 ≈ 4K, 출력 ≈ 0.8K 토큰 가정.
+        const inputTokensPerCall = 4000;
+        const outputTokensPerCall = 800;
+        const totalInputTokens = decisionsEstimate * inputTokensPerCall;
+        const totalOutputTokens = decisionsEstimate * outputTokensPerCall;
+        const totalTokens = totalInputTokens + totalOutputTokens;
+        // gpt-5.5 추정 단가 (USD per 1M tokens) — 실제 청구는 OpenAI 대시보드 기준
+        const inputRatePerMTok = 5.0;
+        const outputRatePerMTok = 15.0;
+        const estimatedUsd = (totalInputTokens * inputRatePerMTok + totalOutputTokens * outputRatePerMTok) / 1_000_000;
+        const fmtTokens = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : `${n}`;
         return (
           <Dialog
             open={btConfirmOpen}
@@ -2307,6 +2301,22 @@ export default function Home() {
                     <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
                       약 {decisionsEstimate}회 <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>(거래일 ≈ {tradingDays}일)</span>
                     </span>
+
+                    <span style={{ color: "var(--text-tertiary)" }}>예상 토큰 사용</span>
+                    <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                      약 {fmtTokens(totalTokens)} 토큰{" "}
+                      <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>
+                        (입력 {fmtTokens(totalInputTokens)} · 출력 {fmtTokens(totalOutputTokens)})
+                      </span>
+                    </span>
+
+                    <span style={{ color: "var(--text-tertiary)" }}>예상 비용</span>
+                    <span style={{ color: "var(--warning)", fontWeight: 700 }}>
+                      ≈ ${estimatedUsd.toFixed(estimatedUsd < 1 ? 3 : 2)} USD{" "}
+                      <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>
+                        (gpt-5.5 기준 추정치)
+                      </span>
+                    </span>
                   </>
                 )}
               </div>
@@ -2324,7 +2334,7 @@ export default function Home() {
                 }}
               >
                 {btMode === "agent"
-                  ? `각 판단 시점마다 LLM 호출이 1회 발생합니다. 약 ${decisionsEstimate}회의 OpenAI API 호출이 발생하므로 사용자의 OpenAI 키에 비용이 부과됩니다. 진행하시겠습니까?`
+                  ? `각 판단 시점마다 LLM 호출이 1회 발생합니다. 약 ${decisionsEstimate}회 호출 · 약 ${fmtTokens(totalTokens)} 토큰 · 예상 비용 ≈ $${estimatedUsd.toFixed(estimatedUsd < 1 ? 3 : 2)} USD가 사용자의 OpenAI 키에 청구됩니다. (실제 청구는 OpenAI 대시보드 기준)`
                   : "MA 교차 전략은 LLM을 사용하지 않으므로 API 비용이 발생하지 않습니다. 과거 가격 데이터만 사용합니다."}
               </div>
             </div>

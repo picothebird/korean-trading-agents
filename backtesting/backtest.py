@@ -238,6 +238,7 @@ async def run_agent_backtest(
     decision_interval_days: int = 20,
     session_id: str | None = None,
     on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
+    cancel_check: Callable[[], None] | None = None,
 ) -> BacktestResult:
     """
     AI 에이전트(기술적 분석) 기반 백테스트.
@@ -294,6 +295,8 @@ async def run_agent_backtest(
     step = 0
 
     for i, (dt, price_val) in enumerate(zip(close.index, close)):
+        if cancel_check is not None:
+            cancel_check()
         price = float(price_val)
         date_str = str(dt.date())
 
