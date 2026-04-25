@@ -57,6 +57,14 @@ export interface TradeDecision {
       bull_rounds: { round: number; argument: string; key_points: string[] }[];
       bear_rounds: { round: number; argument: string; key_points: string[] }[];
       rounds: number;
+      /** MS-S7: 토론 판정 점수 (백엔드 결정론적 계산) */
+      judge_score?: {
+        bull_score: number;
+        bear_score: number;
+        winner: "BULL" | "BEAR" | "DRAW" | string;
+        final_action?: string;
+        reasoning: string;
+      };
     };
     /** 리스크 매니저 상세 */
     risk?: {

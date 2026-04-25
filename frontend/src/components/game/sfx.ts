@@ -12,7 +12,7 @@
  * 무음 SSR-safe: window 미존재 시 no-op.
  */
 
-type SfxName = "click" | "select" | "thought" | "done";
+type SfxName = "click" | "select" | "thought" | "done" | "fanfare";
 
 let ctx: AudioContext | null = null;
 let enabled = true;
@@ -56,6 +56,12 @@ const SFX: Record<SfxName, ToneSpec[]> = {
   done: [
     { freq: 660, duration: 0.07, type: "triangle", gain: 0.13 },
     { freq: 990, duration: 0.09, type: "triangle", gain: 0.13 },
+  ],
+  // 최종 결정 팡파레 — 3 음 상승 (도-미-솔 비슷, 의식적 종결감)
+  fanfare: [
+    { freq: 523.25, duration: 0.12, type: "triangle", gain: 0.16 }, // C5
+    { freq: 659.25, duration: 0.12, type: "triangle", gain: 0.16 }, // E5
+    { freq: 783.99, duration: 0.22, type: "triangle", gain: 0.18 }, // G5
   ],
 };
 

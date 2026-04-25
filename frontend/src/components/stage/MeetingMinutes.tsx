@@ -264,9 +264,81 @@ function MinutesDebate({ decision }: { decision: TradeDecision }) {
   const bullRounds = debate.bull_rounds ?? [];
   const bearRounds = debate.bear_rounds ?? [];
   const rounds = Math.max(bullRounds.length, bearRounds.length, debate.rounds);
+  const judge = debate.judge_score;
 
   return (
     <Section index={2} title="강세 vs 약세 토론" hint={`${rounds}라운드`}>
+      {judge && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            gap: 8,
+            alignItems: "center",
+            padding: "8px 10px",
+            background: "var(--bg-overlay)",
+            border: "1px solid var(--stage-border)",
+            borderRadius: "var(--stage-radius)",
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ textAlign: "left" }}>
+            <span className="stage-label" style={{ color: "var(--bull)" }}>
+              강세
+            </span>
+            <div
+              className="stage-headline"
+              style={{
+                fontSize: 18,
+                color: judge.winner === "BULL" ? "var(--bull)" : "var(--text-secondary)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {judge.bull_score}점
+            </div>
+          </div>
+          <div
+            className="stage-label"
+            style={{
+              color:
+                judge.winner === "BULL"
+                  ? "var(--bull)"
+                  : judge.winner === "BEAR"
+                  ? "var(--bear)"
+                  : "var(--text-tertiary)",
+              fontWeight: 800,
+            }}
+          >
+            {judge.winner === "BULL" ? "▶ 강세" : judge.winner === "BEAR" ? "약세 ◀" : "무승부"}
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <span className="stage-label" style={{ color: "var(--bear)" }}>
+              약세
+            </span>
+            <div
+              className="stage-headline"
+              style={{
+                fontSize: 18,
+                color: judge.winner === "BEAR" ? "var(--bear)" : "var(--text-secondary)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {judge.bear_score}점
+            </div>
+          </div>
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              fontSize: 11,
+              color: "var(--text-tertiary)",
+              lineHeight: 1.5,
+              marginTop: 4,
+            }}
+          >
+            {judge.reasoning}
+          </div>
+        </div>
+      )}
       <div
         style={{
           display: "grid",

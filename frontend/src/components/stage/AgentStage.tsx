@@ -13,11 +13,13 @@
  * docs/AGENT_STAGE_REDESIGN_PROPOSAL.md §3, §4
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgentThought, TradeDecision } from "@/types";
 import { PhaserCanvas } from "@/components/game/PhaserCanvas";
 import { AgentTimeline } from "@/components/agent-timeline";
 import { useAgentStage, type StageMode, MANUAL_OVERRIDE_MS } from "@/stores/useAgentStage";
+import { playSfx } from "@/components/game/sfx";
+import { layerOfRole, AGENT_LABEL } from "@/lib/agentLabels";
 import { StageTopLine } from "./StageTopLine";
 import { StageProgress } from "./StageProgress";
 import { StageRecentStrip } from "./StageRecentStrip";
@@ -61,6 +63,54 @@ export function AgentStage({ thoughts, decision, onTryPaper }: AgentStageProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thoughts.length === 0]);
 
+  // MS-S6: SFX 트리거 + aria-live 안내.
+  // 단계별 첫 'done' 도착 → "select" / "done", 결정 도착 → "fanfare", 모드 변경 → "select".
+  const announcedRolesRef = useRef<Set<string>>(new Set());
+  const decisionPlayedRef = useRef(false);
+  const [liveMessage, setLiveMessage] = useState("");
+
+  useEffect(() => {
+    // 마지막 thought만 검사 — 새 done 발생 시 한 번만 trigger.
+    const last = thoughts[thoughts.length - 1];
+    if (!last) {
+      announcedRolesRef.current = new Set();
+      return;
+    }
+    if (last.status !== "done") return;
+    const key = last.role;
+    if (announcedRolesRef.current.has(key)) return;
+    announcedRolesRef.current.add(key);
+    const layer = layerOfRole(last.role);
+    // L1(분석가) → select, L2(연구원/PM) → done, L3(리스크/실행) → done
+    playSfx(layer === 0 ? "select" : "done");
+    const name = AGENT_LABEL[last.role] ?? last.role;
+    setLiveMessage(`${name} 분석 완료`);
+  }, [thoughts]);
+
+  // 결정 도착 시 팡파레 1회.
+  useEffect(() => {
+    if (!decision) {
+      decisionPlayedRef.current = false;
+      return;
+    }
+    if (decisionPlayedRef.current) return;
+    decisionPlayedRef.current = true;
+    playSfx("fanfare");
+    const labels: Record<string, string> = { BUY: "매수", SELL: "매도", HOLD: "관망" };
+    const label = labels[decision.action] ?? decision.action;
+    const score = Math.round(decision.confidence * 100);
+    setLiveMessage(`최종 결정 ${label} ${score}점`);
+  }, [decision]);
+
+  // 모드 변경 시 짧은 select.
+  const prevModeRef = useRef(mode);
+  useEffect(() => {
+    if (prevModeRef.current !== mode) {
+      prevModeRef.current = mode;
+      playSfx("select");
+    }
+  }, [mode]);
+
   return (
     <div
       className="agent-stage"
@@ -75,6 +125,25 @@ export function AgentStage({ thoughts, decision, onTryPaper }: AgentStageProps) 
       }}
       data-stage-mode={mode}
     >
+      {/* MS-S6: aria-live 무대 진행 알림 (스크린리더 전용) */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: "hidden",
+          clip: "rect(0,0,0,0)",
+          whiteSpace: "nowrap",
+          border: 0,
+        }}
+      >
+        {liveMessage}
+      </div>
       {/* 상단: 캔버스 + 사이드바 */}
       <div
         style={{

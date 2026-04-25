@@ -2900,3 +2900,50 @@ useEffect(() => {
 - **MS-S6** (?덉젙): SFX ?곌껐 ??遺꾩꽍媛 done ??"select", ?쇱슫??醫낅즺 ??"done", 理쒖쥌 寃곗젙 ??3-tone fanfare. aria-live ?대━??
 - **MS-S7** (?덉젙): `agents/orchestrator/orchestrator.py`??`debate.judge_score = {bull_score, bear_score, winner, reasoning}` ?꾨뱶 異붽?. ?꾨줎??`MinutesDebate`??寃곗젙? ?쇱슫???쒓컖??媛뺤“.
 
+
+
+## 짠0-octies. MS-S6 + MS-S7: ?ъ슫???묎렐???대━??+ ?좊줎 ?먯젙 ?먯닔
+
+### 짠0-octies.0  SFX ?몃━嫄?+ aria-live (MS-S6)
+
+- `frontend/src/components/game/sfx.ts`: `SfxName`??`"fanfare"` 異붽?, 3???곸듅 (C5?묮5?묰5).
+- `frontend/src/components/stage/AgentStage.tsx`:
+  - `announcedRolesRef: Set<string>` ??媛숈? ?먯씠?꾪듃媛 done?쇰줈 ??踰?sfx ?몃━嫄곕릺??寃껋쓣 諛⑹?.
+  - 留덉?留?thought媛 `status === "done"`?닿퀬 泥섏쓬 蹂대뒗 role?대㈃:
+    - L1 (遺꾩꽍媛) ??`playSfx("select")`
+    - L2 / L3 (?곌뎄?먃텾M쨌由ъ뒪??룹떎?? ??`playSfx("done")`
+    - aria-live message: `"{name} 遺꾩꽍 ?꾨즺"`
+  - decision ?꾩갑 ??1??`playSfx("fanfare")` + `"理쒖쥌 寃곗젙 留ㅼ닔 73??` ?덈궡.
+  - 紐⑤뱶 ?꾪솚 ??`prevModeRef`) `playSfx("select")`.
+  - sr-only `<div role="status" aria-live="polite">`濡??뚯꽦 異쒕젰 蹂댁옣.
+- thoughts媛 0?쇰줈 由ъ뀑?섎㈃ announcedRolesRef??珥덇린??????遺꾩꽍?먯꽌 ?뺤긽 ?숈옉.
+- decision??null濡??뚯븘?ㅻ㈃ `decisionPlayedRef.current = false`.
+
+### 짠0-octies.1  ?좊줎 ?먯젙 ?먯닔 backend (MS-S7)
+
+`agents/orchestrator/orchestrator.py`:
+
+- ?좉퇋 ?ы띁 `_compute_judge_score(analyst_details, pm_action) -> dict`:
+  - LLM ?몄텧 ?놁씠 寃곗젙濡좎쟻 怨꾩궛. 遺꾩꽍媛蹂?`signal/confidence`濡?媛뺤꽭/?쎌꽭 ?됯퇏 ?좊ː??異붿텧.
+  - `bull_score = mean(BUY confidences) 횞 100`, `bear_score = mean(SELL confidences) 횞 100` (媛곴컖 0~100??.
+  - winner ?먯젙: 5???댁긽 李⑥씠 ??`"BULL"`/`"BEAR"`, 洹?誘몃쭔? `"DRAW"`.
+  - reasoning: ?쒓뎅????以?("媛뺤꽭 遺꾩꽍媛 ?됯퇏 ?좊ː??75.0?먯씠 ?쎌꽭 50.0?먯쓣 遺꾨챸???욎꽠?덈떎.")
+  - return: `{bull_score, bear_score, winner, final_action, reasoning}`.
+- `debate_block`??`judge_score` ?ㅻ줈 二쇱엯 ??`TradeDecision.agents_summary.debate.judge_score`濡??꾨줎???꾨떖.
+- ?ㅻえ???뚯뒪?? `python -c "from agents.orchestrator.orchestrator import _compute_judge_score; ..."` ???뺤긽 異쒕젰 ?뺤씤.
+
+?꾨줎??
+- `frontend/src/types/index.ts`: `debate.judge_score?` ?꾨뱶 ???異붽?.
+- `frontend/src/components/stage/MeetingMinutes.tsx`??`MinutesDebate`:
+  - judge_score 議댁옱 ???쇱슫??移대뱶 ?꾩뿉 寃곗젙? 諛뺤뒪 ?뚮뜑 ??醫?媛뺤꽭 ?먯닔) 媛?대뜲(?뱀옄 ?쇰꺼) ???쎌꽭 ?먯닔) + ?섎떒 reasoning 以?
+  - winner ?됱긽: BULL=red(bull), BEAR=blue(bear), DRAW=tertiary.
+
+### 짠0-octies.2  寃利?
+
+- `python -c "..."` smoke: `{'bull_score': 75.0, 'bear_score': 50.0, 'winner': 'BULL', ...}` ?뺤긽.
+- `npx tsc --noEmit`: 0 errors.
+- `npx eslint src`: 0 errors / 0 warnings.
+- `npx next build`: 7/7 static pages.
+
+?대줈??`docs/AGENT_STAGE_REDESIGN_PROPOSAL.md`??MS-S0~S7 ???④퀎 援ы쁽 ?꾨즺.
+
