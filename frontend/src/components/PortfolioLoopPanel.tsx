@@ -450,6 +450,29 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
           </FieldCell>
           <FieldCell label="시드 종목" full hint="처음부터 관심 종목으로 지정하고 싶은 보유/후보입니다. 콤마나 공백으로 구분하세요." example="예: 005930, 000660 (종목코드 6자리)">
             <input type="text" value={settings.seedTickersText} onChange={(e) => setSettings((prev) => ({ ...prev, seedTickersText: e.target.value }))} placeholder="005930,000660" style={inputStyle} />
+            {/* 추천 시작 세트 (PF1) */}
+            <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+              {[
+                { name: "코스피 대형주 5종", tickers: "005930,000660,373220,207940,005380" },
+                { name: "고배당 5종", tickers: "055550,105560,086790,316140,138930" },
+                { name: "성장주 5종", tickers: "035420,035720,323410,377300,041510" },
+              ].map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => setSettings((prev) => ({ ...prev, seedTickersText: preset.tickers }))}
+                  title={preset.tickers}
+                  style={{
+                    padding: "4px 10px", borderRadius: 99,
+                    border: "1px solid var(--brand-border)",
+                    background: "var(--brand-subtle)", color: "var(--brand-active)",
+                    fontSize: 10, fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  ✨ {preset.name}
+                </button>
+              ))}
+            </div>
           </FieldCell>
         </FieldRow>
       </SettingsSection>

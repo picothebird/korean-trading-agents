@@ -759,6 +759,14 @@ function AnalysisEmptyState({
 // ── Main Page ────────────────────────────────────────────────────
 export default function Home() {
   const [tab, setTab] = useState<Tab>("analysis");
+  // 첫 진입 온보딩 (P3.P1)
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(null);
+  useEffect(() => {
+    try {
+      const done = typeof window !== "undefined" ? window.localStorage.getItem("kta_onboarding_done_v1") : "1";
+      if (!done) setOnboardingStep(0);
+    } catch { /* ignore */ }
+  }, []);
   // 마지막 탭 위치 복원 (P2.P4)
   useEffect(() => {
     try {
@@ -2672,6 +2680,128 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {/* ── 첫 진입 온보딩 위저드 (P3.P1) ─────────────────── */}
+      {onboardingStep !== null && (() => {
+        const steps = [
+          {
+            emoji: "👋",
+            title: "한국 트레이딩 에이전트에 오신 걸 환영합니다",
+            body: "9개의 AI 에이전트가 종목을 분석하고, 토론하고, 매매 결정을 제안합니다. 처음이라도 안전하게 사용하실 수 있도록 모의투자가 기본값입니다.",
+          },
+          {
+            emoji: "🔍",
+            title: "1. 분석 탭 — AI에게 종목 의견 묻기",
+            body: "분석 탭에서 종목코드를 입력하고 분석을 실행하면, 9명의 AI가 BUY/SELL/HOLD 의견과 근거를 제시합니다. 결과 카드 하단의 [📝 모의 1주 시도] 버튼으로 바로 다음 단계로 이동할 수 있습니다.",
+          },
+          {
+            emoji: "📊",
+            title: "2. 백테스트 탭 — 과거 데이터로 검증",
+            body: "전략을 실제 자금 투입 전에 과거 3개월/1년/3년 데이터로 시뮬레이션해 보세요. 신호등 등급 카드(샤프/칼마/MDD)로 한눈에 좋음·보통·나쁨을 확인할 수 있습니다.",
+          },
+          {
+            emoji: "💼",
+            title: "3. 트레이딩 탭 — 모의 → 실거래",
+            body: "기본은 모의투자입니다. KIS 실거래 모드로 바꾸면 큰 경고와 체크리스트가 뜹니다. 자동매매를 켜둘 때는 일일 한도(주문수·손실액)와 [⛔ 즉시청산] 버튼이 항상 보입니다.",
+          },
+          {
+            emoji: "🚦",
+            title: "원칙 3가지",
+            body: "① 모의투자로 충분히 익힌 뒤 실거래로 넘어가세요. ② AI 신뢰도가 높아도 손실 가능성은 항상 존재합니다. ③ 일일 한도와 즉시청산을 적극 활용하세요.",
+          },
+        ];
+        const cur = steps[onboardingStep];
+        const close = () => {
+          try { window.localStorage.setItem("kta_onboarding_done_v1", "1"); } catch { /* ignore */ }
+          setOnboardingStep(null);
+        };
+        return (
+          <div
+            onClick={close}
+            style={{
+              position: "fixed", inset: 0, zIndex: 1000,
+              background: "rgba(0,0,0,0.55)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 20,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%", maxWidth: 480,
+                background: "var(--bg-surface)",
+                borderRadius: "var(--radius-xl)",
+                border: "1px solid var(--border-default)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ padding: "24px 28px 8px" }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>{cur.emoji}</div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", marginBottom: 10 }}>{cur.title}</h2>
+                <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7 }}>{cur.body}</p>
+              </div>
+              {/* 진행 점 */}
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "12px 0" }}>
+                {steps.map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: i === onboardingStep ? 24 : 8, height: 8, borderRadius: 99,
+                      background: i === onboardingStep ? "var(--brand-active)" : "var(--border-default)",
+                      transition: "width 200ms",
+                    }}
+                  />
+                ))}
+              </div>
+              <div style={{
+                display: "flex", gap: 8, padding: "12px 20px 20px",
+                borderTop: "1px solid var(--border-subtle)", background: "var(--bg-elevated)",
+              }}>
+                <button
+                  type="button"
+                  onClick={close}
+                  style={{
+                    padding: "10px 14px", borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-default)", background: "transparent",
+                    color: "var(--text-tertiary)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  건너뛰기
+                </button>
+                <div style={{ flex: 1 }} />
+                {onboardingStep > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOnboardingStep((s) => (s ?? 1) - 1)}
+                    style={{
+                      padding: "10px 14px", borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--border-default)", background: "var(--bg-surface)",
+                      color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    }}
+                  >
+                    이전
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onboardingStep < steps.length - 1) setOnboardingStep((s) => (s ?? 0) + 1);
+                    else close();
+                  }}
+                  style={{
+                    padding: "10px 18px", borderRadius: "var(--radius-md)",
+                    border: "none", background: "var(--brand-active)",
+                    color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  }}
+                >
+                  {onboardingStep < steps.length - 1 ? "다음" : "시작하기"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Backtest Pre-run Review Dialog ─────────────────── */}
       {(() => {
