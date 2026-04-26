@@ -169,6 +169,19 @@ class AutoTradingSupervisor:
             await self.stop(loop_id)
 
     async def start(self, settings: AutoLoopSettings) -> AutoLoopRuntime:
+        # ── Critical C2: 동일 사용자·동일 종목 활성 루프 중복 시작 차단 ──
+        async with self._lock:
+            for existing in self._loops.values():
+                if (
+                    existing.running
+                    and existing.settings.owner_user_id == settings.owner_user_id
+                    and existing.settings.owner_user_id  # 빈 문자열 동시 매칭 방지
+                    and existing.settings.ticker == settings.ticker
+                ):
+                    raise ValueError(
+                        f"이미 동일 종목({settings.ticker})에 대한 자동 루프가 실행 중입니다 (loop_id={existing.loop_id})."
+                    )
+
         loop_id = str(uuid4())
         rt = AutoLoopRuntime(
             loop_id=loop_id,
@@ -237,6 +250,22 @@ class AutoTradingSupervisor:
             rt.stats.skipped_cycles += 1
             self._append_log(rt, "warn", "이전 사이클이 아직 실행 중이라 이번 사이클은 건너뜁니다.")
             return
+
+        # ── Critical M3: KRX 휴장일/주말 가드 ──
+        try:
+            from data.market.krx_holidays import is_trading_day, now_kst
+            today_kst = now_kst().date()
+            if not is_trading_day(today_kst):
+                rt.stats.skipped_cycles += 1
+                self._append_log(
+                    rt,
+                    "info",
+                    f"오늘({today_kst.isoformat()})은 KRX 휴장일/주말이라 사이클을 건너뜁니다.",
+                )
+                return
+        except Exception:
+            # 휴장일 모듈 문제 시 가드 비활성 — 기존 세션 체크가 fallback
+            pass
 
         rt.cycle_running = True
         rt.stats.cycle_count += 1

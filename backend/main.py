@@ -17,19 +17,31 @@ if _project_root not in sys.path:
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request, Path
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel, Field, field_validator
 from typing import Any, Literal, Optional
 
 from bson import ObjectId
 
+# Rate limiting (slowapi)
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from backend.core.rate_limit import limiter, login_rate, register_rate, order_rate, analysis_rate
+
 from backend.api.user_system import router as user_system_router
 from backend.api.office_layouts import router as office_layouts_router
 from backend.core.config import settings
-from backend.core.events import stream_thoughts, AgentThought, AgentRole, AgentStatus, emit_thought
+from backend.core.events import (
+    stream_thoughts, AgentThought, AgentRole, AgentStatus, emit_thought,
+    queue_reaper_loop,
+)
 from backend.core.mongodb import connect_to_mongo, close_mongo, get_mongo_health, get_mongo_database
+from backend.core.security_middleware import (
+    install_security_middlewares,
+    boot_security_check_or_warn,
+)
 from backend.core.order_approvals import (
     ORDER_APPROVAL_EXPIRED,
     ORDER_APPROVAL_PENDING,
@@ -103,6 +115,9 @@ class BacktestCancelled(Exception):
 # ── 앱 시작 ──────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 부팅 보안 검증 (DEBUG=false 면 SystemExit, true 면 경고만)
+    boot_security_check_or_warn()
+
     mongo_status = await connect_to_mongo()
     if mongo_status.get("connected"):
         print(f"🍃 MongoDB 연결 성공 ({mongo_status.get('database')})")
@@ -110,12 +125,23 @@ async def lifespan(app: FastAPI):
         print(f"⚠ MongoDB 연결 실패: {mongo_status.get('error')}")
     else:
         print("ℹ MongoDB 미설정 (MONGODB_URI가 비어 있음)")
+
+    # SSE 큐 reaper 백그라운드 task
+    reaper_task = asyncio.create_task(queue_reaper_loop())
+
     print("🚀 Korean Trading Agents API 서버 시작")
-    yield
-    await auto_trading_supervisor.shutdown()
-    await portfolio_supervisor.shutdown()
-    await close_mongo()
-    print("👋 서버 종료")
+    try:
+        yield
+    finally:
+        reaper_task.cancel()
+        try:
+            await reaper_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        await auto_trading_supervisor.shutdown()
+        await portfolio_supervisor.shutdown()
+        await close_mongo()
+        print("👋 서버 종료")
 
 
 app = FastAPI(
@@ -125,13 +151,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Rate limiter (slowapi) ──────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── CORS (환경변수화) ───────────────────────────────────────
+_allowed = settings.allowed_origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_allowed,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
+
+# ── 보안 헤더 + 본문 크기 제한 ──────────────────────────────
+install_security_middlewares(app)
 
 install_user_activity_middleware(app)
 app.include_router(user_system_router)
@@ -139,9 +174,27 @@ app.include_router(office_layouts_router)
 
 
 # ── 스키마 ───────────────────────────────────────────────
+import re as _re_ticker
+
+# 한국 주식 6자리 숫자 표준. KIS는 "005930" 형태. 일부 ETF/우선주도 6자리 유지.
+_TICKER_RE = _re_ticker.compile(r"^[0-9]{6}$")
+
+
+def _normalize_ticker(value: str) -> str:
+    v = (value or "").strip()
+    if not _TICKER_RE.match(v):
+        raise ValueError("ticker는 6자리 숫자여야 합니다 (예: '005930')")
+    return v
+
+
 class AnalysisRequest(BaseModel):
     ticker: str
     session_id: str | None = None
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
 
 
 class BacktestRequest(BaseModel):
@@ -150,6 +203,11 @@ class BacktestRequest(BaseModel):
     end_date: str = "2024-12-31"
     initial_capital: float = 10_000_000
     decision_interval_days: int = Field(default=20, ge=1, le=120)
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -177,18 +235,41 @@ class SettingsUpdateRequest(BaseModel):
 class KisOrderRequest(BaseModel):
     ticker: str
     side: str                  # "buy" | "sell"
-    qty: int
-    price: int
-    order_type: str = "00"    # "00": 지정가, "01": 시장가
+    qty: int = Field(ge=1, le=1_000_000)
+    price: int = Field(ge=0, le=10_000_000)
+    order_type: Literal["00", "01", "02", "03", "05"] = "00"
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
 
 
 class KisOrderApprovalCreateRequest(BaseModel):
     ticker: str
     side: str                  # "buy" | "sell"
-    qty: int
-    price: int
-    order_type: str = "00"    # "00": 지정가, "01": 시장가
-    context: str = ""         # optional UI context
+    qty: int = Field(ge=1, le=1_000_000)
+    price: int = Field(ge=0, le=10_000_000)
+    order_type: Literal["00", "01", "02", "03", "05"] = "00"
+    context: str = Field(default="", max_length=500)
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
+
+
+class KisOrderCancelRequest(BaseModel):
+    order_no: str = Field(min_length=1, max_length=20)
+    ticker: str
+    qty: int = Field(default=0, ge=0, le=1_000_000)
+    order_type: Literal["00", "01", "02", "03", "05"] = "00"
+    krx_fwdg_ord_orgno: str = Field(default="", max_length=20)
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
 
 
 class AgentBacktestRequest(BaseModel):
@@ -198,6 +279,11 @@ class AgentBacktestRequest(BaseModel):
     initial_capital: float = 10_000_000
     decision_interval_days: int = Field(default=20, ge=1, le=120)
     session_id: str | None = None
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
 
 
 class AutoLoopStartRequest(BaseModel):
@@ -213,6 +299,11 @@ class AutoLoopStartRequest(BaseModel):
     supervision_level: Literal["strict", "balanced", "aggressive"] = "balanced"
     execution_session_mode: Literal["regular_only", "regular_and_after_hours"] = "regular_only"
     initial_cash: float = Field(default=10_000_000, ge=10_000)
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
 
 
 class PortfolioLoopStartRequest(BaseModel):
@@ -239,6 +330,18 @@ class PortfolioLoopStartRequest(BaseModel):
     tax_bps: float = Field(default=18.0, ge=0.0, le=1000.0)
     execution_session_mode: Literal["regular_only", "regular_and_after_hours"] = "regular_only"
 
+    @field_validator("seed_tickers", "preferred_tickers", "excluded_tickers")
+    @classmethod
+    def _v_ticker_list(cls, vs: list[str]) -> list[str]:
+        out: list[str] = []
+        for v in vs:
+            try:
+                out.append(_normalize_ticker(v))
+            except Exception:
+                # 잘못된 ticker는 silently skip (전체 실패 방지)
+                continue
+        return out
+
 
 _KIS_APPROVAL_TTL_MIN = 15
 _KIS_APPROVAL_MAX_KEEP_HOURS = 24
@@ -250,8 +353,49 @@ def _validate_kis_order_request(side: str, qty: int, order_type: str) -> None:
         raise HTTPException(status_code=422, detail="side는 'buy' 또는 'sell'이어야 합니다")
     if qty <= 0:
         raise HTTPException(status_code=422, detail="수량은 1 이상이어야 합니다")
-    if order_type not in ("00", "01"):
-        raise HTTPException(status_code=422, detail="order_type은 '00'(지정가) 또는 '01'(시장가)")
+    if order_type not in ("00", "01", "02", "03"):
+        raise HTTPException(
+            status_code=422,
+            detail="order_type은 '00'(지정가)/'01'(시장가)/'02'(시간외종가)/'03'(시간외단일가) 중 하나",
+        )
+
+
+def _validate_kis_order_extended(
+    *,
+    ticker: str,
+    side: str,
+    qty: int,
+    price: int,
+    order_type: str,
+) -> None:
+    """확장 사전검증 (Critical K1).
+
+    - ticker 형식
+    - 수량 / 가격 경계
+    - 지정가일 때 호가단위 정렬 (data.market.krx_rules)
+    """
+    _validate_kis_order_request(side, qty, order_type)
+    try:
+        _ = _normalize_ticker(ticker)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    if order_type in ("00", "03"):  # 지정가 / 단일가
+        if price <= 0:
+            raise HTTPException(status_code=422, detail="지정가 주문 가격은 1원 이상이어야 합니다")
+        try:
+            from data.market.krx_rules import get_tick_size
+            tick = int(get_tick_size(int(price)))
+            if tick > 0 and (int(price) % tick) != 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"가격 {price}원이 호가단위({tick}원)에 정렬되지 않았습니다",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # tick size 조회 실패 시 사전검증은 통과시키되 KIS가 거부할 수 있음
+            pass
 
 
 def _build_kis_order_payload(
@@ -369,7 +513,7 @@ async def search_stock_api(q: str = Query(..., min_length=1, max_length=30)):
 
 
 @app.get("/api/stock/{ticker}")
-async def get_stock(ticker: str):
+async def get_stock(ticker: str = Path(..., pattern=r"^[0-9]{6}$")):
     """종목 기본 정보 + 기술 지표"""
     try:
         info = get_stock_info(ticker)
@@ -381,7 +525,7 @@ async def get_stock(ticker: str):
 
 @app.get("/api/stock/{ticker}/chart")
 async def get_stock_chart(
-    ticker: str,
+    ticker: str = Path(..., pattern=r"^[0-9]{6}$"),
     timeframe: str = Query(default="6m", pattern="^(1m|3m|6m|1y|2y)$"),
 ):
     """차트 데이터 조회 (OHLCV + MA)"""
@@ -404,6 +548,7 @@ async def get_stock_chart(
 
 
 @app.post("/api/analyze/start")
+@limiter.limit(analysis_rate)
 async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks, request: Request):
     """에이전트 분석 시작 (비동기) - session_id 반환"""
     user, runtime_profile = await _load_user_runtime_profile(request)
@@ -885,7 +1030,10 @@ async def start_auto_loop(req: AutoLoopStartRequest, request: Request):
         owner_user_id=_user_id_str(user),
         runtime_profile=dict(runtime_profile),
     )
-    rt = await auto_trading_supervisor.start(settings_obj)
+    try:
+        rt = await auto_trading_supervisor.start(settings_obj)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return {
         "loop_id": rt.loop_id,
         "status": "running",
@@ -1064,13 +1212,21 @@ async def kis_price(ticker: str, request: Request):
 
 
 @app.post("/api/kis/order")
+@limiter.limit(order_rate)
 async def kis_order(req: KisOrderRequest, request: Request):
     """주식 현금 주문 (매수/매도)"""
     _, runtime_profile = await _load_user_runtime_profile(request)
     runtime_is_mock = bool(runtime_profile.get("kis_mock", True))
     runtime_require_confirm = bool(runtime_profile.get("guru_require_user_confirmation", False))
 
-    _validate_kis_order_request(req.side, req.qty, req.order_type)
+    # 확장 사전검증 (Critical K1) — ticker/qty/price/tick alignment
+    _validate_kis_order_extended(
+        ticker=req.ticker,
+        side=req.side,
+        qty=req.qty,
+        price=req.price,
+        order_type=req.order_type,
+    )
     if (not runtime_is_mock) and runtime_require_confirm:
         raise HTTPException(
             status_code=428,
@@ -1085,6 +1241,12 @@ async def kis_order(req: KisOrderRequest, request: Request):
         order_type=req.order_type,
     )
 
+    # 멱등성 (Critical C3) — 클라이언트 헤더 X-Idempotency-Key 우선, 없으면 생성
+    idempotency_key = (
+        request.headers.get("x-idempotency-key", "").strip()
+        or str(uuid4())
+    )
+
     try:
         from data.kis.trading import place_order
         with runtime_profile_context(runtime_profile):
@@ -1095,27 +1257,71 @@ async def kis_order(req: KisOrderRequest, request: Request):
                 price=payload["price"],
                 order_type=payload["order_type"],
             )
-        await record_trade(
-            request=request,
-            trade_type="kis_order",
-            mode="simulated" if runtime_is_mock else "live",
-            status="executed",
-            ticker=payload["ticker"],
-            side=payload["side"],
-            qty=payload["qty"],
-            price=payload["price"],
-            order_type=payload["order_type"],
-            source="kis_direct_order",
-            meta={"order_no": order_result.get("order_no", "") if isinstance(order_result, dict) else ""},
-        )
+        try:
+            await record_trade(
+                request=request,
+                trade_type="kis_order",
+                mode="simulated" if runtime_is_mock else "live",
+                status="executed",
+                ticker=payload["ticker"],
+                side=payload["side"],
+                qty=payload["qty"],
+                price=payload["price"],
+                order_type=payload["order_type"],
+                source="kis_direct_order",
+                meta={
+                    "order_no": order_result.get("order_no", "") if isinstance(order_result, dict) else "",
+                    "idempotency_key": idempotency_key,
+                },
+                idempotency_key=idempotency_key,
+            )
+        except Exception:
+            # idempotency 충돌이면 이미 동일 주문이 기록됨 — 멱등 응답 반환
+            pass
         return order_result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/api/kis/order/approval/request")
-async def create_kis_order_approval(req: KisOrderApprovalCreateRequest, request: Request):
-    """실전 주문 전 승인 대기 건 생성 (GURU 승인 강제 대응)"""
+@app.post("/api/kis/order/cancel")
+@limiter.limit(order_rate)
+async def kis_order_cancel(req: KisOrderCancelRequest, request: Request):
+    """미체결 주문 취소 (Critical K2)."""
+    _, runtime_profile = await _load_user_runtime_profile(request)
+    runtime_is_mock = bool(runtime_profile.get("kis_mock", True))
+
+    try:
+        from data.kis.trading import cancel_order
+        with runtime_profile_context(runtime_profile):
+            cancel_result = await cancel_order(
+                order_no=req.order_no,
+                ticker=req.ticker,
+                qty=req.qty,
+                order_type=req.order_type,
+                krx_fwdg_ord_orgno=req.krx_fwdg_ord_orgno,
+            )
+        try:
+            await record_trade(
+                request=request,
+                trade_type="kis_order_cancel",
+                mode="simulated" if runtime_is_mock else "live",
+                status="cancelled",
+                ticker=req.ticker,
+                side="cancel",
+                qty=req.qty,
+                price=0,
+                order_type=req.order_type,
+                source="kis_direct_cancel",
+                meta={
+                    "order_no": req.order_no,
+                    "order_no_new": cancel_result.get("order_no_new", "") if isinstance(cancel_result, dict) else "",
+                },
+            )
+        except Exception:
+            pass
+        return cancel_result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
     user, runtime_profile = await _load_user_runtime_profile(request)
     db = _require_mongo_db()
     runtime_is_mock = bool(runtime_profile.get("kis_mock", True))

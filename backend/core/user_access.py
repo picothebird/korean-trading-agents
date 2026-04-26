@@ -265,6 +265,7 @@ async def record_trade(
     order_type: str,
     source: str,
     meta: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
 ) -> None:
     try:
         db = get_mongo_database()
@@ -297,8 +298,14 @@ async def record_trade(
         "meta": meta or {},
         "created_at": utc_now(),
     }
+    if idempotency_key:
+        doc["idempotency_key"] = str(idempotency_key)
 
-    await db.user_trades.insert_one(doc)
+    try:
+        await db.user_trades.insert_one(doc)
+    except Exception:
+        # 멱등키 충돌(DuplicateKeyError) 등은 swallow — 이미 기록됨
+        pass
 
 
 def install_user_activity_middleware(app) -> None:

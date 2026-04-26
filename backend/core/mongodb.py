@@ -250,10 +250,29 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.activity_logs.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)], name="idx_activity_user_time")
     await db.activity_logs.create_index([("path", ASCENDING), ("created_at", DESCENDING)], name="idx_activity_path_time")
     await db.activity_logs.create_index([("created_at", DESCENDING)], name="idx_activity_created_at")
+    # TTL — settings.activity_log_retention_days
+    await db.activity_logs.create_index(
+        [("created_at", ASCENDING)],
+        expireAfterSeconds=int(settings.activity_log_retention_days) * 24 * 3600,
+        name="ttl_activity_logs_created_at",
+    )
 
     await db.user_trades.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)], name="idx_user_trades_user_time")
     await db.user_trades.create_index([("mode", ASCENDING), ("created_at", DESCENDING)], name="idx_user_trades_mode_time")
     await db.user_trades.create_index([("created_at", DESCENDING)], name="idx_user_trades_created_at")
+    # TTL — settings.user_trade_retention_days (권장: 365일)
+    await db.user_trades.create_index(
+        [("created_at", ASCENDING)],
+        expireAfterSeconds=int(settings.user_trade_retention_days) * 24 * 3600,
+        name="ttl_user_trades_created_at",
+    )
+    # 멱등성 — (user_id, idempotency_key) 유니크 (key가 있는 문서만)
+    await db.user_trades.create_index(
+        [("user_id", ASCENDING), ("idempotency_key", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"idempotency_key": {"$exists": True, "$type": "string"}},
+        name="uq_user_trades_idempotency",
+    )
 
     await db.user_settings.create_index([("user_id", ASCENDING)], unique=True, name="uq_user_settings_user_id")
     await db.user_settings.create_index([("updated_at", DESCENDING)], name="idx_user_settings_updated_at")
@@ -285,6 +304,22 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         [("purge_after", ASCENDING)],
         expireAfterSeconds=0,
         name="ttl_runtime_sessions_purge_after",
+    )
+
+    # ── 자동/포트폴리오 루프 영속화 (Critical C1) ──────────────
+    await db.trading_loops.create_index(
+        [("loop_id", ASCENDING)], unique=True, name="uq_trading_loops_loop_id"
+    )
+    await db.trading_loops.create_index(
+        [("owner_user_id", ASCENDING), ("status", ASCENDING)],
+        name="idx_trading_loops_owner_status",
+    )
+    await db.trading_loops.create_index(
+        [("owner_user_id", ASCENDING), ("loop_kind", ASCENDING), ("settings.ticker", ASCENDING), ("status", ASCENDING)],
+        name="idx_trading_loops_owner_kind_ticker_status",
+    )
+    await db.trading_loops.create_index(
+        [("updated_at", DESCENDING)], name="idx_trading_loops_updated_at"
     )
 
 

@@ -29,6 +29,7 @@ python-dotenv==1.1.1
 motor==3.7.1
 dnspython==2.8.0
 cryptography==45.0.6
+slowapi==0.1.9
 
 # --- Korean Market Data ---
 # FinanceDataReader: install from GitHub (PyPI wheel missing for Python 3.14)

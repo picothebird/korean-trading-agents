@@ -56,16 +56,43 @@ class TradeDecision:
 
 # 전역 이벤트 큐 (에이전트 → 프론트엔드 스트리밍)
 _thought_queues: dict[str, asyncio.Queue] = {}
+_queue_created_at: dict[str, float] = {}
+
+# 큐 자동 청소 정책: 1시간 동안 사용되지 않으면 강제 정리 (SSE 연결 누수 방지)
+_QUEUE_MAX_AGE_SEC = 3600.0
+_QUEUE_REAPER_INTERVAL_SEC = 300.0  # 5분마다 검사
 
 # MS-B: (session_id, role) → 마지막 emit 시각 (monotonic seconds).
-# 각 thought에 metadata.duration_ms (이 에이전트의 직전 발화 이후 경과 ms)를 채워 UI에서 처리 시간을 표기.
 _last_emit_ts: dict[tuple[str, str], float] = {}
 
 
 def get_thought_queue(session_id: str) -> asyncio.Queue:
     if session_id not in _thought_queues:
         _thought_queues[session_id] = asyncio.Queue()
+        _queue_created_at[session_id] = time.monotonic()
     return _thought_queues[session_id]
+
+
+async def reap_stale_queues() -> int:
+    """오래된 큐 강제 정리. 백그라운드 task가 주기적으로 호출."""
+    now = time.monotonic()
+    stale = [sid for sid, ts in list(_queue_created_at.items()) if now - ts > _QUEUE_MAX_AGE_SEC]
+    for sid in stale:
+        clear_thought_queue(sid)
+    return len(stale)
+
+
+async def queue_reaper_loop() -> None:
+    """앱 lifespan에서 띄우는 백그라운드 reaper."""
+    while True:
+        try:
+            await asyncio.sleep(_QUEUE_REAPER_INTERVAL_SEC)
+            await reap_stale_queues()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # reaper 자체 예외로 죽지 않도록 swallow
+            pass
 
 
 def clear_thought_queue(session_id: str) -> None:
@@ -75,6 +102,7 @@ def clear_thought_queue(session_id: str) -> None:
     큐 객체가 누적되는 것을 방지하기 위한 유틸리티.
     """
     _thought_queues.pop(session_id, None)
+    _queue_created_at.pop(session_id, None)
     # 해당 세션의 duration tracking 키도 함께 청소
     for k in [k for k in _last_emit_ts.keys() if k[0] == session_id]:
         _last_emit_ts.pop(k, None)
@@ -199,3 +227,4 @@ async def stream_thoughts(session_id: str) -> AsyncGenerator[str, None]:
         yield "data: {\"type\": \"timeout\"}\n\n"
     finally:
         _thought_queues.pop(session_id, None)
+        _queue_created_at.pop(session_id, None)

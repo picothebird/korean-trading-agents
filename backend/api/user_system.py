@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from backend.core.mongodb import get_mongo_database
+from backend.core.rate_limit import limiter, login_rate, register_rate
 from backend.core.user_access import (
     _as_datetime,
     create_session_token,
@@ -95,6 +96,7 @@ async def auth_bootstrap_status():
 
 
 @router.post("/auth/register")
+@limiter.limit(register_rate)
 async def auth_register(req: AuthRegisterRequest, request: Request):
     db = await _ensure_db()
 
@@ -183,6 +185,7 @@ async def auth_register(req: AuthRegisterRequest, request: Request):
 
 
 @router.post("/auth/login")
+@limiter.limit(login_rate)
 async def auth_login(req: AuthLoginRequest, request: Request):
     db = await _ensure_db()
 
@@ -194,18 +197,44 @@ async def auth_login(req: AuthLoginRequest, request: Request):
     if bool(user.get("disabled", False)):
         raise HTTPException(status_code=403, detail="비활성화된 계정입니다")
 
+    # ── 계정 잠금 검사 (Critical A3) ───────────────────────
+    from backend.core.config import settings as _settings  # lazy import to avoid cycles
+    locked_until = user.get("locked_until")
+    now = utc_now()
+    if isinstance(locked_until, type(now)) and locked_until > now:
+        retry_in = int((locked_until - now).total_seconds())
+        raise HTTPException(
+            status_code=423,
+            detail=f"로그인 시도가 너무 많습니다. {retry_in}초 후 다시 시도하세요.",
+        )
+
     salt_hex = str(user.get("password_salt", ""))
     expected_hash = str(user.get("password_hash", ""))
     if not salt_hex or not expected_hash or not verify_password(req.password, salt_hex, expected_hash):
+        # 실패 카운터 증가 + 임계 도달 시 잠금
+        new_attempts = int(user.get("failed_login_attempts", 0)) + 1
+        update_doc: dict[str, Any] = {
+            "failed_login_attempts": new_attempts,
+            "last_failed_login_at": now,
+            "last_failed_login_ip": (request.client.host if request.client else None),
+        }
+        if new_attempts >= int(_settings.login_max_failed_attempts):
+            update_doc["locked_until"] = now + timedelta(minutes=int(_settings.login_lockout_minutes))
+            update_doc["failed_login_attempts"] = 0  # 잠금 후 카운터 리셋
+        await db.users.update_one({"_id": user["_id"]}, {"$set": update_doc})
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다")
 
     token, session_doc = _build_session_doc(user["_id"])
     await db.auth_sessions.insert_one(session_doc)
 
-    now = utc_now()
     await db.users.update_one(
         {"_id": user["_id"]},
-        {"$set": {"last_login_at": now, "updated_at": now}},
+        {"$set": {
+            "last_login_at": now,
+            "updated_at": now,
+            "failed_login_attempts": 0,
+            "locked_until": None,
+        }},
     )
     user["last_login_at"] = now
 

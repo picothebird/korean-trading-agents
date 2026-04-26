@@ -278,6 +278,99 @@ async def place_order(
         "ticker": ticker,
         "qty": qty,
         "price": price,
-        "order_type_label": "지정가" if order_type == "00" else "시장가",
+        "order_type_label": _ord_dvsn_label(order_type),
         "is_mock": p["is_mock"],
+    }
+
+
+# ─────────────────────────────────────────────────────────
+# Critical K2/K3 — 주문 취소 API + ord_dvsn 동적 매핑
+# ─────────────────────────────────────────────────────────
+
+# KIS 주문 구분 코드. 정규장: 00/01, 시간외종가: 02, 시간외단일가: 03, 장전시간외: 05.
+# (KIS 매매 가이드 기준. 미지원 코드 사용 시 KIS API가 거부)
+_ORD_DVSN_LABELS = {
+    "00": "지정가",
+    "01": "시장가",
+    "02": "시간외종가",
+    "03": "시간외단일가",
+    "05": "장전시간외",
+}
+
+
+def _ord_dvsn_label(code: str) -> str:
+    return _ORD_DVSN_LABELS.get(str(code), f"기타({code})")
+
+
+def resolve_ord_dvsn(
+    *,
+    user_intent: str = "limit",
+    session: str | None = None,
+) -> str:
+    """세션·사용자 의도 → KIS ORD_DVSN 코드 매핑.
+
+    user_intent: "limit" | "market"
+    session: KrxSession 값 ("regular" | "after_close" | "after_single" | "premarket" | "closed")
+    """
+    intent = (user_intent or "limit").lower()
+    sess = (session or "regular").lower()
+
+    if sess == "after_close":
+        return "02"
+    if sess == "after_single":
+        return "03"
+    if sess == "premarket":
+        return "05"
+    # 정규장 (또는 미상)
+    return "01" if intent == "market" else "00"
+
+
+async def cancel_order(
+    *,
+    order_no: str,
+    ticker: str,
+    qty: int = 0,
+    order_type: str = "00",
+    krx_fwdg_ord_orgno: str = "",
+) -> dict:
+    """미체결 주문 취소.
+
+    TR: TTTC0803U (모의/실전 동일). qty=0 이면 잔량 전량 취소.
+    """
+    from data.kis.client import call_api
+
+    ok, err = _has_credentials()
+    if not ok:
+        raise Exception(err)
+
+    p = _kis_params()
+    cano, prod = _parse_account(_kis_account_no())
+
+    body = {
+        "CANO": cano,
+        "ACNT_PRDT_CD": prod,
+        "KRX_FWDG_ORD_ORGNO": krx_fwdg_ord_orgno or "",
+        "ORGN_ODNO": str(order_no),
+        "ORD_DVSN": str(order_type),
+        "RVSE_CNCL_DVSN_CD": "02",  # 02=취소, 01=정정
+        "ORD_QTY": "0" if int(qty) <= 0 else str(int(qty)),
+        "ORD_UNPR": "0",
+        "QTY_ALL_ORD_YN": "Y" if int(qty) <= 0 else "N",
+    }
+
+    data = await call_api(
+        api_url="/uapi/domestic-stock/v1/trading/order-rvsecncl",
+        tr_id="TTTC0803U",
+        params=body,
+        **p,
+        method="POST",
+    )
+
+    o = data.get("output", {}) if isinstance(data, dict) else {}
+    return {
+        "order_no_original": str(order_no),
+        "order_no_new": o.get("odno", ""),
+        "ticker": ticker,
+        "is_mock": p["is_mock"],
+        "raw": data,
     }
