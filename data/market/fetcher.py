@@ -219,11 +219,37 @@ def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | Non
     std20 = close.rolling(20).std()
     bb_upper = ma20 + 2 * std20
     bb_lower = ma20 - 2 * std20
-    
+
+    # ATR(14) — Wilder's True Range. 손절 폭 산정용 변동성 지표.
+    high_s = df["High"].astype(float) if "High" in df.columns else close
+    low_s = df["Low"].astype(float) if "Low" in df.columns else close
+    prev_close = close.shift(1)
+    tr = pd.concat([
+        (high_s - low_s).abs(),
+        (high_s - prev_close).abs(),
+        (low_s - prev_close).abs(),
+    ], axis=1).max(axis=1)
+    atr14 = tr.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+
+    # 일간수익률 표준편차(20거래일) — 변동성 보조 지표
+    ret = close.pct_change()
+    sigma20 = ret.rolling(20).std()
+
+    # 직전 스윙 로우(20거래일 최저가) — 자연 손절 후보
+    swing_low_20 = low_s.rolling(20).min()
+
     latest = df.iloc[-1]
+    cur_price = _safe_float(latest["Close"])
+    atr_val = _safe_float(atr14.iloc[-1]) if not atr14.empty else None
+    sigma_val = _safe_float(sigma20.iloc[-1]) if not sigma20.empty else None
+    swing_val = _safe_float(swing_low_20.iloc[-1]) if not swing_low_20.empty else None
+    atr_pct = (atr_val / cur_price * 100) if (atr_val and cur_price) else None
+    sigma_pct = (sigma_val * 100) if sigma_val is not None else None
+    swing_drop_pct = ((cur_price - swing_val) / cur_price * 100) if (swing_val and cur_price) else None
+
     return {
         "ticker": ticker,
-        "current_price": _safe_float(latest["Close"]),
+        "current_price": cur_price,
         "change_pct": _safe_float((latest["Close"] - df.iloc[-2]["Close"]) / df.iloc[-2]["Close"] * 100) if len(df) > 1 else 0.0,
         "volume": int(latest.get("Volume", 0) or 0),
         "rsi_14": _safe_float(rsi.iloc[-1]) if not rsi.empty else None,
@@ -238,6 +264,12 @@ def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | Non
         "ma60": _safe_float(close.rolling(60).mean().iloc[-1]) if len(close) >= 60 else None,
         "high_52w": _safe_float(close.rolling(min(252, len(close))).max().iloc[-1]),
         "low_52w": _safe_float(close.rolling(min(252, len(close))).min().iloc[-1]),
+        # 변동성/손절 산정 지표
+        "atr_14": atr_val,
+        "atr_pct": _safe_float(atr_pct),
+        "sigma_20d_pct": _safe_float(sigma_pct),
+        "swing_low_20d": swing_val,
+        "swing_low_drop_pct": _safe_float(swing_drop_pct),
         "last_updated": datetime.now().isoformat(),
     }
 
