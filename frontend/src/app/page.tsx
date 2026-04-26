@@ -828,6 +828,16 @@ export default function Home() {
   const [activeAnalysisSessionId, setActiveAnalysisSessionId] = useState<string | null>(null);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
+  // 우측 작업 영역 스크롤 컨테이너 — 이력에서 항목 진입 시 최상단으로 리셋
+  const rightScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRightToTop = useCallback(() => {
+    const el = rightScrollRef.current;
+    if (!el) return;
+    // 다음 페인트에 리셋 — 새로 마운트된 결과의 높이가 잡힌 뒤 스크롤되도록
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, []);
   const [approvalModal, setApprovalModal] = useState(false);
   const [stockInfo, setStockInfo] = useState<StockIndicators | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1167,10 +1177,11 @@ export default function Home() {
     if (result) {
       setBtResult(result);
       setBtError(null);
+      scrollRightToTop();
     } else {
-      setBtError("이력의 결과 데이터를 불러오지 못했어요.");
+      setBtError("이력의 결과 데이터를 불러오지 못했습니다.");
     }
-  }, []);
+  }, [scrollRightToTop]);
 
   // 분석 이력 fetch
   const refreshAnalysisHistory = useCallback(async () => {
@@ -1289,6 +1300,7 @@ export default function Home() {
             } else if (detail.status === "done" && detail.result?.decision) {
               // 끝난 상태면 결과만 복원
               setDecision(detail.result.decision);
+              scrollRightToTop();
               localStorage.removeItem("kta_active_analysis_session_v1");
             } else {
               localStorage.removeItem("kta_active_analysis_session_v1");
@@ -1309,6 +1321,7 @@ export default function Home() {
             if (result) {
               // 이미 끝난 결과 — 바로 보여주기
               setBtResult(result);
+              scrollRightToTop();
               localStorage.removeItem("kta_active_agent_backtest_session_v1");
               return;
             }
@@ -1521,7 +1534,9 @@ export default function Home() {
         {/* ── Logo header ────────────────────────────────────── */}
         <div
           style={{
-            padding: "16px 20px 14px",
+            padding: "12px 20px",
+            minHeight: 64,
+            boxSizing: "border-box",
             borderBottom: "1px solid var(--border-subtle)",
             flexShrink: 0,
             display: "flex",
@@ -1776,6 +1791,8 @@ export default function Home() {
         <div
           style={{
             padding: "12px 16px",
+            minHeight: 64,
+            boxSizing: "border-box",
             borderBottom: "1px solid var(--border-default)",
             flexShrink: 0,
             display: "flex",
@@ -1856,6 +1873,7 @@ export default function Home() {
 
         {/* ── 작업 영역: 분석 / 시뮬레이션 / 매매 / 포트폴리오 (회의실 무대는 분석 탭 내부 하단) ── */}
         <div
+          ref={rightScrollRef}
           style={{
             flex: 1,
             minHeight: 0,
@@ -1888,10 +1906,10 @@ export default function Home() {
                   fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
                   background: "var(--brand)", color: "var(--text-inverse)", lineHeight: 1.4, marginLeft: 2,
                 }}>{activeCount}</span>
-              ) : undefined, tooltip: "종목 하나를 골라 9명의 AI 에이전트가 회의록 형식으로 매수/매도 판단을 내립니다." },
-              { value: "backtest", label: "시뮬레이션", icon: <Icon name="chart-bar" size={14} decorative />, tooltip: "과거 데이터로 MA 규칙 또는 AI 에이전트 전략이 어떤 결과를 냈을지 시뮬레이션해봅니다." },
-              { value: "trading", label: "매매", icon: <Icon name="wallet" size={14} decorative />, tooltip: "KIS 증권 API와 연결해 실제(또는 모의) 주문을 보내고, 자동 매매 루프를 운영합니다." },
-              { value: "portfolio", label: "포트폴리오", icon: <Icon name="briefcase" size={14} decorative />, tooltip: "여러 종목을 동시에 모니터링하며 자동 종목 선정 + 분배 매매를 돌립니다." },
+              ) : undefined, tooltip: "종목 하나를 선택해 9명의 AI 에이전트가 회의록 형식으로 매수·매도 판단을 수행합니다." },
+              { value: "backtest", label: "시뮬레이션", icon: <Icon name="chart-bar" size={14} decorative />, tooltip: "과거 데이터로 MA 규칙 또는 AI 에이전트 전략의 과거 성과를 시뮬레이션합니다." },
+              { value: "trading", label: "매매", icon: <Icon name="wallet" size={14} decorative />, tooltip: "KIS 증권 API 연동으로 실제 또는 모의 주문을 제출하고 자동 매매 루프를 운용합니다." },
+              { value: "portfolio", label: "포트폴리오", icon: <Icon name="briefcase" size={14} decorative />, tooltip: "다수 종목을 동시에 모니터링하며 자동 종목 선정과 자금 분배 매매를 수행합니다." },
             ]}
           />
         </div>
@@ -2097,8 +2115,9 @@ export default function Home() {
                                 if (dec) {
                                   setDecision(dec);
                                   setAnalysisError(null);
+                                  scrollRightToTop();
                                 } else {
-                                  setAnalysisError("이 분석 세션의 결과를 불러오지 못했어요. (서버에 저장된 결정이 비어있을 수 있습니다)");
+                                  setAnalysisError("이 분석 세션의 결과를 불러오지 못했습니다. (서버에 저장된 결정이 비어있을 수 있습니다)");
                                 }
                               }}
                               disabled={!isDone}
@@ -2163,7 +2182,7 @@ export default function Home() {
                 <div
                   style={{
                     width: "100%",
-                    maxWidth: 960,
+                    maxWidth: 1280,
                     display: "flex",
                     alignItems: "center",
                     gap: 8,
@@ -2178,9 +2197,9 @@ export default function Home() {
                 <div
                   style={{
                     width: "100%",
-                    maxWidth: 960,
-                    height: "min(640px, calc(100vh - 260px))",
-                    minHeight: 360,
+                    maxWidth: 1280,
+                    height: "min(760px, calc(100vh - 200px))",
+                    minHeight: 420,
                     flexShrink: 0,
                     borderRadius: 16,
                     overflow: "hidden",

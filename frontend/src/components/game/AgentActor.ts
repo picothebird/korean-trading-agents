@@ -20,6 +20,7 @@
 import Phaser from "phaser";
 import type { AgentRole, AgentStatus } from "@/types";
 import { AGENT_COLOR, AGENT_LABEL } from "@/lib/agentLabels";
+import type { IAgentActor } from "./actors/IAgentActor";
 
 // 캐릭터 픽셀 사이즈 (정수 정렬을 위해 짝수)
 const HEAD_W = 8;
@@ -60,7 +61,7 @@ const STATUS_TINT: Record<AgentStatus, number> = {
 /**
  * 픽셀 캐릭터 합성. Phaser.GameObjects.Container 미상속 (typings 마찰 회피).
  */
-export class AgentActor {
+export class AgentActor implements IAgentActor {
   readonly role: AgentRole;
   readonly x: number;
   readonly y: number;
@@ -73,10 +74,10 @@ export class AgentActor {
   private readonly head: Phaser.GameObjects.Rectangle;
   private readonly hair: Phaser.GameObjects.Rectangle;
   private readonly headOutline: Phaser.GameObjects.Rectangle;
-  private readonly label: Phaser.GameObjects.Text;
   private readonly stateDot: Phaser.GameObjects.Arc;
   private readonly glow: Phaser.GameObjects.Arc;
-  private bubbleText: Phaser.GameObjects.Text | null = null;
+  private bubbleTextValue: string | null = null;
+  private bubbleVisible = false;
   private bubbleHideTimer: Phaser.Time.TimerEvent | null = null;
   private currentStatus: AgentStatus = "idle";
   private bodyBaseY: number;
@@ -154,19 +155,22 @@ export class AgentActor {
     );
     this.stateDot.setStrokeStyle(1, 0xffffff, 0.95);
 
-    // 이름 라벨
-    this.label = scene.add.text(x, feetY + 6, AGENT_LABEL[role], {
-      fontFamily: "Pretendard, system-ui, sans-serif",
-      fontSize: "10px",
-      color: "#1c1f26",
-      backgroundColor: "rgba(255,255,255,0.85)",
-      padding: { left: 4, right: 4, top: 1, bottom: 1 },
-    });
-    this.label.setOrigin(0.5, 0);
+    // 이름 라벨 — v3: DOM overlay에서 렌더링.
+    void AGENT_LABEL;
 
-    // 클릭 hit area (보이지 않는 큰 사각형 — 캐릭터 전체 덮음)
+    // 클릭 hit area (보이지 않는 큰 사각형 — 캐릭터 전체 덼음)
     this.hitRect = scene.add.rectangle(x, y, HIT_W, HIT_H, 0x000000, 0);
     this.hitRect.setInteractive({ useHandCursor: true });
+  }
+
+  getLabelAnchor(): { x: number; y: number } {
+    return { x: this.head.x, y: this.headBaseY - HEAD_H / 2 - 8 };
+  }
+  getNameAnchor(): { x: number; y: number } {
+    return { x: this.head.x, y: this.legs.y + 6 };
+  }
+  getBubble(): { text: string; visible: boolean } {
+    return { text: this.bubbleTextValue ?? "", visible: this.bubbleVisible && !!this.bubbleTextValue };
   }
 
   /** 클릭 콜백 등록 (PhaserCanvas → React 패널 연결용). */
@@ -174,35 +178,16 @@ export class AgentActor {
     this.hitRect.on("pointerdown", handler);
   }
 
-  /** 말풍선 표시 (MS4). 길이 ≤ 80자로 잘라 본체 위에 잠시 띄움. */
+  /** 말풍선 표시 (MS4). 길이 ≤ 80자로 잘라. v3: DOM overlay에서 렌더. */
   showMessage(text: string, durationMs = 5000): void {
     const trimmed = text.length > 80 ? text.slice(0, 78) + "…" : text;
-    if (!this.bubbleText) {
-      this.bubbleText = this.scene.add.text(
-        this.x,
-        this.y - BODY_H / 2 - HEAD_H - 8,
-        trimmed,
-        {
-          fontFamily: "Pretendard, system-ui, sans-serif",
-          fontSize: "10px",
-          color: "#1c1f26",
-          backgroundColor: "rgba(255,255,255,0.96)",
-          padding: { left: 6, right: 6, top: 3, bottom: 3 },
-          wordWrap: { width: 160, useAdvancedWrap: true },
-          align: "center",
-        },
-      );
-      this.bubbleText.setOrigin(0.5, 1);
-      this.bubbleText.setDepth(1000);
-    } else {
-      this.bubbleText.setText(trimmed);
-      this.bubbleText.setVisible(true);
-    }
+    this.bubbleTextValue = trimmed;
+    this.bubbleVisible = true;
     if (this.bubbleHideTimer) {
       this.bubbleHideTimer.remove(false);
     }
     this.bubbleHideTimer = this.scene.time.delayedCall(durationMs, () => {
-      this.bubbleText?.setVisible(false);
+      this.bubbleVisible = false;
       this.bubbleHideTimer = null;
     });
   }
@@ -299,7 +284,6 @@ export class AgentActor {
 
   destroy(): void {
     this.bubbleHideTimer?.remove(false);
-    this.bubbleText?.destroy();
     for (const p of this.particles) p.obj.destroy();
     this.particles = [];
     this.glow.destroy();
@@ -312,7 +296,6 @@ export class AgentActor {
     this.headOutline.destroy();
     this.hitRect.destroy();
     this.stateDot.destroy();
-    this.label.destroy();
     void this.scene; // 참조 유지 표시
   }
 }

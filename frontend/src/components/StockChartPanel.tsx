@@ -144,14 +144,14 @@ export function StockChartPanel({
           if (points.length === 0) {
             setError(
               res.warning
-                ? `데이터를 가져오지 못했어요 (${res.warning}). 잠시 뒤 다시 시도하거나 다른 기간을 선택해 보세요.`
-                : "표시할 데이터가 없어요.",
+                ? `데이터를 불러오지 못했습니다 (${res.warning}). 잠시 뒤 다시 시도하거나 다른 기간을 선택해 주십시오.`
+                : "표시할 데이터가 없습니다.",
             );
           }
         }
       } catch (e: unknown) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "차트를 불러오지 못했어요.");
+          setError(e instanceof Error ? e.message : "차트를 불러오지 못했습니다.");
           setData([]);
         }
       } finally {
@@ -326,8 +326,8 @@ export function StockChartPanel({
         <div style={{ minHeight: compact ? 180 : 240, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Empty
             icon={<Icon name="trend-up" size={28} decorative />}
-            title="차트 데이터가 아직 없어요"
-            body="다른 기간을 선택하거나 잠시 뒤 다시 시도해주세요."
+            title="차트 데이터가 없습니다"
+            body="다른 기간을 선택하거나 잠시 뒤 다시 시도해 주십시오."
             compact
           />
         </div>
