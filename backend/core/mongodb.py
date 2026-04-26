@@ -322,6 +322,14 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         [("updated_at", DESCENDING)], name="idx_trading_loops_updated_at"
     )
 
+    # ── 분석 메모리 (Phase 3: reflection loop) ───────────────
+    try:
+        from backend.services.memory_service import ensure_memory_indexes
+        await ensure_memory_indexes(db)
+    except Exception:
+        # 메모리 인덱스 생성 실패는 부팅을 막지 않는다 — 다른 컬렉션은 정상 운영.
+        pass
+
 
 def _configured_uri() -> str:
     return str(settings.mongodb_uri or "").strip()

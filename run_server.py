@@ -20,12 +20,21 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# 환경 변수 파일 확인
+# 환경 변수 파일 확인 + 로드
 env_path = os.path.join(ROOT, ".env")
 if not os.path.exists(env_path):
     print(f"⚠️  .env 파일이 없습니다: {env_path}")
     print("   .env.example을 복사하고 API 키를 입력하세요")
     sys.exit(1)
+
+# .env 를 os.environ 으로 로드 (override=True 로 빈 셸 환경 우선)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(env_path, override=True)
+    _dart_loaded = bool(os.environ.get("DART_API_KEY"))
+    print(f"🔑 .env 로드 완료 (DART_API_KEY: {'✓' if _dart_loaded else '✗ 비어있음'})")
+except ImportError:
+    print("⚠️  python-dotenv 미설치 — .env 자동 로드 불가. `pip install python-dotenv` 권장")
 
 import uvicorn
 
@@ -44,6 +53,7 @@ if __name__ == "__main__":
             os.path.join(ROOT, "backend"),
             os.path.join(ROOT, "agents"),
             os.path.join(ROOT, "data"),
+            os.path.join(ROOT, "backtesting"),
         ],
     )
 

@@ -14,6 +14,17 @@ _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
+# .env 자동 로드 (uvicorn --reload 자식 프로세스에서도 환경변수가 보장되도록).
+# run_server.py 가 미리 로드해도 reloader 가 새 프로세스를 띄울 때 일부 환경변수가
+# 누락될 수 있어 여기서도 다시 안전하게 로드한다 (override=False 라 기존값 유지).
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _env_path = os.path.join(_project_root, ".env")
+    if os.path.exists(_env_path):
+        _load_dotenv(_env_path, override=False)
+except Exception:
+    pass
+
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -85,7 +96,13 @@ from backend.services.portfolio_trading import (
 )
 from agents.orchestrator.orchestrator import run_analysis
 from backtesting.backtest import run_simple_backtest, run_agent_backtest, format_result_summary
-from data.market.fetcher import get_stock_info, get_technical_indicators, search_stocks, get_price_history
+from data.market.fetcher import (
+    get_stock_info,
+    get_technical_indicators,
+    search_stocks,
+    get_price_history,
+    get_intraday_price_history,
+)
 
 
 # ── 백테스트 취소 시그널 레지스트리 ─────────────────────────────
@@ -523,28 +540,85 @@ async def get_stock(ticker: str = Path(..., pattern=r"^[0-9]{6}$")):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# 차트 타임프레임 → (resolution, params) 매핑
+# resolution: "intraday" 는 분봉(yfinance), "daily" 는 일봉(fdr)
+# - intraday: yfinance period/interval 을 충분히 크게 가져와 후미 trim
+# - daily: display_bars 만큼 표시. lookback 은 fetcher 가 자동 +130봉 보장
+_CHART_TIMEFRAMES: dict[str, dict] = {
+    # 모든 타임프레임을 ~80~150 bars 로 맞춰 캔들 간격이 일정하게 보이도록 한다.
+    # intraday(yfinance) 는 분봉, daily(fdr) 는 일봉.
+    "1d": {"resolution": "intraday", "period": "5d",  "interval": "5m",  "display_bars": 78},   # 1거래일 ≈ 78개 5분봉
+    "5d": {"resolution": "intraday", "period": "1mo", "interval": "15m", "display_bars": 130},  # 5거래일 ≈ 130개 15분봉
+    "1w": {"resolution": "intraday", "period": "1mo", "interval": "30m", "display_bars": 65},   # 5거래일 ≈ 65개 30분봉
+    "2w": {"resolution": "intraday", "period": "3mo", "interval": "1h",  "display_bars": 70},   # 10거래일 ≈ 70개 1시간봉 (MA120 lookback 확보)
+    "1m": {"resolution": "intraday", "period": "3mo", "interval": "1h",  "display_bars": 154},  # 22거래일 ≈ 154개 1시간봉
+    "3m": {"resolution": "daily",   "display_bars": 66},
+    "6m": {"resolution": "daily",   "display_bars": 132},
+    "1y": {"resolution": "daily",   "display_bars": 252},
+    "2y": {"resolution": "daily",   "display_bars": 504},
+}
+
+
 @app.get("/api/stock/{ticker}/chart")
 async def get_stock_chart(
     ticker: str = Path(..., pattern=r"^[0-9]{6}$"),
-    timeframe: str = Query(default="6m", pattern="^(1m|3m|6m|1y|2y)$"),
+    timeframe: str = Query(default="6m", pattern="^(1d|5d|1w|2w|1m|3m|6m|1y|2y)$"),
 ):
-    """차트 데이터 조회 (OHLCV + MA)"""
+    """차트 데이터 조회 (OHLCV + MA/BB/RSI/MACD/VWAP). 1d/5d 는 분봉, 그 외는 일봉.
+
+    모든 지표는 lookback 을 충분히 확보한 뒤 사전계산되어, 표시되는 첫 봉부터 값이 채워진다.
+    """
+    from data.market.fetcher import get_daily_chart_series
+
+    spec = _CHART_TIMEFRAMES.get(timeframe, _CHART_TIMEFRAMES["6m"])
+    resolution = spec["resolution"]
+    display_bars = int(spec.get("display_bars") or 0) or None
+    points: list[dict] = []
+    fetch_error: str | None = None
+
     try:
-        days_map = {
-            "1m": 35,
-            "3m": 110,
-            "6m": 220,
-            "1y": 420,
-            "2y": 800,
-        }
-        points = get_price_history(ticker, days=days_map.get(timeframe, 220))
+        if resolution == "intraday":
+            # 분봉: yfinance 가 충분히 큰 period 로 가져오게 하고 후미만 표시
+            try:
+                points = get_intraday_price_history(
+                    ticker,
+                    period=spec["period"],
+                    interval=spec["interval"],
+                )
+            except Exception as exc:
+                fetch_error = f"intraday_fetch_failed: {type(exc).__name__}"
+                points = []
+            if points and display_bars and len(points) > display_bars:
+                points = points[-display_bars:]
+            # 분봉 실패(yfinance 차단/장중 외/네트워크) 시 일봉으로 폴백
+            if not points:
+                points = get_daily_chart_series(ticker, display_bars=22)
+                resolution = "daily"
+        else:
+            points = get_daily_chart_series(ticker, display_bars=display_bars)
+    except Exception as exc:
+        # 어떤 경로로도 데이터를 못 받았을 때만 500. 메시지에 원인 노출.
+        raise HTTPException(
+            status_code=502,
+            detail=f"차트 데이터 조회 실패 ({timeframe}): {type(exc).__name__}: {exc}",
+        )
+
+    if not points:
+        # 빈 응답이지만 200 으로 — 프런트가 'no data' 메시지를 띄우게 한다.
         return {
             "ticker": ticker,
             "timeframe": timeframe,
-            "points": points,
+            "resolution": resolution,
+            "points": [],
+            "warning": fetch_error or "no_data_available",
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "ticker": ticker,
+        "timeframe": timeframe,
+        "resolution": resolution,
+        "points": points,
+    }
 
 
 @app.post("/api/analyze/start")
@@ -564,11 +638,12 @@ async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks
         max_keep_hours=_RUNTIME_SESSION_MAX_KEEP_HOURS,
     )
     profile_snapshot = dict(runtime_profile)
+    user_id_str = _user_id_str(user)
 
     async def run():
         try:
             with runtime_profile_context(profile_snapshot):
-                decision = await run_analysis(req.ticker, session_id)
+                decision = await run_analysis(req.ticker, session_id, user_id=user_id_str)
             decision_payload = {
                 "action": decision.action,
                 "ticker": decision.ticker,
@@ -591,7 +666,9 @@ async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks
                 session_type=SESSION_TYPE_ANALYSIS,
                 error=str(e),
             )
-            # 스트림 종료
+        finally:
+            # 스트림 종료는 런타임 세션 저장 완료(성공/실패) 이후에만 보낸다.
+            # 그렇지 않으면 SSE 소비자가 final_decision 없이 done을 먼저 볼 수 있다.
             from backend.core.events import get_thought_queue
             q = get_thought_queue(session_id)
             await q.put(None)
@@ -617,15 +694,27 @@ async def stream_analysis(session_id: str, request: Request):
         
         async for chunk in stream_thoughts(session_id):
             yield chunk
-        
+
         # 최종 결정 전송
         session = await get_runtime_session(db, session_id, SESSION_TYPE_ANALYSIS) or {}
+        # 방어 로직: 드물게 저장 직전 상태를 볼 수 있으므로 짧게 재조회한다.
+        if not session.get("decision") and not session.get("error"):
+            for _ in range(10):
+                await asyncio.sleep(0.15)
+                session = await get_runtime_session(db, session_id, SESSION_TYPE_ANALYSIS) or {}
+                if session.get("decision") or session.get("error"):
+                    break
+
         if session.get("decision"):
             import json
             yield f"data: {json.dumps({'type': 'final_decision', **session['decision']})}\n\n"
         elif session.get("error"):
             import json
             yield f"data: {json.dumps({'type': 'error', 'message': session['error']})}\n\n"
+        else:
+            # 침묵 실패 방지: 프론트가 원인을 알 수 있도록 명시 오류를 보낸다.
+            import json
+            yield f"data: {json.dumps({'type': 'error', 'message': '분석이 종료됐지만 최종 결정 저장을 확인하지 못했습니다. 다시 시도해주세요.'})}\n\n"
         
         yield "data: {\"type\": \"done\"}\n\n"
 
@@ -963,8 +1052,14 @@ async def list_analysis_history(request: Request, limit: int = 20):
     items: list[dict[str, Any]] = []
     async for row in cursor:
         s = serialize_runtime_session(row)
-        result = s.get("result") or {}
-        decision = (result.get("decision") or {}) if isinstance(result, dict) else {}
+        # decision은 mark_runtime_session_done에서 top-level로 저장됨.
+        # 레거시 레코드(result.decision 안에 넘겼던 경우)도 함께 수용.
+        decision = s.get("decision")
+        if not isinstance(decision, dict):
+            result = s.get("result") or {}
+            decision = result.get("decision") if isinstance(result, dict) else None
+        if not isinstance(decision, dict):
+            decision = {}
         items.append({
             "session_id": s.get("session_id"),
             "ticker": s.get("ticker"),
@@ -973,12 +1068,111 @@ async def list_analysis_history(request: Request, limit: int = 20):
             "updated_at": s.get("updated_at"),
             "error": s.get("error"),
             "summary": {
-                "action": decision.get("action") if isinstance(decision, dict) else None,
-                "confidence": decision.get("confidence") if isinstance(decision, dict) else None,
-                "risk_level": decision.get("risk_level") if isinstance(decision, dict) else None,
+                "action": decision.get("action"),
+                "confidence": decision.get("confidence"),
+                "risk_level": decision.get("risk_level")
+                or (decision.get("agents_summary") or {}).get("risk_level"),
             },
         })
     return {"items": items}
+
+
+# ── 분석 메모리 (Phase 3: reflection loop) ───────────────
+@app.get("/api/memory/{ticker}")
+async def get_ticker_memory(ticker: str, request: Request, limit: int = 10):
+    """특정 종목에 대한 사용자의 과거 의사결정 메모리 (최신순 + 극단치)."""
+    from backend.services.memory_service import get_recent_memories, get_extreme_outcomes
+
+    user = await require_user(request)
+    user_id_str = _user_id_str(user)
+    if not user_id_str:
+        return {"recent": [], "best": [], "worst": []}
+
+    safe_limit = max(1, min(int(limit or 10), 50))
+    recent = await get_recent_memories(user_id=user_id_str, ticker=ticker, limit=safe_limit)
+    extremes = await get_extreme_outcomes(user_id=user_id_str, ticker=ticker, each=2)
+
+    def _serialize(m: dict) -> dict:
+        out = dict(m)
+        if "_id" in out:
+            out["_id"] = str(out["_id"])
+        if "user_id" in out:
+            out["user_id"] = str(out["user_id"])
+        for k in ("created_at",):
+            v = out.get(k)
+            if hasattr(v, "isoformat"):
+                out[k] = v.isoformat()
+        outcome = out.get("outcome") or {}
+        if isinstance(outcome, dict):
+            v = outcome.get("closed_at")
+            if hasattr(v, "isoformat"):
+                outcome["closed_at"] = v.isoformat()
+            out["outcome"] = outcome
+        v = out.get("lesson_generated_at")
+        if hasattr(v, "isoformat"):
+            out["lesson_generated_at"] = v.isoformat()
+        return out
+
+    return {
+        "ticker": ticker,
+        "recent": [_serialize(m) for m in recent],
+        "best": [_serialize(m) for m in extremes.get("best", [])],
+        "worst": [_serialize(m) for m in extremes.get("worst", [])],
+    }
+
+
+class MemoryOutcomeRequest(BaseModel):
+    decision_id: str
+    exit_price: float
+    closed_at: str | None = None  # ISO8601, 미지정 시 서버 시간
+
+
+@app.post("/api/memory/outcome")
+@limiter.limit(analysis_rate)
+async def post_memory_outcome(req: MemoryOutcomeRequest, request: Request):
+    """매매 종료 시 outcome 기록 + 자동 lesson 생성 트리거."""
+    from datetime import datetime as _dt
+    from backend.services.memory_service import update_outcome
+
+    user = await require_user(request)
+    user_id_str = _user_id_str(user)
+    if not user_id_str:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    closed_at = None
+    if req.closed_at:
+        try:
+            closed_at = _dt.fromisoformat(req.closed_at)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="closed_at must be ISO8601")
+
+    updated = await update_outcome(
+        user_id=user_id_str,
+        decision_id=req.decision_id,
+        exit_price=float(req.exit_price),
+        closed_at=closed_at,
+        generate_lesson=True,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="memory not found")
+
+    # 직렬화
+    out = dict(updated)
+    if "_id" in out:
+        out["_id"] = str(out["_id"])
+    if "user_id" in out:
+        out["user_id"] = str(out["user_id"])
+    for k in ("created_at", "lesson_generated_at"):
+        v = out.get(k)
+        if hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+    outcome = out.get("outcome") or {}
+    if isinstance(outcome, dict):
+        v = outcome.get("closed_at")
+        if hasattr(v, "isoformat"):
+            outcome["closed_at"] = v.isoformat()
+        out["outcome"] = outcome
+    return out
 
 
 # ── 설정 API ────────────────────────────────────────────

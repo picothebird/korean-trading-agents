@@ -305,7 +305,11 @@ class AutoTradingSupervisor:
 
             with runtime_profile_context(rt.settings.runtime_profile):
                 decision_session = f"auto-loop-{rt.loop_id}-{rt.stats.cycle_count}-{uuid4().hex[:8]}"
-                decision = await run_analysis(rt.settings.ticker, decision_session)
+                decision = await run_analysis(
+                    rt.settings.ticker,
+                    decision_session,
+                    user_id=rt.settings.owner_user_id or None,
+                )
                 rt.latest_decision = {
                     "action": decision.action,
                     "ticker": decision.ticker,

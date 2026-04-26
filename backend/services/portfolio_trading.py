@@ -679,7 +679,14 @@ class PortfolioSupervisor:
             session_id = f"portfolio-{rt.loop_id}-{rt.stats.cycle_count}-{ticker}-{uuid4().hex[:6]}"
             async with sem:
                 try:
-                    decision = await asyncio.wait_for(run_analysis(ticker, session_id), timeout=240)
+                    decision = await asyncio.wait_for(
+                        run_analysis(
+                            ticker,
+                            session_id,
+                            user_id=rt.settings.owner_user_id or None,
+                        ),
+                        timeout=240,
+                    )
                     action = str(decision.action or "HOLD").upper()
                     if action not in {"BUY", "SELL", "HOLD"}:
                         action = "HOLD"
