@@ -8,7 +8,6 @@
 """
 import asyncio
 import json
-import re
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -18,10 +17,17 @@ from backend.core.events import (
     AgentRole, AgentStatus, AgentThought, TradeDecision,
     emit_thought
 )
-from backend.core.llm import create_response
+from backend.core.llm import create_structured_response
 from backend.core.user_runtime_settings import get_runtime_setting
 from agents.analyst.analysts import technical_analyst, fundamental_analyst, sentiment_analyst, macro_analyst
 from data.market.fetcher import get_stock_info, get_technical_indicators, get_news_async
+from backend.services.memory_service import build_memory_block, record_decision
+from agents.schemas import (
+    DebateStanceOutput,
+    RiskOutput,
+    PortfolioManagerOutput,
+    GuruOutput,
+)
 
 
 _VALID_ACTIONS = {"BUY", "SELL", "HOLD"}
@@ -49,35 +55,63 @@ def _risk_exceeds(current_level: str, allowed_level: str) -> bool:
 
 
 def _compute_judge_score(analyst_details: dict, pm_action: str) -> dict:
-    """MS-S7: 강세 vs 약세 토론 판정 점수.
+    """MS-S7: 강세 vs 약세 토론 판정 점수 (중립축 기반).
 
-    분석가 신뢰도 가중 평균으로 강세/약세 우세를 0~100점으로 환산.
-    LLM 호출 없이 결정론적으로 회의록 결정타 라운드 시각화에 사용.
+    각 분석가의 의견을 0~100 스칼라로 매핑한 뒤 평균 → bull_score.
+    bear_score = 100 - bull_score 로 강세/약세가 항상 보완 관계가 되도록 정의.
+
+    매핑 규칙 (직관적):
+    - BUY  (신뢰도 c): 50 + 50·c        → c=1.0 이면 100, c=0.5 이면 75
+    - SELL (신뢰도 c): 50 - 50·c        → c=1.0 이면   0, c=0.5 이면 25
+    - HOLD (신뢰도 c): 50 (중립)        → 신뢰도 무관하게 정중앙
+    - 신호 없는 항목은 평균에서 제외
+
+    예시:
+    - 4명 모두 BUY @0.7 → bull=85, bear=15  (강세이지만 약세도 0이 아님)
+    - 1 BUY @0.8 + 3 HOLD @0.5 → bull=(90+50+50+50)/4=60, bear=40
+    - 분석가 전무 → bull=50, bear=50 (중립)
     """
-    bull_conf: list[float] = []
-    bear_conf: list[float] = []
+    scores: list[float] = []
     for d in (analyst_details or {}).values():
         if not isinstance(d, dict):
             continue
         sig = str(d.get("signal", "")).upper()
         c = float(d.get("confidence", 0.0) or 0.0)
+        c = max(0.0, min(1.0, c))
         if sig == "BUY":
-            bull_conf.append(c)
+            scores.append(50.0 + 50.0 * c)
         elif sig == "SELL":
-            bear_conf.append(c)
+            scores.append(50.0 - 50.0 * c)
+        elif sig == "HOLD":
+            scores.append(50.0)
 
-    bull_score = round(((sum(bull_conf) / len(bull_conf)) * 100) if bull_conf else 0.0, 1)
-    bear_score = round(((sum(bear_conf) / len(bear_conf)) * 100) if bear_conf else 0.0, 1)
+    if not scores:
+        bull_score = 50.0
+    else:
+        bull_score = sum(scores) / len(scores)
 
-    if bull_score > bear_score + 5:
+    bull_score = round(bull_score, 1)
+    bear_score = round(100.0 - bull_score, 1)
+
+    # 우세 판단 임계값 (10점 차이 = 한 쪽이 60:40 이상)
+    if bull_score > bear_score + 10:
         winner = "BULL"
-        reasoning = f"강세 분석가 평균 신뢰도 {bull_score}점이 약세 {bear_score}점을 분명히 앞섭니다."
-    elif bear_score > bull_score + 5:
+        reasoning = (
+            f"분석가 의견 종합 결과 강세 {bull_score}점 vs 약세 {bear_score}점으로 "
+            f"강세가 우세합니다."
+        )
+    elif bear_score > bull_score + 10:
         winner = "BEAR"
-        reasoning = f"약세 분석가 평균 신뢰도 {bear_score}점이 강세 {bull_score}점을 분명히 앞섭니다."
+        reasoning = (
+            f"분석가 의견 종합 결과 약세 {bear_score}점 vs 강세 {bull_score}점으로 "
+            f"약세가 우세합니다."
+        )
     else:
         winner = "DRAW"
-        reasoning = f"강세 {bull_score}점, 약세 {bear_score}점으로 우열을 가리기 어렵습니다."
+        reasoning = (
+            f"강세 {bull_score}점, 약세 {bear_score}점으로 우열이 뚜렷하지 않아 "
+            f"중립~혼조 구간입니다."
+        )
 
     return {
         "bull_score": bull_score,
@@ -87,22 +121,6 @@ def _compute_judge_score(analyst_details: dict, pm_action: str) -> dict:
         "reasoning": reasoning,
     }
 
-
-def _safe_parse_json(text: str, fallback: dict) -> dict:
-    """LLM 응답에서 JSON을 안전하게 파싱 (코드블록 제거 포함)"""
-    text = text.strip()
-    # ```json ... ``` 제거
-    text = re.sub(r"```(?:json)?\s*", "", text)
-    text = text.strip("`").strip()
-    # JSON 시작점 찾기
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    if start >= 0 and end > start:
-        try:
-            return json.loads(text[start:end])
-        except json.JSONDecodeError:
-            pass
-    return fallback
 
 
 def _kelly_position_size(
@@ -216,14 +234,14 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
 
         bull_key_points = []
         try:
-            bull_resp_text = await create_response(
-                system="당신은 강세 주식 연구원입니다. JSON만 출력하세요.",
+            bull_out = await create_structured_response(
+                system="당신은 강세 주식 연구원입니다.",
                 user=bull_prompt,
+                schema_model=DebateStanceOutput,
                 fast=True,
             )
-            bull_result = _safe_parse_json(bull_resp_text, {})
-            bull_stance = bull_result.get("argument", bull_resp_text)
-            bull_key_points = bull_result.get("key_points", [])
+            bull_stance = bull_out.argument
+            bull_key_points = list(bull_out.key_points)
         except Exception as e:
             bull_stance = f"강세 관점 생성 실패: {str(e)[:80]}"
 
@@ -272,14 +290,14 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
 
         bear_key_points = []
         try:
-            bear_resp_text = await create_response(
-                system="당신은 약세 주식 연구원입니다. JSON만 출력하세요.",
+            bear_out = await create_structured_response(
+                system="당신은 약세 주식 연구원입니다.",
                 user=bear_prompt,
+                schema_model=DebateStanceOutput,
                 fast=True,
             )
-            bear_result = _safe_parse_json(bear_resp_text, {})
-            bear_stance = bear_result.get("argument", bear_resp_text)
-            bear_key_points = bear_result.get("key_points", [])
+            bear_stance = bear_out.argument
+            bear_key_points = list(bear_out.key_points)
         except Exception as e:
             bear_stance = f"약세 관점 생성 실패: {str(e)[:80]}"
 
@@ -383,25 +401,19 @@ JSON: {{"risk_level": "LOW|MEDIUM|HIGH|CRITICAL", "max_position_pct": 0~25, "kel
 requires_human_approval=true 조건: 신뢰도 80% 이상이고 포지션 20% 초과, 또는 위험도 CRITICAL"""
 
     try:
-        risk_text = await create_response(
-            system="당신은 퀀트 리스크 관리 전문가입니다. Kelly Criterion을 반영한 JSON만 출력하세요.",
+        risk_out = await create_structured_response(
+            system="당신은 퀀트 리스크 관리 전문가입니다. Kelly Criterion을 반영하세요.",
             user=prompt,
+            schema_model=RiskOutput,
         )
-        result = _safe_parse_json(risk_text, {
-            "risk_level": "HIGH",
-            "max_position_pct": 10,
-            "kelly_position_pct": kelly_pct,
-            "stop_loss_pct": 7,
-            "approval": False,
-            "requires_human_approval": False,
-            "summary": "리스크 분석 실패",
-        })
+        result = risk_out.model_dump()
     except Exception as e:
         result = {
             "risk_level": "HIGH",
             "max_position_pct": 5,
             "kelly_position_pct": kelly_pct,
             "stop_loss_pct": 5,
+            "key_risks": [],
             "approval": False,
             "requires_human_approval": False,
             "summary": f"분석 오류: {str(e)[:100]}",
@@ -425,8 +437,13 @@ async def portfolio_manager(
     debate_results: dict,
     risk_result: dict,
     session_id: str,
+    memory_block: str = "",
 ) -> TradeDecision:
-    """포트폴리오 매니저: 최종 매매 결정 (인간 개입 가능)"""
+    """포트폴리오 매니저: 최종 매매 결정 (인간 개입 가능)
+
+    memory_block: build_memory_block() 결과 — 과거 동일 종목 의사결정 회고 텍스트.
+                  비어있으면 (신규 사용자/로그인 안됨) 무시하고 동작.
+    """
     await emit_thought(session_id, AgentThought(
         agent_id="portfolio_manager",
         role=AgentRole.PORTFOLIO_MANAGER,
@@ -467,7 +484,7 @@ Kelly 포지션: {kelly_pct}% | 최대 허용: {risk_result.get('max_position_pc
 [연구원 토론]
 강세론: {debate_results.get('bull_stance', '')[:300]}
 약세론: {debate_results.get('bear_stance', '')[:300]}
-
+{(chr(10) + memory_block) if memory_block else ''}
 종목 {ticker}에 대한 최종 투자 결정을 내리세요.
 Kelly 모델 기반 적정 포지션: {position_pct:.1f}%
 
@@ -475,16 +492,12 @@ JSON: {{"action": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "reasoning": "결정 �
 
 
     try:
-        pm_text = await create_response(
-            system="당신은 최종 투자 결정권자입니다. Kelly Criterion을 반영하여 JSON만 출력하세요.",
+        pm_out = await create_structured_response(
+            system="당신은 최종 투자 결정권자입니다. Kelly Criterion을 반영하세요.",
             user=prompt,
+            schema_model=PortfolioManagerOutput,
         )
-        pm_result = _safe_parse_json(pm_text, {
-            "action": "HOLD",
-            "confidence": 0.3,
-            "reasoning": "결정 과정 오류",
-            "position_size_pct": 0,
-        })
+        pm_result = pm_out.model_dump()
     except Exception as e:
         pm_result = {
             "action": "HOLD",
@@ -585,6 +598,7 @@ async def guru_manager(
     risk_result: dict,
     base_decision: TradeDecision,
     session_id: str,
+    memory_block: str = "",
 ) -> TradeDecision:
     """사용자 철학 + 룰 기반 정책을 반영하는 최종 GURU 레이어."""
     if not bool(get_runtime_setting("guru_enabled", settings.guru_enabled, use_global_when_unset=True)):
@@ -648,30 +662,21 @@ risk_level={risk_result.get('risk_level')}, approval={risk_result.get('approval'
 [토론 요약]
 강세론: {str(debate_results.get('bull_stance', ''))[:260]}
 약세론: {str(debate_results.get('bear_stance', ''))[:260]}
-
+{(chr(10) + memory_block) if memory_block else ''}
 출력은 JSON만:
 {{"action":"BUY|SELL|HOLD","confidence":0.0~1.0,"reasoning":"300자 이내","policy_notes":["핵심 포인트1","핵심 포인트2"]}}"""
 
         try:
-            guru_text = await create_response(
-                system="당신은 개인화 투자 원칙을 엄격히 적용하는 GURU 에이전트입니다. JSON만 출력하세요.",
+            guru_out = await create_structured_response(
+                system="당신은 개인화 투자 원칙을 엄격히 적용하는 GURU 에이전트입니다.",
                 user=prompt,
+                schema_model=GuruOutput,
                 fast=True,
             )
-            guru_result = _safe_parse_json(guru_text, {})
-
-            llm_action = _normalize_action(guru_result.get("action", llm_action))
-
-            try:
-                llm_confidence = _clamp01(float(guru_result.get("confidence", llm_confidence)))
-            except (TypeError, ValueError):
-                pass
-
-            llm_reasoning = str(guru_result.get("reasoning", "") or llm_reasoning)
-
-            raw_notes = guru_result.get("policy_notes", [])
-            if isinstance(raw_notes, list):
-                llm_notes = [str(x).strip() for x in raw_notes if str(x).strip()][:5]
+            llm_action = _normalize_action(guru_out.action)
+            llm_confidence = _clamp01(float(guru_out.confidence))
+            llm_reasoning = str(guru_out.reasoning or llm_reasoning)
+            llm_notes = [str(x).strip() for x in guru_out.policy_notes if str(x).strip()][:5]
         except Exception as e:
             llm_notes = [f"LLM 토론 실패로 룰 기반만 적용: {str(e)[:100]}"]
 
@@ -762,8 +767,15 @@ risk_level={risk_result.get('risk_level')}, approval={risk_result.get('approval'
     return base_decision
 
 
-async def run_analysis(ticker: str, session_id: str) -> TradeDecision:
-    """전체 에이전트 파이프라인 실행"""
+async def run_analysis(
+    ticker: str,
+    session_id: str,
+    user_id: str | None = None,
+) -> TradeDecision:
+    """전체 에이전트 파이프라인 실행.
+
+    user_id: 메모리/리플렉션 루프 활성화용 (옵션). 미지정 시 메모리 미사용.
+    """
     stock_info = get_stock_info(ticker)
     company_name = stock_info.get("name", "")
 
@@ -774,6 +786,22 @@ async def run_analysis(ticker: str, session_id: str) -> TradeDecision:
         content=f"🚀 분석 시작: {ticker} ({company_name})",
         metadata={"ticker": ticker, "company": company_name},
     ))
+
+    # 0단계: 메모리 회상 (사용자가 식별된 경우만)
+    memory_block = ""
+    if user_id:
+        try:
+            memory_block = await build_memory_block(user_id, ticker, recent_n=5, each_extreme=1)
+        except Exception:
+            memory_block = ""
+        if memory_block:
+            await emit_thought(session_id, AgentThought(
+                agent_id="memory",
+                role=AgentRole.PORTFOLIO_MANAGER,
+                status=AgentStatus.THINKING,
+                content="과거 동일 종목 의사결정 회고를 결정 단계에 주입합니다.",
+                metadata={"memory_block_chars": len(memory_block)},
+            ))
 
     # 1단계: 분석 에이전트 병렬 실행
     tech_task = asyncio.create_task(technical_analyst(ticker, session_id))
@@ -800,10 +828,12 @@ async def run_analysis(ticker: str, session_id: str) -> TradeDecision:
     # 3단계: 리스크 매니저
     risk = await risk_manager(ticker, analyst_results, debate, session_id)
 
-    # 4단계: 포트폴리오 매니저 최종 결정
-    decision = await portfolio_manager(ticker, analyst_results, debate, risk, session_id)
+    # 4단계: 포트폴리오 매니저 최종 결정 (메모리 주입)
+    decision = await portfolio_manager(
+        ticker, analyst_results, debate, risk, session_id, memory_block=memory_block,
+    )
 
-    # 5단계: GURU 사용자 커스터마이징 레이어
+    # 5단계: GURU 사용자 커스터마이징 레이어 (메모리 주입)
     decision = await guru_manager(
         ticker=ticker,
         analyst_results=analyst_results,
@@ -811,11 +841,39 @@ async def run_analysis(ticker: str, session_id: str) -> TradeDecision:
         risk_result=risk,
         base_decision=decision,
         session_id=session_id,
+        memory_block=memory_block,
     )
 
-    # 스트림 종료 신호
-    from backend.core.events import get_thought_queue
-    queue = get_thought_queue(session_id)
-    await queue.put(None)
+    # 6단계: 의사결정 메모리 영속화 (사용자가 식별된 경우만)
+    if user_id:
+        try:
+            summary = decision.agents_summary or {}
+            sig = summary.get("analyst_signals") or {"BUY": 0, "SELL": 0, "HOLD": 0}
+            risk_block = summary.get("risk") or {}
+            avg_conf = float(risk_block.get("avg_confidence_pct", 0.0) or 0.0) / 100.0
+            entry_price = None
+            try:
+                ind = get_technical_indicators(ticker)
+                entry_price = ind.get("current_price")
+            except Exception:
+                pass
+            decision_id = await record_decision(
+                user_id=user_id,
+                ticker=ticker,
+                session_id=session_id,
+                action=decision.action,
+                confidence=float(decision.confidence or 0.0),
+                position_pct=float(summary.get("position_size_pct", 0.0) or 0.0),
+                reasoning=str(decision.reasoning or ""),
+                agent_signals=sig,
+                avg_confidence=avg_conf,
+                entry_price=entry_price if isinstance(entry_price, (int, float)) else None,
+            )
+            if decision_id:
+                # 메모리 ID 를 호출자가 outcome 갱신에 쓸 수 있도록 노출
+                decision.agents_summary["memory_decision_id"] = decision_id
+        except Exception:
+            # 메모리 저장 실패는 사용자 응답을 방해하지 않는다.
+            pass
 
     return decision

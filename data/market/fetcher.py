@@ -242,45 +242,207 @@ def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | Non
     }
 
 
-def get_price_history(ticker: str, days: int = 180) -> list[dict]:
-    """차트용 시계열 데이터 (OHLCV + 이동평균)"""
-    end_dt = datetime.now()
-    end = end_dt.strftime("%Y-%m-%d")
-    start = (end_dt - timedelta(days=max(days, 30))).strftime("%Y-%m-%d")
+def _enrich_with_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """OHLCV df 에 MA / BB / RSI / MACD 컬럼을 추가한다 (in-place 안전).
 
-    df = get_ohlcv(ticker, start, end)
-    if df.empty or "Close" not in df.columns:
+    df.index 는 시계열 정렬되어 있어야 하며 'Close','High','Low','Volume' 컬럼이 있어야 한다.
+    충분한 봉이 없으면 해당 지표는 NaN 으로 채워진다.
+    """
+    out = df.copy()
+    close = out["Close"].astype(float)
+    high = out.get("High", close).astype(float)
+    low = out.get("Low", close).astype(float)
+
+    # 이동평균
+    out["ma5"] = close.rolling(5).mean()
+    out["ma20"] = close.rolling(20).mean()
+    out["ma60"] = close.rolling(60).mean()
+    out["ma120"] = close.rolling(120).mean()
+
+    # Bollinger Band (20, 2σ)
+    bb_mid = close.rolling(20).mean()
+    bb_std = close.rolling(20).std(ddof=0)
+    out["bb_mid"] = bb_mid
+    out["bb_upper"] = bb_mid + 2 * bb_std
+    out["bb_lower"] = bb_mid - 2 * bb_std
+
+    # RSI(14) — Wilder's smoothing
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    avg_loss = loss.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    rs = avg_gain / avg_loss.replace(0, float("nan"))
+    out["rsi"] = 100 - (100 / (1 + rs))
+
+    # MACD(12,26,9)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    macd_signal = macd.ewm(span=9, adjust=False).mean()
+    out["macd"] = macd
+    out["macd_signal"] = macd_signal
+    out["macd_hist"] = macd - macd_signal
+
+    # VWAP (running, 세션 단위 누적이 아닌 전체 누적)
+    if "Volume" in out.columns:
+        vol = out["Volume"].astype(float).fillna(0)
+        typical = (high + low + close) / 3
+        cum_vp = (typical * vol).cumsum()
+        cum_v = vol.cumsum().replace(0, float("nan"))
+        out["vwap"] = cum_vp / cum_v
+    return out
+
+
+def _series_to_points(
+    df: pd.DataFrame,
+    *,
+    date_format: str = "%Y-%m-%d",
+    display_bars: int | None = None,
+) -> list[dict]:
+    """Enriched OHLCV df → 차트용 포인트 리스트. display_bars 만큼 후미만 반환."""
+    if df.empty:
         return []
+    enriched = _enrich_with_indicators(df)
+    if display_bars is not None and display_bars > 0:
+        enriched = enriched.iloc[-display_bars:]
 
-    close = df["Close"].astype(float)
-    ma5 = close.rolling(5).mean()
-    ma20 = close.rolling(20).mean()
-    ma60 = close.rolling(60).mean()
-
+    fields = (
+        "ma5", "ma20", "ma60", "ma120",
+        "bb_upper", "bb_mid", "bb_lower",
+        "rsi", "macd", "macd_signal", "macd_hist",
+        "vwap",
+    )
     result: list[dict] = []
-    for idx, row in df.iterrows():
+    for idx, row in enriched.iterrows():
         close_val = _safe_float(row.get("Close"))
         if close_val is None:
             continue
-
         open_val = _safe_float(row.get("Open"))
         high_val = _safe_float(row.get("High"))
         low_val = _safe_float(row.get("Low"))
         volume = row.get("Volume", 0)
-
-        result.append({
-            "date": idx.strftime("%Y-%m-%d"),
+        try:
+            stamp = idx.strftime(date_format)
+        except BaseException:
+            stamp = str(idx)
+        point: dict = {
+            "date": stamp,
             "open": open_val if open_val is not None else close_val,
             "high": high_val if high_val is not None else close_val,
             "low": low_val if low_val is not None else close_val,
             "close": close_val,
             "volume": int(float(volume)) if volume is not None and _safe_float(volume) is not None else 0,
-            "ma5": _safe_float(ma5.loc[idx]),
-            "ma20": _safe_float(ma20.loc[idx]),
-            "ma60": _safe_float(ma60.loc[idx]),
-        })
-
+        }
+        for f in fields:
+            point[f] = _safe_float(row.get(f))
+        result.append(point)
     return result
+
+
+def get_price_history(ticker: str, days: int = 180) -> list[dict]:
+    """차트용 일봉 시계열 데이터 (OHLCV + 이동평균).
+
+    하위호환용 래퍼. 새 코드는 ``get_daily_chart_series`` 사용 권장.
+    """
+    return get_daily_chart_series(ticker, display_bars=None, calendar_days=days)
+
+
+def get_daily_chart_series(
+    ticker: str,
+    *,
+    display_bars: int | None = None,
+    calendar_days: int | None = None,
+    indicator_lookback_bars: int = 130,
+) -> list[dict]:
+    """차트용 일봉 시계열 + 모든 지표 (MA/BB/RSI/MACD/VWAP) 사전계산.
+
+    - ``display_bars`` 가 주어지면 마지막 N개 거래일만 반환 (지표 lookback 은 자동 보장).
+    - ``calendar_days`` 만 주어지면 해당 calendar 기간을 그대로 반환.
+    - 둘 다 주어지지 않으면 기본 180 calendar 일.
+    """
+    # 거래일 표시 윈도우 + lookback 만큼 calendar day 로 환산해 fetch
+    if display_bars is not None:
+        # 거래일 ≈ calendar 일 × 5/7 → 역산: bars × 7/5 + 마진 (휴장/공휴일)
+        needed_bars = display_bars + indicator_lookback_bars
+        fetch_calendar = int(needed_bars * 1.6) + 14
+    elif calendar_days is not None:
+        fetch_calendar = max(calendar_days, 30)
+    else:
+        fetch_calendar = 180
+
+    end_dt = datetime.now()
+    end = end_dt.strftime("%Y-%m-%d")
+    start = (end_dt - timedelta(days=fetch_calendar)).strftime("%Y-%m-%d")
+
+    df = get_ohlcv(ticker, start, end)
+    if df.empty or "Close" not in df.columns:
+        return []
+
+    return _series_to_points(df, date_format="%Y-%m-%d", display_bars=display_bars)
+
+
+def _yfinance_symbol_for(ticker: str) -> list[str]:
+    """KRX 6자리 종목코드 → yfinance 심볼 후보 (우선순위 순)."""
+    try:
+        listing = _get_krx_listing()
+        if not listing.empty and "Code" in listing.columns:
+            row = listing[listing["Code"] == ticker]
+            if not row.empty:
+                market = str(row.iloc[0].get("Market", "")).upper()
+                if market == "KOSPI":
+                    return [f"{ticker}.KS", f"{ticker}.KQ"]
+                if market == "KOSDAQ":
+                    return [f"{ticker}.KQ", f"{ticker}.KS"]
+    except BaseException:
+        pass
+    return [f"{ticker}.KS", f"{ticker}.KQ"]
+
+
+def get_intraday_price_history(
+    ticker: str,
+    period: str = "1d",
+    interval: str = "5m",
+) -> list[dict]:
+    """차트용 분봉 시계열 데이터 (yfinance 기반) + 모든 지표 사전계산.
+
+    period: "1d" | "5d" | "1mo" 등 yfinance가 허용하는 값.
+    interval: "1m" | "2m" | "5m" | "15m" | "30m" | "60m" | "90m".
+    반환 항목의 ``date`` 필드는 ``YYYY-MM-DD HH:MM`` 형식이며 KST 기준이다.
+    """
+    try:
+        import yfinance as yf
+    except Exception:
+        return []
+
+    df = None
+    last_err: BaseException | None = None
+    for symbol in _yfinance_symbol_for(ticker):
+        try:
+            tk = yf.Ticker(symbol)
+            tmp = tk.history(period=period, interval=interval, auto_adjust=False)
+            if tmp is not None and not tmp.empty:
+                df = tmp
+                break
+        except BaseException as exc:
+            last_err = exc
+            continue
+    if df is None or df.empty:
+        # 분봉 실패 시 빈 결과 — 호출 측이 일봉으로 폴백한다.
+        if last_err is not None:
+            pass
+        return []
+
+    # KST 변환. yfinance는 보통 tz-aware (Asia/Seoul) 인덱스를 돌려준다.
+    try:
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("Asia/Seoul")
+        else:
+            df.index = df.index.tz_convert("Asia/Seoul")
+    except BaseException:
+        pass
+
+    return _series_to_points(df, date_format="%Y-%m-%d %H:%M", display_bars=None)
 
 
 async def get_news_async(ticker: str, company_name: str = "") -> list[dict]:

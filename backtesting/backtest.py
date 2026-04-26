@@ -201,16 +201,23 @@ def _compute_metrics(
     daily_returns = equity.pct_change().dropna()
     risk_free = 0.035
     excess_returns = daily_returns - risk_free / 252
-    sharpe = (
-        float(excess_returns.mean() / excess_returns.std() * np.sqrt(252))
-        if float(excess_returns.std()) > 0 else 0.0
-    )
+    # 실질적 변동이 표본으로 존재해야만 샤프 계산. 매매가 없을 때 equity가 상수 근처이면
+    # 부동소수 노이즈(1e-15 수준)로 인해 mean/std가 폭발(±10^16+)하는 것을 방지.
+    if len(daily_returns) < 2 or float(daily_returns.std()) < 1e-9 or len(trades) == 0:
+        sharpe = 0.0
+    else:
+        std_val = float(excess_returns.std())
+        sharpe = (
+            float(excess_returns.mean() / std_val * np.sqrt(252))
+            if std_val > 1e-9 else 0.0
+        )
 
     rolling_max = equity.cummax()
     drawdown = (equity - rolling_max) / rolling_max * 100
     max_dd = float(drawdown.min())
 
-    calmar = annualized_return / abs(max_dd) if max_dd != 0 else 0.0
+    # 거래가 없으면 (포지션 미진입) 칼마도 무의미 → 0
+    calmar = annualized_return / abs(max_dd) if (max_dd != 0 and len(trades) > 0) else 0.0
 
     wins = [t for t in trades if t["result"] == "WIN"]
     losses = [t for t in trades if t["result"] == "LOSS"]
@@ -240,7 +247,7 @@ async def run_agent_backtest(
     end_date: str,
     initial_capital: float = 10_000_000,
     transaction_cost: float = 0.0028,
-    decision_interval_days: int = 20,
+    decision_interval_days: int = 1,
     session_id: str | None = None,
     on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
     cancel_check: Callable[[], None] | None = None,
