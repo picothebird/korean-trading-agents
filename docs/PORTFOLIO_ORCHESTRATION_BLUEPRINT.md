@@ -1,6 +1,8 @@
 # Portfolio Orchestration Blueprint
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
+Status: Phase A delivered; Phase B partially delivered (state persistence done,
+SSE stream still pending). Phase C remains future work.
 Scope: multi-asset monitoring -> candidate discovery -> portfolio construction -> parallel analysis/execution.
 
 ## 1. Background
@@ -168,20 +170,21 @@ Response shape is designed to be poll-friendly for frontend every few seconds.
 
 ## 8. Implementation Phases
 
-Phase A (this implementation)
-- backend portfolio supervisor + API
-- frontend types/api/panel + tab integration
-- paper/live execution path with shared account bookkeeping
-- static diagnostics and smoke validation
+Phase A - delivered
+- Backend `PortfolioSupervisor` + REST API
+- Frontend types, client, panel, and tab integration
+- Paper/live execution path with shared account bookkeeping
+- Static diagnostics and smoke validation
 
-Phase B (next)
-- SSE stream for portfolio loop
-- persistence (DB/Redis) for restart recovery
-- per-sector and correlation-aware allocation
+Phase B - partially delivered
+- [x] State persistence (Mongo) with duplicate-start protection (409)
+- [x] Holiday and half-day session guards via `data/market/market_meta.py`
+- [ ] SSE stream for portfolio loop (polling is sufficient today)
+- [ ] Sector and correlation-aware allocation
 
-Phase C (next)
-- advanced execution model (partial fills, queue latency)
-- after-hours live routing with explicit order policy
+Phase C - future
+- Stochastic latency / queue model in paper and backtest fills
+- After-hours live routing with explicit order-code policy
 
 ## 9. Debug and Validation Plan
 

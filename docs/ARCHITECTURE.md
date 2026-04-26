@@ -1,168 +1,168 @@
-# 다중 AI 에이전트 트레이딩 시스템 - 아키텍처 전략
+# System Architecture
 
-## 1. 에이전트 역할 계층 구조
+Last updated: 2026-04-26
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Layer 1: 데이터 수집 에이전트 (병렬 실행)                        │
-│  ┌──────────────┐ ┌──────────────┐ ┌────────────────────────┐  │
-│  │ 기술적 분석가  │ │  감성 분석가  │ │   매크로 분석가          │  │
-│  │ RSI/MACD/BB  │ │  뉴스/여론    │ │  KOSPI/금리/환율        │  │
-│  └──────────────┘ └──────────────┘ └────────────────────────┘  │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 2: 연구원 토론 에이전트 (순차 + 반복)                      │
-│  ┌──────────────┐ ←→ ┌──────────────┐                          │
-│  │  강세 연구원   │     │  약세 연구원   │  (최대 3라운드)          │
-│  │  매수 논거     │     │  매도 논거     │                         │
-│  └──────────────┘     └──────────────┘                          │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 3: 리스크 & 최종 결정 에이전트 (순차)                      │
-│  ┌──────────────┐ → ┌──────────────┐ → ┌──────────────────┐   │
-│  │ 리스크 매니저  │   │ 포트폴리오    │   │  인간 승인 게이트   │   │
-│  │ Kelly기준/VaR │   │   매니저     │   │  (임계값 초과시)    │   │
-│  └──────────────┘   └──────────────┘   └──────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
+This document describes the high-level architecture of the Korean Trading Agents
+(KTA) system. For developer-level setup and module references, see
+[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
-## 2. LangGraph StateGraph 설계
+## 1. Goal
 
-```python
-# 그래프 상태 정의
-class TradingState(TypedDict):
-    ticker: str
-    session_id: str
-    
-    # Layer 1 outputs
-    technical: dict      # 기술 분석 결과
-    sentiment: dict      # 감성 분석 결과
-    macro: dict          # 매크로 분석 결과
-    
-    # Layer 2 outputs
-    debate_history: list  # 토론 기록
-    debate_round: int     # 현재 라운드
-    
-    # Layer 3 outputs
-    risk_assessment: dict  # 리스크 평가
-    final_decision: dict   # 최종 결정
-    
-    # 인간 협업
-    human_approved: bool | None  # None=대기, True=승인, False=거부
+Build an explainable multi-agent trading research and (paper/live) execution
+system tailored to **KRX cash equities**. The system must:
 
-# 그래프 노드
-graph.add_node("technical_analyst", technical_node)
-graph.add_node("sentiment_analyst", sentiment_node)
-graph.add_node("macro_analyst", macro_node)
-graph.add_node("bull_researcher", bull_node)
-graph.add_node("bear_researcher", bear_node)
-graph.add_node("risk_manager", risk_node)
-graph.add_node("portfolio_manager", portfolio_node)
-graph.add_node("human_gate", human_approval_node)  # 신규
+- Treat Korean market microstructure (tick ladder, price-limit band, halt/VI flags,
+  T+2 settlement, holiday calendar) as a hard constraint enforced in the data layer.
+- Surface every decision step (analyst notes, researcher debate, risk decision,
+  portfolio allocation) as inspectable artifacts for the user.
+- Support three modes from a single codebase: **single-shot analysis**,
+  **continuous auto-trading loop**, and **historical backtest**.
 
-# 병렬 엣지 (Layer 1)
-graph.add_edge(START, "technical_analyst")
-graph.add_edge(START, "sentiment_analyst")
-graph.add_edge(START, "macro_analyst")
-
-# 레이어 2로 집합
-graph.add_edge(["technical_analyst", "sentiment_analyst", "macro_analyst"], "bull_researcher")
-graph.add_conditional_edges("bull_researcher", should_continue_debate, ...)
-```
-
-## 3. 에이전트별 프롬프트 설계 원칙
-
-### 3.1 기술적 분석가
-- **입력**: OHLCV, RSI, MACD, 볼린저밴드, MA5/20/60, 52주 고저
-- **출력**: JSON with action (BUY/SELL/HOLD), confidence (0-1), key_levels (지지/저항), signals (근거 3개)
-- **프롬프트 핵심**: 한국 기술적 분석에서 골든크로스/데드크로스 중요도, KOSPI 연동성 언급
-
-### 3.2 감성 분석가
-- **입력**: 뉴스 헤드라인 최근 10건, RSS 피드
-- **출력**: sentiment_score (-1~1), key_events[], risk_events[]
-- **프롬프트 핵심**: 공시/실적발표/기관투자자 동향에 가중치 높게
-
-### 3.3 매크로 분석가
-- **입력**: KOSPI/KOSDAQ 추세, 환율, 외국인 매수/매도, 시장 심리
-- **출력**: market_regime (BULL/BEAR/SIDEWAYS), risk_level, position_bias
-- **프롬프트 핵심**: 서킷브레이커 조건, 공매도 제한 여부
-
-### 3.4 강세/약세 연구원 (TradingAgents 방식)
-- 강세: Layer 1 결과에서 BUY 논거만 강조, 낙관적 시나리오 구성
-- 약세: Layer 1 결과에서 SELL 논거만 강조, 하락 리스크 강조
-- 토론: 상대방 주장 반박 (최대 3라운드)
-
-### 3.5 리스크 매니저 (Kelly Criterion)
-```
-Kelly = (bp - q) / b
-where:
-  b = 예상 수익률 (승리시)
-  p = 승리 확률 (에이전트 confidence 평균)
-  q = 패배 확률 (1 - p)
-
-보수적 적용: position_size = Kelly * 0.5  # Half-Kelly
-최대 포지션: 25%
-최소 포지션: 5%
-```
-
-## 4. 한국 시장 특수 규칙
-
-| 규칙 | 세부 내용 |
-|------|-----------|
-| **서킷브레이커** | -8%: 20분 중단, -15%: 20분+낙폭확인, -20%: 당일 종가 |
-| **공매도 제한** | 코스피200/코스닥150만 허용, 개인 불가 |
-| **외국인 동향** | 3일 연속 순매도 = 위험 신호 |
-| **기관 동향** | ETF 리밸런싱 일정 고려 (매월 말) |
-| **거래시간** | 09:00-15:30 (동시호가: 08:30-09:00, 15:20-15:30) |
-| **거래세** | 코스피 0.18%, 코스닥 0.18%, 증권사 수수료 0.015% |
-
-## 5. 인간-AI 협업 플로우
+## 2. Component Map
 
 ```
-분석 요청 → [AI 자동 분석] → 임계값 체크
-                                    │
-              ┌─────────────────────┤
-              │ 임계값 초과시        │ 임계값 이내
-              ▼                     ▼
-         인간 승인 요청          자동 실행 (시뮬레이션)
-         - 고신뢰(>0.8) 대형
-         - 포지션 20% 이상
-         - 급등락(±5%) 시
-              │
-     ┌────────┴────────┐
-     ▼                 ▼
-   승인 (5분 내)    거부 (HOLD)
++--------------------------------------------------------------+
+|                       Frontend (Next.js)                     |
+|  pages -> AnalysisReport | AutoLoopPanel | BacktestPanel ... |
+|  Phaser pixel office <-> websocket-less polling /events      |
++----------------------------+---------------------------------+
+                             | HTTP (FastAPI)
++----------------------------v---------------------------------+
+|                     Backend (FastAPI app)                    |
+|                                                              |
+|  api/         routes  (analysis, auto, portfolio, backtest,  |
+|                       account, approvals, settings, auth)    |
+|  services/    AutoTradingSupervisor, PortfolioSupervisor,    |
+|               OrderApprovalService, MemoryService            |
+|  core/        config, db (motor), security                   |
++--------+--------------------+----------------+---------------+
+         |                    |                |
+         v                    v                v
+   +-----------+        +-----------+    +-----------+
+   |  agents/  |        |   data/   |    |  Mongo    |
+   | analyst   |<-------|  market/  |    |  motor    |
+   | research  |        |  kis/     |    |           |
+   | orchestr. |        +-----------+    +-----------+
+   +-----------+              |
+         |                    v
+         |              External APIs
+         |              - KIS (quote/order/balance)
+         |              - OpenDART (filings, financials)
+         |              - News RSS x4 outlets
+         |              - yfinance fallback
+         v
+     LLM (OpenAI gpt-5)
 ```
 
-## 6. 목표 설정 & 모니터링
+## 3. Layers
 
-```
-사용자 목표 예시:
-  - 연 수익: +15%
-  - 최대 낙폭 허용: -10%
-  - 투자 기간: 6개월
-  
-→ 시스템이 Kelly 공식으로 분기별 포지션 크기 조정
-→ 목표 달성률 대시보드에서 시각화
-→ 목표 기간 내 MDD 초과시 자동 알림
-```
+### 3.1 Data Layer (`data/`)
+Single source of truth for prices, indicators, fundamentals, filings and
+KRX-specific rules. Higher layers must never call external APIs directly.
 
-## 7. 평가 지표 (Evaluation Metrics)
+- `data/market/fetcher.py` - OHLCV + technical indicators
+  (RSI, MACD, Bollinger, MA, ATR(14), 20-day sigma, 20-day swing-low),
+  with explicit `as_of_date` slicing for no-lookahead in backtests.
+- `data/market/dart.py` - OpenDART filings client + a 10-class insider polarity
+  classifier (BULLISH_STRONG/WEAK, BEARISH_WEAK/ISSUE_PAID/CB,
+  BULLISH_ISSUE_FREE, EVENT_INSIDER/5PCT/OWNERSHIP, NEUTRAL).
+- `data/market/krx_rules.py` - tick-size ladder, price-limit band, lot
+  normalization, regular/after-hours session model.
+- `data/market/market_meta.py` - holiday calendar, half-days, T+2 settlement
+  helpers, per-symbol lot lookup.
+- `data/kis/` - KIS REST client with retry, halt/warning extraction, paper
+  vs. live routing, order cancel/amend wrappers.
 
-| 지표 | 목표값 | 계산법 |
-|------|--------|--------|
-| Sharpe Ratio | > 1.5 | (R - Rf) / σ |
-| Calmar Ratio | > 1.0 | Ann.Return / MaxDD |
-| Win Rate | > 55% | 승리 거래 / 전체 거래 |
-| Profit Factor | > 1.5 | 총이익 / 총손실 |
-| Max Drawdown | < -15% | 최고점 대비 최대 하락 |
-| Alpha (vs KOSPI) | > 0% | 전략 수익 - 벤치마크 |
+### 3.2 Agent Layer (`agents/`)
+Orchestrates LLM calls. Strict separation of analyst, researcher, and
+manager roles to keep prompt context narrow and reasoning auditable.
 
-## 8. 백테스트 전략 로드맵
+- `agents/analyst/analysts.py` - 4 specialist analysts (technical, fundamental,
+  sentiment, macro) executed in parallel via `asyncio.gather`.
+- `agents/researcher/researchers.py` - bull and bear researchers consume
+  analyst summaries and produce a structured debate.
+- `agents/orchestrator/orchestrator.py` - drives the full pipeline:
+  `analysts -> researchers -> risk_manager -> portfolio_manager -> judge_score`.
+  `risk_manager` consumes `atr_pct` / `sigma_20d_pct` / `swing_low_drop_pct`
+  from the technical analyst's `raw_data` to compute a volatility-grounded
+  recommended stop-loss (`max(1.5 x ATR, sigma * sqrt(5))`, clamped to 3-15%).
+- `agents/schemas.py` - pydantic v2 schemas for every typed agent output.
 
-**Phase 1 (현재)**: MA5/20 골든크로스 (베이스라인)
-**Phase 2**: RSI 과매도/과매수 + 볼린저밴드 반전
-**Phase 3**: AI 에이전트 시그널 통합 (실제 LLM 판단)
-**Phase 4**: 포트폴리오 최적화 (다종목)
+### 3.3 Backend Layer (`backend/`)
+FastAPI app exposing the system to the frontend and to operators.
 
----
-*최종 업데이트: 2026-04-13*
-*TradingAgents 논문 (Yijia Liu et al., 2024) 참조*
+- `backend/main.py` - app factory, route mounting, dotenv autoload, CORS,
+  CSRF protection, cookie session middleware.
+- `backend/api/` - 38 routes grouped by feature (analysis, auto loop,
+  portfolio loop, backtest, account, settings, approvals, auth).
+- `backend/services/auto_trading.py` - per-user, per-symbol auto loop with
+  KRX session/limit/halt guards and paper/live execution split.
+- `backend/services/portfolio_supervisor.py` - cross-symbol orchestration,
+  bounded analysis concurrency, shared cash and position-count budget.
+- `backend/services/order_approvals.py` - human-in-the-loop approval queue
+  for live orders above configured thresholds.
+- `backend/services/memory_service.py` - per-user persistent notes used to
+  stabilize agent context across sessions.
+
+### 3.4 Frontend Layer (`frontend/`)
+Next.js 14 App Router. State held in Zustand stores; the pixel "office"
+view is a Phaser 3 scene driven by the same store data.
+
+- `AnalysisReport`, `DecisionCard`, `AnalysisResult` - render the analyst
+  panel, researcher debate, and final risk/portfolio decision.
+- `AutoLoopPanel`, `PortfolioLoopPanel` - operator controls for continuous
+  loops, including session-aware status and order approval prompts.
+- `BacktestPanel` - simple-bar backtest and agent backtest with anti-lookahead
+  guarantees from the data layer.
+
+## 4. Decision Flow (Single Ticker)
+
+1. Client calls `POST /analysis` with ticker.
+2. Orchestrator launches the 4 analysts in parallel; each pulls only data the
+   data layer is willing to surface for the requested as-of date.
+3. Bull and bear researchers consume the four analyst summaries.
+4. `risk_manager` receives the technical analyst's `raw_data`, computes the
+   volatility-based stop-loss candidates, and asks the LLM to choose within
+   the allowed band. Outputs include `volatility_inputs` for inspector display.
+5. `portfolio_manager` produces the final action, sizing, and rationale.
+6. `judge_score` aggregates a neutral-axis bull/bear score (50 = neutral).
+7. The full artifact (analyst notes, debate, risk JSON, portfolio JSON, score)
+   is returned and persisted under the user's session.
+
+## 5. Loop Modes
+
+**Auto loop** (single ticker per session) - `AutoTradingSupervisor` runs the
+above pipeline on a configurable cadence, applies KRX session/halt/limit
+guards, and either submits to KIS or appends to the paper book.
+
+**Portfolio loop** (multi-ticker) - `PortfolioSupervisor` scans a universe,
+ranks candidates, and runs per-symbol analysis with bounded concurrency,
+sharing a global cash and risk budget across positions.
+
+**Backtest** - `backtesting/backtest.py` replays the same pipeline at past
+as-of dates with delayed (t+1 close) fill, KRX tick rounding, fee/tax/slippage
+modeling, and explicit no-lookahead checks.
+
+## 6. Cross-Cutting Concerns
+
+- **Time integrity** - quote timestamps are validated against the current KST
+  second; future-dated quotes are dropped. Backtests never read beyond
+  `as_of_date`.
+- **Auditability** - every analyst, researcher, risk, and portfolio output is
+  stored as JSON and surfaced through the inspector view.
+- **KRX realism** - tick rounding, lot normalization, price-limit band,
+  T+2 settlement, holiday calendar, and VI/halt awareness are enforced in the
+  data layer rather than per-call. See
+  [KOREAN_MARKET_REALISM_AUDIT.md](KOREAN_MARKET_REALISM_AUDIT.md).
+- **Security** - HttpOnly+Secure session cookies, CSRF token on state-changing
+  routes, login rate limit, encrypted KIS credentials at rest.
+
+## 7. Reference Documents
+
+- [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - module-level developer reference
+- [AUTO_TRADING_SUPERVISOR.md](AUTO_TRADING_SUPERVISOR.md) - per-symbol loop
+- [PORTFOLIO_ORCHESTRATION_BLUEPRINT.md](PORTFOLIO_ORCHESTRATION_BLUEPRINT.md) -
+  multi-symbol orchestration
+- [KOREAN_MARKET_REALISM_AUDIT.md](KOREAN_MARKET_REALISM_AUDIT.md) -
+  KRX-specific constraints
+- [PRE_PRODUCTION_CHECKLIST.md](PRE_PRODUCTION_CHECKLIST.md) - launch readiness
