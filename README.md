@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logo.svg" alt="KTA" width="96" height="96" />
+
 # Korean Trading Agents (KTA)
 
 **한국 주식 시장(KOSPI · KOSDAQ)을 위한 멀티 에이전트 AI 트레이딩 플랫폼**

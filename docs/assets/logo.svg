@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="KTA" viewBox="0 0 64 64" width="96" height="96">
+  <title>KTA</title>
+  <circle cx="32" cy="32" r="30" fill="#E8F1FB" />
+  <g>
+    <path d="M 32 6 A 26 26 0 0 1 32 58 A 13 13 0 0 0 32 32 A 13 13 0 0 1 32 6 Z" fill="#E5384A" />
+    <path d="M 32 6 A 26 26 0 0 0 32 58 A 13 13 0 0 1 32 32 A 13 13 0 0 0 32 6 Z" fill="#1F6FEB" />
+  </g>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#D0D7DE" stroke-width="1" />
+</svg>
