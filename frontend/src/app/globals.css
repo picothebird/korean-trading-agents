@@ -308,6 +308,9 @@ body {
   line-height: 1.55;
   font-display: optional;
   letter-spacing: -0.005em;
+  /* 한글 가독성: 단어 중간이 아닌 어절 단위로 줄바꿈 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* ─────────────────────────────────────────────
