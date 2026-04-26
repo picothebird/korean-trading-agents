@@ -567,7 +567,7 @@ export function AnalysisResult({
               <AgreementDonut agree={agree} disagree={disagree} neutral={neutral} missing={missing} size={72} thickness={9} />
               <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <Legend color="var(--bull)" label={`찬성 ${agree}명`} />
+                  <Legend color="var(--success)" label={`찬성 ${agree}명`} />
                   <Legend color="var(--bear)" label={`반대 ${disagree}명`} />
                   <Legend color="var(--text-tertiary)" label={`중립 ${neutral}명`} />
                   {missing > 0 && <Legend color="var(--border-default)" label={`보고 누락 ${missing}명`} />}

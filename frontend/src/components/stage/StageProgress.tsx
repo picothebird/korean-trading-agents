@@ -21,15 +21,33 @@ interface LayerSummary {
   active: number;
 }
 
+// 레이어 진행률 카운팅에 포함할 정식(canonical) agent_id 화이트리스트.
+// orchestrator가 같은 role(PORTFOLIO_MANAGER 등)로 "memory", "system", "article_writer"
+// 같은 보조 thought를 emit해서 단계가 잘못 활성화되는 문제 방지.
+const CANONICAL_AGENT_IDS: ReadonlySet<string> = new Set<string>([
+  "technical_analyst",
+  "fundamental_analyst",
+  "sentiment_analyst",
+  "macro_analyst",
+  "bull_researcher",
+  "bear_researcher",
+  "risk_manager",
+  "portfolio_manager",
+  "guru_agent",
+]);
+
 function summarizeLayer(thoughts: AgentThought[], roles: AgentRole[]): LayerSummary {
   const last: Record<string, AgentThought> = {};
   for (const t of thoughts) {
     if (!roles.includes(t.role)) continue;
-    last[t.role] = t;
+    // 정식 분석가 agent_id 만 카운트 (memory/system/article_writer 등은 제외).
+    if (!CANONICAL_AGENT_IDS.has(t.agent_id)) continue;
+    last[t.agent_id] = t;
   }
   let done = 0;
   let active = 0;
   for (const role of roles) {
+    // 각 role 의 정식 agent_id 는 동일 문자열을 사용하는 규약.
     const t = last[role];
     if (!t) continue;
     if (t.status === "done") done++;
