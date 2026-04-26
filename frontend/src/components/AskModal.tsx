@@ -138,8 +138,8 @@ export function AskModal({ onSubmit, sessionId }: AskModalProps) {
               }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h2 style={{ fontSize: 13, fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
-                💬 {AGENT_LABEL[role]}에게 질문
+              <h2 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Icon name="comment" size={14} decorative /> {AGENT_LABEL[role]}에게 질문
               </h2>
               <p style={{ fontSize: 10, color: "var(--text-tertiary)", margin: 0, marginTop: 1 }}>
                 {thought

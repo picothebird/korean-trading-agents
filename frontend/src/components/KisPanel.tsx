@@ -565,8 +565,8 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
             return (
               <div style={{ marginTop: 6, padding: "6px 8px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-                  <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>🔓 모의 주문 경험</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: count >= target ? "var(--success)" : "var(--text-secondary)" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="shield" size={11} decorative /> 모의 주문 경험</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: count >= target ? "var(--success)" : "var(--text-secondary)" }}>
                     {count} / {target}회 {count >= target && "— 실거래 도전 가능"}
                   </span>
                 </div>
@@ -705,10 +705,11 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                 </button>
               ))}
             </div>
-            <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6, lineHeight: 1.5 }}>
-              {orderType === "01"
-                ? "💡 지금 즉시 체결됩니다. 가격은 시장이 정해요. 빠르지만 슬리피지(예상가 대비 차이)가 발생할 수 있어요."
-                : "💡 아래 '가격'에 적은 값에 호가가 도달하면 체결됩니다. 미체결 가능성이 있어요."}
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 6, lineHeight: 1.6, display: "flex", alignItems: "flex-start", gap: 5 }}>
+              <Icon name="lightbulb" size={12} decorative style={{ flexShrink: 0, marginTop: 2, color: "var(--brand-active)" }} />
+              <span>{orderType === "01"
+                ? "지금 즉시 체결됩니다. 가격은 시장이 정해요. 빠르지만 슬리피지(예상가 대비 차이)가 발생할 수 있어요."
+                : "아래 '가격'에 적은 값에 호가가 도달하면 체결됩니다. 미체결 가능성이 있어요."}</span>
             </p>
           </div>
 
@@ -772,7 +773,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
                     fontSize: 10, fontWeight: 700, cursor: "pointer",
                   }}
                 >
-                  {orderSide === "buy" ? "🪄 25%" : "🪄 보유전량"}
+                  {orderSide === "buy" ? <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Icon name="magic-wand" size={10} decorative /> 25%</span> : <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Icon name="magic-wand" size={10} decorative /> 보유전량</span>}
                 </button>
               </div>
             </div>
@@ -1056,7 +1057,7 @@ export function KisPanel({ prefillTicker = "", onOpenSettings }: KisPanelProps) 
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <span style={{ fontSize: 28 }}>⚠️</span>
+              <Icon name="warning" size={28} decorative style={{ color: "var(--bear)" }} />
               <h3 style={{ fontSize: 17, fontWeight: 800, color: "var(--bear)", margin: 0 }}>
                 실거래 모드 첫 진입 안내
               </h3>

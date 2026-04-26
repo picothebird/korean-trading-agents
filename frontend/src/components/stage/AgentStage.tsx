@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { AgentThought, TradeDecision } from "@/types";
+import type { AgentThought, AgentRole, TradeDecision } from "@/types";
 import { PhaserCanvas } from "@/components/game/PhaserCanvas";
 import { AgentTimeline } from "@/components/agent-timeline";
 import { useAgentStage, type StageMode, MANUAL_OVERRIDE_MS } from "@/stores/useAgentStage";
@@ -30,11 +30,15 @@ interface AgentStageProps {
   thoughts: AgentThought[];
   /** 분석 완료 시점에 도착하는 결정 — 있으면 즉시 Story로 전환 가능. */
   decision?: TradeDecision | null;
+  /** 무대에 보여줄 역할 목록 (예: GURU OFF 시 guru_agent 제외). */
+  visibleRoles?: ReadonlyArray<AgentRole>;
+  /** 전체 에이전트 수 표시용 분모. */
+  totalAgents?: number;
   /** 모의투자 클릭 등의 외부 액션. */
   onTryPaper?: () => void;
 }
 
-export function AgentStage({ thoughts, decision, onTryPaper }: AgentStageProps) {
+export function AgentStage({ thoughts, decision, visibleRoles, totalAgents = 9, onTryPaper }: AgentStageProps) {
   const mode = useAgentStage((s) => s.mode);
   const autoMode = useAgentStage((s) => s.autoMode);
   const manualOverrideAt = useAgentStage((s) => s.manualOverrideAt);
@@ -165,7 +169,7 @@ export function AgentStage({ thoughts, decision, onTryPaper }: AgentStageProps) 
             position: "relative",
           }}
         >
-          <PhaserCanvas thoughts={thoughts} />
+          <PhaserCanvas thoughts={thoughts} visibleRoles={visibleRoles} />
           {/* 우상단 모드 토글 */}
           <div style={{ position: "absolute", top: 8, right: 8, zIndex: 5 }}>
             <StageModeToggle />
@@ -188,10 +192,11 @@ export function AgentStage({ thoughts, decision, onTryPaper }: AgentStageProps) 
           <StageTopLine
             thoughts={thoughts}
             decision={decision ?? null}
+            totalAgents={totalAgents}
             onClickHeadline={() => useAgentStage.getState().setMode("story", true)}
           />
           <div style={{ borderTop: "1px solid var(--stage-border)" }} />
-          <StageProgress thoughts={thoughts} />
+          <StageProgress thoughts={thoughts} visibleRoles={visibleRoles} />
           <div style={{ borderTop: "1px solid var(--stage-border)" }} />
           <div
             style={{
@@ -218,6 +223,7 @@ export function AgentStage({ thoughts, decision, onTryPaper }: AgentStageProps) 
       {(mode === "story" || mode === "report") && decision && (
         <MeetingMinutes
           decision={decision}
+          totalAgents={totalAgents}
           mode={mode as Exclude<StageMode, "live">}
           onTryPaper={onTryPaper}
         />

@@ -370,7 +370,7 @@ export function ActivityFeed({ logs, logEndRef }: ActivityFeedProps) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 2 }}>
                     <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
-                      {new Date(log.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      {new Date(log.timestamp).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                     </span>
                     <span style={{ fontSize: 10, fontWeight: 600, color: dotColor ?? "var(--text-secondary)" }}>
                       {name}

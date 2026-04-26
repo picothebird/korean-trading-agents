@@ -16,6 +16,7 @@
 import { useEffect, useMemo } from "react";
 import { Command } from "cmdk";
 import { motion, AnimatePresence } from "framer-motion";
+import { Icon } from "@/components/ui";
 import { useAgentOffice } from "@/stores/useAgentOffice";
 import { useTimelineStore } from "@/components/agent-timeline/useTimeline";
 import { ALL_AGENT_ROLES, AGENT_LABEL, LAYER_LABEL, layerOfRole, AGENT_COLOR } from "@/lib/agentLabels";
@@ -152,7 +153,7 @@ export function CommandPalette() {
                       key={`ask-${a.role}`}
                       value={`질문 ${a.label}`}
                       onSelect={() => exec(() => openAsk(a.role))}
-                      icon={<span aria-hidden>💬</span>}
+                      icon={<Icon name="comment" size={14} decorative />}
                       label={`${a.label}에게 질문`}
                       hint={a.layer}
                     />

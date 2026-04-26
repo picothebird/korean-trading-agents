@@ -15,9 +15,9 @@ import { Sheet, useTheme, Icon, type ThemeMode, type IconName } from "@/componen
 import type { InviteCode, UserRole } from "@/types";
 import { usePersonalization, type NotificationCondition } from "@/stores/usePersonalization";
 import { requestNotificationPermission } from "@/lib/notifications";
-import { ALL_AGENT_ROLES, AGENT_LABEL, AGENT_COLOR } from "@/lib/agentLabels";
+import { AGENT_LABEL } from "@/lib/agentLabels";
 
-export type SettingsTab = "overview" | "appearance" | "personalization" | "notifications" | "llm" | "analysis" | "guru" | "kis" | "invites";
+export type SettingsTab = "overview" | "appearance" | "notifications" | "llm" | "analysis" | "guru" | "kis" | "invites";
 
 // 단일 모델 설정. 기본값은 gpt-5.5. 직접 입력 시 "gpt-" 접두어를 자동 부착하고 소문자로 정규화합니다.
 const DEFAULT_MODELS = [
@@ -48,7 +48,6 @@ const EFFORT_OPTIONS = [
 const TABS: Array<{ key: SettingsTab; label: string; icon: IconName; hint: string; masterOnly?: boolean }> = [
   { key: "overview", label: "개요", icon: "compass", hint: "현재 상태와 빠른 진입" },
   { key: "appearance", label: "외관", icon: "palette", hint: "테마 (라이트/다크/시스템)" },
-  { key: "personalization", label: "개인화", icon: "sliders", hint: "에이전트 핀/숨김" },
   { key: "notifications", label: "알림", icon: "info", hint: "신호/위험 푸시 규칙" },
   { key: "llm", label: "LLM", icon: "brain", hint: "OpenAI 키와 모델" },
   { key: "analysis", label: "분석", icon: "chart-bar", hint: "토론 라운드/분석 강도" },
@@ -60,7 +59,6 @@ const TABS: Array<{ key: SettingsTab; label: string; icon: IconName; hint: strin
 const TAB_TITLE: Record<SettingsTab, string> = {
   overview: "설정 개요",
   appearance: "외관",
-  personalization: "개인화",
   notifications: "알림",
   llm: "LLM 설정",
   analysis: "분석 파라미터",
@@ -613,9 +611,6 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                           { key: "light", label: "라이트", icon: "sun" as IconName, desc: "환한 배경" },
                           { key: "dark", label: "다크", icon: "moon" as IconName, desc: "어두운 배경" },
                           { key: "system", label: "시스템", icon: "monitor" as IconName, desc: "OS 설정 따라감" },
-                          { key: "warm", label: "웜", icon: "sun" as IconName, desc: "베이지·코랄 톤" },
-                          { key: "hanok", label: "한옥", icon: "sun" as IconName, desc: "한지·단청 톤" },
-                          { key: "auto-time", label: "시간 자동", icon: "monitor" as IconName, desc: "한국 표준시 기반" },
                         ] as Array<{ key: ThemeMode; label: string; icon: IconName; desc: string }>).map((opt) => {
                           const active = themeMode === opt.key;
                           return (
@@ -664,11 +659,8 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                         <Icon name={themeResolved === "dark" ? "moon" : "sun"} size={14} decorative />
                         <span>
                           현재 적용:&nbsp;
-                          <strong style={{ color: "var(--text-primary)" }}>
-                            {themeResolved === "dark" ? "다크" : themeResolved === "warm" ? "웜" : themeResolved === "hanok" ? "한옥" : "라이트"}
-                          </strong>
+                          <strong style={{ color: "var(--text-primary)" }}>{themeResolved === "dark" ? "다크" : "라이트"}</strong>
                           {themeMode === "system" && <span style={{ color: "var(--text-tertiary)" }}> · 시스템 설정 기반</span>}
-                          {themeMode === "auto-time" && <span style={{ color: "var(--text-tertiary)" }}> · 한국 표준시 기반 (낮: 라이트 / 밤: 다크)</span>}
                         </span>
                       </div>
                     </Section>
@@ -694,8 +686,6 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                   </>
                 )}
 
-                {activeTab === "personalization" && <PersonalizationPanel />}
-
                 {activeTab === "notifications" && <NotificationsPanel />}
 
                 {activeTab === "llm" && (
@@ -708,6 +698,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                         <div style={{ position: "relative" }}>
                           <input
                             type={showKey ? "text" : "password"}
+                            className="kta-no-native-reveal"
                             value={form.openai_api_key}
                             onChange={(e) => setField("openai_api_key", e.target.value)}
                             placeholder={apiKeyStatus.set ? "새 키로 교체 시에만 입력" : "sk-..."}
@@ -726,6 +717,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                             }}
                           />
                           <button
+                            type="button"
                             onClick={() => setShowKey((v) => !v)}
                             style={{
                               position: "absolute",
@@ -1049,7 +1041,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                 {activeTab === "kis" && (
                   <>
                     {/* KIS 토큰 발급 Stepper (P3.K6 + S4) */}
-                    <Section title="🪜 KIS 연동 시작 가이드">
+                    <Section title="KIS 연동 시작 가이드">
                       <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "14px 16px" }}>
                         <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 10 }}>
                           처음이라면 아래 4단계를 순서대로 따라 하세요. 모의투자는 키 없이도 작동하지만, 실거래는 모든 단계가 필요합니다.
@@ -1184,6 +1176,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                         <div style={{ position: "relative" }}>
                           <input
                             type={showKisSecret ? "text" : "password"}
+                            className="kta-no-native-reveal"
                             value={form.kis_app_secret}
                             onChange={(e) => setField("kis_app_secret", e.target.value)}
                             placeholder={kisKeyStatus.secretSet ? "새 시크릿으로 교체 시에만 입력" : "..."}
@@ -1202,6 +1195,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                             }}
                           />
                           <button
+                            type="button"
                             onClick={() => setShowKisSecret((v) => !v)}
                             style={{
                               position: "absolute",
@@ -1393,7 +1387,7 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                                 <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
                                   {inv.note || "메모 없음"}
                                   {used && usedByLabel && <> · 사용: {usedByLabel}</>}
-                                  {inv.created_at && <> · 발급: {new Date(inv.created_at).toLocaleDateString("ko-KR")}</>}
+                                  {inv.created_at && <> · 발급: {new Date(inv.created_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}</>}
                                 </p>
                               </div>
                               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -1514,164 +1508,6 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
 }
 
 // ─────────────────────────────────────────────
-// MS-F F1 + F3 — 개인화 (역할 핀/숨김 + 활동 로그 컬럼)
-// ─────────────────────────────────────────────
-function PersonalizationPanel() {
-  const pinnedRoles = usePersonalization((s) => s.pinnedRoles);
-  const hiddenRoles = usePersonalization((s) => s.hiddenRoles);
-  const togglePin = usePersonalization((s) => s.togglePin);
-  const toggleHidden = usePersonalization((s) => s.toggleHidden);
-  const resetLayout = usePersonalization((s) => s.resetLayout);
-  const timelineColumns = usePersonalization((s) => s.timelineColumns);
-  const toggleColumn = usePersonalization((s) => s.toggleColumn);
-  const resetColumns = usePersonalization((s) => s.resetColumns);
-
-  return (
-    <>
-      <Section title="에이전트 핀·숨김">
-        <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 12 }}>
-          자주 보는 에이전트는 ⭐ 핀(앞쪽 고정)하거나 ⊘ 숨길 수 있습니다. 사무실 그리드와 캐릭터 캔버스에 즉시 반영됩니다.
-        </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {ALL_AGENT_ROLES.map((role) => {
-            const pinned = pinnedRoles.includes(role);
-            const hidden = hiddenRoles.includes(role);
-            const c = AGENT_COLOR[role];
-            return (
-              <div
-                key={role}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "8px 12px",
-                  borderRadius: "var(--radius-md)",
-                  background: hidden ? "var(--bg-overlay)" : "var(--bg-elevated)",
-                  border: `1px solid ${pinned ? c : "var(--border-subtle)"}`,
-                  opacity: hidden ? 0.55 : 1,
-                }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: c, flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{AGENT_LABEL[role]}</span>
-                <button
-                  type="button"
-                  onClick={() => togglePin(role)}
-                  aria-pressed={pinned}
-                  title={pinned ? "핀 해제" : "핀 (앞쪽 고정)"}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "var(--radius-sm)",
-                    border: `1px solid ${pinned ? c : "var(--border-default)"}`,
-                    background: pinned ? `${c}1A` : "transparent",
-                    color: pinned ? c : "var(--text-tertiary)",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {pinned ? "★ 핀" : "☆ 핀"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toggleHidden(role)}
-                  aria-pressed={hidden}
-                  title={hidden ? "다시 표시" : "숨김"}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--border-default)",
-                    background: hidden ? "var(--warning-subtle)" : "transparent",
-                    color: hidden ? "var(--warning)" : "var(--text-tertiary)",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  {hidden ? "⊘ 숨김" : "👁 표시"}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        {(pinnedRoles.length > 0 || hiddenRoles.length > 0) && (
-          <button
-            type="button"
-            onClick={resetLayout}
-            style={{
-              marginTop: 12,
-              padding: "6px 12px",
-              borderRadius: "var(--radius-md)",
-              border: "1px dashed var(--border-default)",
-              background: "transparent",
-              color: "var(--text-tertiary)",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            ✕ 핀·숨김 초기화
-          </button>
-        )}
-      </Section>
-
-      <Section title="활동 로그 표시 컬럼">
-        <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 10 }}>
-          타임라인 항목에 어떤 메타 컬럼을 노출할지 선택합니다 (Compact/Comfortable 줌에서 적용).
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-          {([
-            { key: "time", label: "시간" },
-            { key: "agent", label: "에이전트" },
-            { key: "signal", label: "신호" },
-            { key: "stage", label: "단계" },
-          ] as const).map((opt) => {
-            const on = timelineColumns[opt.key];
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => toggleColumn(opt.key)}
-                aria-pressed={on}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "var(--radius-md)",
-                  border: `1.5px solid ${on ? "var(--brand)" : "var(--border-default)"}`,
-                  background: on ? "var(--brand-subtle)" : "var(--bg-elevated)",
-                  color: on ? "var(--brand)" : "var(--text-secondary)",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                {on ? "✓" : "·"} {opt.label}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          onClick={resetColumns}
-          style={{
-            marginTop: 12,
-            padding: "6px 12px",
-            borderRadius: "var(--radius-md)",
-            border: "1px dashed var(--border-default)",
-            background: "transparent",
-            color: "var(--text-tertiary)",
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          기본값 복구
-        </button>
-      </Section>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────
 // MS-F F5 — 알림 (브라우저 푸시 + 인앱 토스트 규칙)
 // ─────────────────────────────────────────────
 function NotificationsPanel() {
@@ -1729,7 +1565,13 @@ function NotificationsPanel() {
               color: permission === "granted" ? "var(--success)" : permission === "denied" ? "var(--bear)" : "var(--text-tertiary)",
             }}
           >
-            {permission === "granted" ? "✓ 허용됨" : permission === "denied" ? "× 차단됨" : "· 미설정"}
+            {permission === "granted" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="check" size={11} decorative /> 허용됨</span>
+            ) : permission === "denied" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="x" size={11} decorative /> 차단됨</span>
+            ) : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>· 미설정</span>
+            )}
           </span>
           {permission !== "granted" && (
             <button

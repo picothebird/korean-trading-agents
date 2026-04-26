@@ -139,6 +139,7 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
 
   const appendUiLog = useCallback((level: AutoLoopLog["level"], message: string) => {
     const stamp = new Date().toLocaleTimeString("ko-KR", {
+      timeZone: "Asia/Seoul",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -151,6 +152,7 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
     const dt = new Date(iso);
     if (Number.isNaN(dt.getTime())) return null;
     return dt.toLocaleTimeString("ko-KR", {
+      timeZone: "Asia/Seoul",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -350,12 +352,12 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
         background: "var(--info-subtle, var(--bg-elevated))",
         border: "1px solid var(--info-border, var(--border-subtle))",
         borderRadius: "var(--radius-lg)",
-        fontSize: 11,
-        color: "var(--text-secondary)",
-        lineHeight: 1.55,
+        fontSize: 13,
+        color: "var(--text-primary)",
+        lineHeight: 1.7,
       }}>
-        <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>
-          🧭 포트폴리오 루프란?
+        <p style={{ fontSize: 14, fontWeight: 800, color: "var(--text-primary)", marginBottom: 6, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="compass" size={14} decorative /> 포트폴리오 루프란?
         </p>
         후보 종목군(Universe)을 주기적으로 스캔해서 <b>여러 종목 사이에서 사고팔 후보를 발굴</b>하고, 비중·상관관계·세션을 함께 관리합니다.
         단일 종목을 정해놓고 매수/매도하는 “자동매매 루프”와 달리, <b>“무엇을 살 것인가”부터 자동화</b>한다는 점이 핵심입니다.
@@ -434,8 +436,8 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
 
       {innerTab === "settings" && (<>
       <SettingsSection
-        title="簍키 기본"
-        desc="이 루프를 부른는 이름과, 처음부터 관심 있는 종목을 적어두면 됩니다."
+        title="초기 설정"
+        desc="이 루프를 부르는 이름과, 처음부터 관심 있는 종목을 적어두면 됩니다."
       >
         <FieldRow>
           <FieldCell label="루프 이름" hint="대시보드에서 구별하기 위한 포트폴리오 이름입니다." example="예: 대형주 안정형">
@@ -469,7 +471,7 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
                     fontSize: 10, fontWeight: 700, cursor: "pointer",
                   }}
                 >
-                  ✨ {preset.name}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="sparkles" size={11} decorative /> {preset.name}</span>
                 </button>
               ))}
             </div>
@@ -711,12 +713,12 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
             const top = [...positions].sort((a, b) => b.weight_pct - a.weight_pct)[0];
             const warnings: string[] = [];
             if (top && top.weight_pct >= 30) {
-              warnings.push(`⚠️ ${top.ticker} 비중이 ${top.weight_pct.toFixed(1)}% — 한 종목 집중도가 높습니다`);
+              warnings.push(`${top.ticker} 비중이 ${top.weight_pct.toFixed(1)}% — 한 종목 집중도가 높습니다`);
             }
             if (positions.length === 1) {
-              warnings.push("⚠️ 단일 종목만 보유 — 분산이 부족합니다");
+              warnings.push("단일 종목만 보유 — 분산이 부족합니다");
             } else if (positions.length === 2 && top && top.weight_pct >= 60) {
-              warnings.push("⚠️ 2종목 중 한쪽으로 크게 쏠려 있습니다");
+              warnings.push("2종목 중 한쪽으로 크게 쓏려 있습니다");
             }
             if (warnings.length === 0) return null;
             return (

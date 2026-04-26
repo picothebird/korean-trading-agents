@@ -135,7 +135,7 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
 
   const appendUiLog = useCallback((level: LoopLog["level"], message: string) => {
     const now = new Date();
-    const timestamp = now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const timestamp = now.toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     setUiLogs((prev) => [...prev, { timestamp, level, message }].slice(-80));
   }, []);
 
@@ -143,7 +143,7 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
     if (!iso) return null;
     const dt = new Date(iso);
     if (Number.isNaN(dt.getTime())) return null;
-    return dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return dt.toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }, []);
 
   useEffect(() => {
@@ -364,12 +364,12 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
         background: "var(--info-subtle, var(--bg-elevated))",
         border: "1px solid var(--info-border, var(--border-subtle))",
         borderRadius: "var(--radius-lg)",
-        fontSize: 11,
-        color: "var(--text-secondary)",
-        lineHeight: 1.55,
+        fontSize: 13,
+        color: "var(--text-primary)",
+        lineHeight: 1.7,
       }}>
-        <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>
-          🤖 단일 종목 자동매매란?
+        <p style={{ fontSize: 14, fontWeight: 800, color: "var(--text-primary)", marginBottom: 6, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="robot" size={14} decorative /> 단일 종목 자동매매란?
         </p>
         지금 분석 중인 한 종목({ticker})에 대해 정해진 주기마다 매수/매도 판단을 반복합니다.
         “어떤 종목을 살지”는 사용자가 정하고, 시점·수량·매도 타이밍을 자동화하는 도구입니다.
@@ -407,14 +407,17 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
                 background: "var(--bear-subtle, transparent)",
                 color: "var(--bear)",
                 borderRadius: 99,
-                padding: "5px 10px",
-                fontSize: 10,
-                fontWeight: 700,
+                padding: "7px 12px",
+                fontSize: 12,
+                fontWeight: 800,
                 cursor: busy ? "not-allowed" : "pointer",
                 opacity: busy ? 0.6 : 1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
               }}
             >
-              ⛔ 즉시청산
+              <Icon name="stop-octagon" size={12} decorative /> 즉시청산
             </button>
           )}
           <button
@@ -881,13 +884,13 @@ export function AutoLoopPanel({ ticker, showVisuals = true, onDecision, onTradeR
           padding: "8px 10px",
         }}
       >
-        <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 6 }}>자동 루프 로그</p>
+        <p style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6 }}>자동 루프 로그</p>
         {/* 미실행 사유 안내 (A6) */}
         <details style={{ marginBottom: 8 }}>
-          <summary style={{ fontSize: 9, color: "var(--text-tertiary)", cursor: "pointer", listStyle: "none" }}>
-            ❓ 매수/매도가 안 일어난 이유는 어디에서 보나요?
+          <summary style={{ fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", listStyle: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <Icon name="info" size={12} decorative /> 매수/매도가 안 일어난 이유는 어디에서 보나요?
           </summary>
-          <div style={{ marginTop: 6, padding: "8px 10px", background: "var(--bg-surface)", borderRadius: "var(--radius-md)", fontSize: 9, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+          <div style={{ marginTop: 6, padding: "10px 12px", background: "var(--bg-surface)", borderRadius: "var(--radius-md)", fontSize: 12, color: "var(--text-primary)", lineHeight: 1.7 }}>
             <p style={{ marginBottom: 4 }}>아래 로그 메시지에서 다음 키워드가 보이면 해당 사유로 거래가 보류됐습니다:</p>
             <ul style={{ paddingLeft: 14, margin: 0 }}>
               <li><b>신뢰도</b> — 최소 신뢰도 미달</li>

@@ -5,7 +5,7 @@ import { ThemeProvider, THEME_INIT_SCRIPT } from "@/components/ui/ThemeProvider"
 
 export const metadata: Metadata = {
   title: "KTA · 한국 트레이딩 에이전트",
-  description: "한국 주식을 위한 AI 멀티에이전트 트레이딩 워크스페이스 — 분석, 토론, 결정을 하나의 콘솔에서.",
+  description: "한국 주식을 위한 AI 멀티에이전트 트레이딩 스페이스 — 분석, 토론, 결정을 하나의 콘솔에서.",
 };
 
 export default function RootLayout({

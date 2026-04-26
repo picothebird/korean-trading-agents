@@ -198,17 +198,17 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
       {/* 시뮬레이션 규칙 안내 */}
       <details
         style={{
-          padding: "10px 14px",
+          padding: "12px 16px",
           background: "var(--bg-elevated)",
           border: "1px solid var(--border-subtle)",
           borderRadius: "var(--radius-lg)",
-          fontSize: 11,
+          fontSize: 13,
           color: "var(--text-secondary)",
-          lineHeight: 1.6,
+          lineHeight: 1.7,
         }}
       >
-        <summary style={{ cursor: "pointer", fontWeight: 700, color: "var(--text-primary)", fontSize: 12 }}>
-          📖 이 시뮬레이션이 어떻게 돌아갈까요?
+        <summary style={{ cursor: "pointer", fontWeight: 700, color: "var(--text-primary)", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="document" size={14} decorative /> 이 시뮬레이션이 어떻게 돌아갈까요?
         </summary>
         <div style={{ marginTop: 8 }}>
           <ul style={{ paddingLeft: 18, margin: 0 }}>
@@ -275,47 +275,27 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
         );
       })()}
 
-      {/* 백테스트 가정 아코디언 (B3) */}
-      <details style={{ marginBottom: 12 }}>
-        <summary style={{ fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", padding: "8px 12px", background: "var(--warning-subtle)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
-          ⚠️ 이 백테스트가 실제 투자가 <b>아닌</b> 이유 — 가정 보기
-        </summary>
-        <div style={{ marginTop: 8, padding: "12px 14px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)", fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.7 }}>
-          <ul style={{ paddingLeft: 18, margin: 0 }}>
-            <li><b>완벽 체결 가정</b> — 종가 또는 다음 시가에서 100% 체결된다고 가정합니다. 실제로는 호가 부족·갭 등으로 실패할 수 있습니다.</li>
-            <li><b>수수료/세금 미반영</b> — 위 KPI는 거래 비용을 제외한 이론값입니다. 실제 수익률은 더 낮습니다.</li>
-            <li><b>슬리피지 미반영</b> — 실제 매수/매도 시 시장가 차이가 발생할 수 있습니다.</li>
-            <li><b>과거 데이터 기반</b> — 미래 수익을 보장하지 않습니다. 시장 환경/뉴스/거시 변수 변화에 취약합니다.</li>
-            <li><b>오버피팅 위험</b> — 좋은 결과가 우연일 수 있습니다. 다양한 기간(3개월/1년/3년)에서 검증해 보세요.</li>
-            <li><b>Look-ahead bias</b> — 최선을 다해 방지했지만 일부 지표는 발표 시점 데이터를 사용합니다.</li>
-          </ul>
-          <p style={{ marginTop: 8, fontSize: 10, color: "var(--text-tertiary)" }}>
-            👉 실제 투자 전 반드시 <b>모의 → 소액 실거래</b> 순으로 검증하세요.
-          </p>
-        </div>
-      </details>
-
       {/* Headline KPIs (3 large) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <Metric
           label="총 수익률"
           value={`${m.total_return >= 0 ? "+" : ""}${m.total_return.toFixed(1)}%`}
           positive={m.total_return > 0}
-          hint="시뮬레이션 종료 시점의 평가금액이 초기 자본(1,000만원) 대비 몇 % 늘고 줄었는지. 수수료와 세금은 고려되지 않은 이론값입니다."
+          hint="시뮬레이션 종료 시점의 평가금액이 초기 자본(1,000만원) 대비 몇 % 늘고 줄었는지를 보여줘요. 수수료와 세금은 고려하지 않은 이론값이에요."
         />
         <Metric
           label="초과수익 α (알파)"
           value={`${m.alpha >= 0 ? "+" : ""}${m.alpha.toFixed(1)}%p`}
           positive={m.alpha > 0}
           sub="vs 단순보유(벤치마크)"
-          hint={`이 ${strategyShort} 전략이 같은 기간 이 종목을 '사서 계속 보유'만 했을 때 대비 얼마나 더 벌었는지(퍼센트포인트 단위). 양수면 ${strategyShort}이 단순보유보다 높은 수익, 음수면 오히려 못 벌었다는 뜻. (α·알파는 투자 교과서의 표준 용어)`}
+          hint={`이 ${strategyShort} 전략이 같은 기간 이 종목을 '사서 계속 보유'만 했을 때보다 얼마나 더 벌었는지를 퍼센트포인트로 표시해요. 양수면 ${strategyShort}이 단순보유보다 높은 수익을 낸 거고, 음수면 오히려 더 못 번 거예요. (α·알파는 투자 교과서의 표준 용어예요)`}
         />
         <Metric
           label="샤프 비율"
           value={m.sharpe_ratio.toFixed(2)}
           positive={m.sharpe_ratio > 1 ? true : m.sharpe_ratio < 0 ? false : null}
           sub="1.0 이상이면 우수"
-          hint="수익을 변동성(위험)으로 나눈 값. 같은 수익이라도 장중 떨림이 클수록 샤프는 낮아집니다. 1은 괜찮음, 2 이상은 매우 우수."
+          hint="수익을 변동성(위험)으로 나눈 값이에요. 같은 수익이라도 장중 출렁임이 크면 샤프는 낮아져요. 1은 괜찮음, 2 이상이면 매우 우수해요."
         />
       </div>
 
@@ -325,38 +305,38 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
           label="연간 수익률"
           value={`${m.annualized_return >= 0 ? "+" : ""}${m.annualized_return.toFixed(1)}%`}
           positive={m.annualized_return > 0}
-          hint="총 수익률을 1년 단위로 환산한 값. 기간이 6개월이면 2배, 2년이면 반으로 계산됩니다. 서로 다른 기간의 전략을 비교할 때 쓰입니다."
+          hint="총 수익률을 1년 단위로 환산한 값이에요. 기간이 6개월이면 2배, 2년이면 절반으로 계산해요. 서로 다른 기간의 전략을 비교할 때 써요."
         />
         <Metric
           label="최대 낙폭 (MDD)"
           value={`${m.max_drawdown.toFixed(1)}%`}
           positive={m.max_drawdown > -10}
           sub="작을수록 안전"
-          hint="시뮬레이션 중 평가금액의 최고점에서 최저점까지 일시적으로 얼마나 떨어졌는지. 임의의 순간 계좌에서 돈이 렌이어올 수 있는 수치입니다. -20% 이하는 권장할 만합니다."
+          hint="시뮬레이션 동안 평가금액의 최고점에서 최저점까지 일시적으로 얼마나 떨어졌는지를 보여줘요. 임의의 순간 계좌가 그만큼 줄어들 수 있다는 뜻이에요. -20% 이내면 권장할 만해요."
         />
         <Metric
           label="승률"
           value={`${m.win_rate.toFixed(1)}%`}
           positive={m.win_rate > 55 ? true : m.win_rate < 45 ? false : null}
-          hint="전체 거래 중 수익을 낸 거래의 비율. 단, 승률이 높다고 수익이 큰 건 아니에요(한 번의 큰 손실이 수십 번의 소액 수익을 날릴 수 있음). 손익비와 같이 보세요."
+          hint="전체 거래 중 수익을 낸 거래의 비율이에요. 단, 승률이 높다고 수익이 큰 건 아니에요. 한 번의 큰 손실이 수십 번의 소액 수익을 지울 수도 있으니 손익비와 함께 보세요."
         />
         <Metric
           label="칼마 비율"
           value={m.calmar_ratio.toFixed(2)}
           positive={null}
-          hint="연간 수익률 ÷ 최대낙폭. '일시적 고통 대비 얼마나 벌었니' 지표. 1 이상이면 양호, 3 이상이면 수퍼."
+          hint="연간 수익률 ÷ 최대낙폭이에요. '일시적 고통 대비 얼마나 벌었니'를 보여줘요. 1 이상이면 양호, 3 이상이면 매우 우수해요."
         />
         <Metric
           label="손익비"
           value={m.profit_factor.toFixed(2)}
           positive={m.profit_factor > 1.5 ? true : m.profit_factor < 1 ? false : null}
-          hint="총 이익 ÷ 총 손실. 1보다 크면 돈을 벌었다는 의미이고, 2면 손실의 2배를 이익으로 거둡었다는 뜻입니다."
+          hint="총 이익 ÷ 총 손실이에요. 1보다 크면 돈을 번 거고, 2면 손실의 2배만큼 이익을 거뒀다는 뜻이에요."
         />
         <Metric
           label="총 거래"
           value={`${m.total_trades}회`}
           positive={null}
-          hint="시뮬레이션 동안 실제로 매수·매도한 횟수. 너무 적으면 트렌드에 딜을 수 있고, 너무 많으면 수수료와 세금이 많이 나갈 수 있어요."
+          hint="시뮬레이션 동안 실제로 매수·매도한 횟수예요. 너무 적으면 추세를 놓칠 수 있고, 너무 많으면 수수료와 세금이 늘어나니 균형을 보세요."
         />
       </div>
 
@@ -517,9 +497,39 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
         </div>
       )}
 
+      {/* 백테스트 가정 아코디언 (패널 맨 아래) */}
+      <details style={{ marginTop: 4 }}>
+        <summary style={{ fontSize: 13, color: "var(--text-primary)", cursor: "pointer", padding: "10px 14px", background: "var(--warning-subtle)", borderRadius: "var(--radius-md)", border: "1px solid var(--warning-border)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="warning" size={14} decorative style={{ color: "var(--warning)" }} /> 이 백테스트가 실제 투자가 <b>아닌</b> 이유 — 가정 보기
+        </summary>
+        <div style={{ marginTop: 10, padding: "14px 16px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)", fontSize: 13, color: "var(--text-primary)", lineHeight: 1.75 }}>
+          <p style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)", marginBottom: 8, display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="calculator" size={13} decorative /> 포지션 및 현금 운용 메커니즘</p>
+          <ul style={{ paddingLeft: 20, margin: 0, marginBottom: 12 }}>
+            <li><b>시작 시점</b> — 100% 현금(초기자본)으로 시작, 보유 주식 0주.</li>
+            <li><b>BUY 신호</b> — 다음 거래일 종가에 <b>현금 전부</b>로 매수 가능한 최대 주식을 매수 (공매도 없음, 올-인 단일 종목 구조).</li>
+            <li><b>SELL/HOLD 신호</b> (BUY 포지션 상태) — 다음 거래일 종가에 <b>보유 주식 전량</b> 청산, 매도대금은 현금으로 적립.</li>
+            <li><b>다음 BUY</b>까지 현금 100% 대기(무이자).</li>
+            <li><b>부분 매수/매도 없음</b> — 항상 all-or-nothing(100%) 포지션. 신뢰도·켈리 비율 적용 안 함.</li>
+            <li><b>마지막날</b> — 잔여 보유주는 종가기준으로 강제 청산.</li>
+          </ul>
+          <p style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)", marginBottom: 8, display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="warning" size={13} decorative style={{ color: "var(--warning)" }} /> 시뮬레이션의 한계</p>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            <li><b>체결 가정</b> — 종가 ± 수수료 반의 가격으로 100% 체결된다고 가정 (호가 부족/갑 미반영).</li>
+            <li><b>수수료/세금</b> — 양방향 0.28%(매수 수수료 0.015% + 매도 거래세 0.18% + 수수료) 포함. 실제 증권사별로 다름.</li>
+            <li><b>슬리피지</b> — 명시적 모델 없음 (수수료로 대체). 실제는 대량 주문일수록 추가 불리함.</li>
+            <li><b>과거 데이터 기반</b> — 미래 수익을 보장하지 않습니다. 시장 환경/뉴스/거시 변수 변화에 취약.</li>
+            <li><b>오버피팅 위험</b> — 좋은 결과가 우연일 수 있으므로 다양한 기간(3개월/1년/3년)에서 교차 검증 권장.</li>
+            <li><b>Look-ahead bias</b> — 최선을 다해 방지했지만 일부 지표는 발표 시점 데이터를 사용.</li>
+          </ul>
+          <p style={{ marginTop: 10, fontSize: 12, color: "var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <Icon name="chevron-right" size={12} decorative /> 실제 투자 전 반드시 <b>모의 → 소액 실거래</b> 순으로 검증하세요.
+          </p>
+        </div>
+      </details>
+
       {/* Disclaimer */}
-      <p style={{ fontSize: 10, color: "var(--text-tertiary)", textAlign: "center", lineHeight: 1.6 }}>
-        <Icon name="warning" size={11} decorative /> 과거 수익률은 미래를 보장하지 않습니다 · 투자 결정은 본인 책임
+      <p className="t-meta" style={{ textAlign: "center", lineHeight: 1.6, display: "inline-flex", justifyContent: "center", alignItems: "center", gap: 5, color: "var(--text-tertiary)" }}>
+        <Icon name="warning" size={12} decorative /> 과거 수익률은 미래를 보장하지 않습니다 · 투자 결정은 본인 책임
       </p>
     </div>
   );

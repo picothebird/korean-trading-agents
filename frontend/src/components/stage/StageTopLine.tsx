@@ -3,7 +3,7 @@
 /**
  * StageTopLine — 무대 사이드바 최상단 한 줄 응답 (MS-S2).
  *
- * 분석 진행 중: "분석 진행 중 — N/9 완료, 약 M초 남음"
+ * 분석 진행 중: "분석 진행 중 — N/전체 완료, 약 M초 남음"
  * 분석 완료: "매수 73점 · 100만원 중 18만원 권장"
  */
 
@@ -13,6 +13,7 @@ import type { AgentThought, TradeDecision } from "@/types";
 interface StageTopLineProps {
   thoughts: AgentThought[];
   decision: TradeDecision | null;
+  totalAgents?: number;
   onClickHeadline?: () => void;
 }
 
@@ -23,12 +24,12 @@ const SIGNAL_CFG: Record<string, { color: string; bg: string; label: string; dot
 };
 
 /** 평균 thought 간격으로 남은 시간 추정 */
-function estimateRemainingSeconds(thoughts: AgentThought[]): number | null {
+function estimateRemainingSeconds(thoughts: AgentThought[], totalAgents: number): number | null {
   if (thoughts.length < 2) return null;
   const doneRoles = new Set(
     thoughts.filter((t) => t.status === "done").map((t) => t.role),
   );
-  const remaining = 9 - doneRoles.size;
+  const remaining = Math.max(0, totalAgents - doneRoles.size);
   if (remaining <= 0) return 0;
   // 최근 3개 thought의 평균 간격
   const last = thoughts.slice(-Math.min(thoughts.length, 6));
@@ -39,7 +40,8 @@ function estimateRemainingSeconds(thoughts: AgentThought[]): number | null {
   return Math.round((avgMs * remaining) / 1000);
 }
 
-export function StageTopLine({ thoughts, decision, onClickHeadline }: StageTopLineProps) {
+export function StageTopLine({ thoughts, decision, totalAgents = 9, onClickHeadline }: StageTopLineProps) {
+  const normalizedTotal = Math.max(1, totalAgents);
   const isFinal = !!decision;
 
   if (isFinal && decision) {
@@ -102,7 +104,7 @@ export function StageTopLine({ thoughts, decision, onClickHeadline }: StageTopLi
   // 진행 중 상태
   const doneRoles = new Set(thoughts.filter((t) => t.status === "done").map((t) => t.role));
   const doneCount = doneRoles.size;
-  const remainingSec = estimateRemainingSeconds(thoughts);
+  const remainingSec = estimateRemainingSeconds(thoughts, normalizedTotal);
 
   return (
     <AnimatePresence mode="wait">
@@ -124,7 +126,7 @@ export function StageTopLine({ thoughts, decision, onClickHeadline }: StageTopLi
           className="stage-headline"
           style={{ fontSize: 18, color: "var(--text-primary)" }}
         >
-          {doneCount}<span style={{ color: "var(--text-tertiary)" }}>/9</span>{" "}
+          {doneCount}<span style={{ color: "var(--text-tertiary)" }}>/{normalizedTotal}</span>{" "}
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>
             에이전트 완료
           </span>

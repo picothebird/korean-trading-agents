@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { AgentThought, AgentRole, TradeDecision, BacktestResult, StockIndicators, AppUser } from "@/types";
 import { AgentStage } from "@/components/stage";
@@ -8,25 +8,26 @@ import { AgentInspector } from "@/components/AgentInspector";
 import { AskModal } from "@/components/AskModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutsOverlay } from "@/components/ShortcutsOverlay";
-import { PipelineBar } from "@/components/PipelineBar";
-import { DecisionCard } from "@/components/DecisionCard";
-import { AnalysisReport } from "@/components/AnalysisReport";
+import { AnalysisResult } from "@/components/AnalysisResult";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { SettingsPanel, type SettingsTab } from "@/components/SettingsPanel";
 import { KisPanel } from "@/components/KisPanel";
 import { MarketStatusBadge } from "@/components/MarketStatusBadge";
-import { useAutoNotify } from "@/lib/notifications";import { StockChartPanel } from "@/components/StockChartPanel";
+import { useAutoNotify } from "@/lib/notifications";
+import { StockChartPanel } from "@/components/StockChartPanel";
 import { AutoLoopPanel, type AutoTradeRecord } from "@/components/AutoLoopPanel";
 import { PortfolioLoopPanel } from "@/components/PortfolioLoopPanel";
 import { TabPills, OnboardingTour, type CoachStep, BrandMark, Icon, Tooltip, Dialog, Loader } from "@/components/ui";
 import { useRouter } from "next/navigation";
+import { ALL_AGENT_ROLES } from "@/lib/agentLabels";
 import {
   startAnalysis, streamAnalysis, getMarketIndices, runBacktest,
   listAnalysisHistory, getAnalysisSession, type AnalysisHistoryItem,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest, cancelAgentBacktest,
   listAgentBacktestHistory, getAgentBacktestResult,
-  getAccessToken, clearAccessToken, getMe, askAgent,
+  getAccessToken, clearAccessToken, getMe, askAgent, getSettings,
 } from "@/lib/api";
+import { formatKstDateTime, formatKstDate } from "@/lib/kstTime";
 
 // ── Constants ────────────────────────────────────────────────────
 const POPULAR_TICKERS = [
@@ -66,6 +67,18 @@ function formatYearMonth(dateStr: string): string {
   const [y = "", m = ""] = dateStr.split("-");
   if (!y || !m) return dateStr;
   return `${y}.${m}`;
+}
+
+function isBacktestPresetActive(startDate: string, endDate: string, months: number): boolean {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+
+  const expectedStart = new Date(end);
+  expectedStart.setMonth(expectedStart.getMonth() - months);
+  const dayDiff = Math.abs(start.getTime() - expectedStart.getTime()) / (1000 * 60 * 60 * 24);
+  // 월 길이/윤년 차이로 인한 1~2일 오차는 동일 프리셋으로 본다.
+  return dayDiff <= 2;
 }
 
 function InfoTip({ tip, subtle = false }: { tip: string; subtle?: boolean }) {
@@ -307,29 +320,34 @@ function StockPriceCard({
 
 // ── Pipeline Progress Bar ─────────────────────────────────────────
 const PIPELINE_LAYERS = [
-  { name: "L1", full: "데이터 수집", roles: ["technical_analyst", "fundamental_analyst", "sentiment_analyst", "macro_analyst"] as AgentRole[], total: 4 },
-  { name: "L2", full: "토론", roles: ["bull_researcher", "bear_researcher"] as AgentRole[], total: 2 },
-  { name: "L3", full: "결정", roles: ["risk_manager", "portfolio_manager", "guru_agent"] as AgentRole[], total: 3 },
+  { name: "L1", full: "데이터 수집", roles: ["technical_analyst", "fundamental_analyst", "sentiment_analyst", "macro_analyst"] as AgentRole[] },
+  { name: "L2", full: "토론", roles: ["bull_researcher", "bear_researcher"] as AgentRole[] },
+  { name: "L3", full: "결정", roles: ["risk_manager", "portfolio_manager", "guru_agent"] as AgentRole[] },
 ] as const;
 
 function PipelineProgress({
   thoughts,
   isRunning,
   isDone,
+  visibleRoles,
 }: {
   thoughts: Map<AgentRole, AgentThought>;
   isRunning: boolean;
   isDone: boolean;
+  visibleRoles: ReadonlyArray<AgentRole>;
 }) {
   if (!isRunning && thoughts.size === 0) return null;
 
+  const visibleRoleSet = new Set(visibleRoles);
   const layerStates = PIPELINE_LAYERS.map((l) => {
-    const done = l.roles.filter((r) => thoughts.get(r)?.status === "done").length;
-    const active = l.roles.filter((r) =>
+    const roles = l.roles.filter((r) => visibleRoleSet.has(r));
+    const done = roles.filter((r) => thoughts.get(r)?.status === "done").length;
+    const active = roles.filter((r) =>
       ["thinking", "analyzing", "debating", "deciding"].includes(thoughts.get(r)?.status ?? "")
     ).length;
-    return { ...l, done, active, complete: done === l.total };
-  });
+    const total = roles.length;
+    return { ...l, roles, total, done, active, complete: total > 0 && done === total };
+  }).filter((layer) => layer.total > 0);
 
   return (
     <motion.div
@@ -353,7 +371,7 @@ function PipelineProgress({
           const isActive = !layer.complete && layer.active > 0;
           const dotColor = layer.complete ? "var(--success)" : isActive ? "var(--brand)" : "var(--text-tertiary)";
           return (
-            <div key={layer.name} style={{ display: "flex", alignItems: "center", flex: i < 2 ? 1 : 0 }}>
+            <div key={layer.name} style={{ display: "flex", alignItems: "center", flex: i < layerStates.length - 1 ? 1 : 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                 <motion.div
                   animate={isActive ? { scale: [1, 1.15, 1] } : { scale: 1 }}
@@ -384,7 +402,7 @@ function PipelineProgress({
                   </p>
                 </div>
               </div>
-              {i < 2 && (
+              {i < layerStates.length - 1 && (
                 <div style={{ flex: 1, height: 2, margin: "0 8px", background: "var(--bg-overlay)", position: "relative", overflow: "hidden" }}>
                   <motion.div
                     initial={{ width: "0%" }}
@@ -797,7 +815,7 @@ export default function Home() {
   const [btStartDate, setBtStartDate] = useState("2022-01-01");
   const [btEndDate, setBtEndDate] = useState("2024-12-31");
   const [btInitialCapital, setBtInitialCapital] = useState(10_000_000);
-  const [btDecisionIntervalDays, setBtDecisionIntervalDays] = useState(20);
+  const [btDecisionIntervalDays, setBtDecisionIntervalDays] = useState(1);
   const [btProgress, setBtProgress] = useState<Array<{ date: string; signal: string; confidence: number; step: number; total: number }>>([]);
   const [btConfirmOpen, setBtConfirmOpen] = useState(false);
   const [btSessionId, setBtSessionId] = useState<string | null>(null);
@@ -823,6 +841,7 @@ export default function Home() {
   const [authReady, setAuthReady] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [guruEnabled, setGuruEnabled] = useState(true);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -924,6 +943,20 @@ export default function Home() {
     setSettingsInitialTab(tabKey);
     setSettingsOpen(true);
   }, []);
+
+  const refreshGuruEnabled = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const settings = await getSettings();
+      setGuruEnabled(Boolean(settings.guru_enabled));
+    } catch {
+      // keep previous flag on transient errors
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    void refreshGuruEnabled();
+  }, [refreshGuruEnabled]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -1153,6 +1186,50 @@ export default function Home() {
     }
   }, [currentUser]);
 
+  // 종목코드 → 종목명 조회 맵 (이력/권고 목록용). 자주 사용하는 recent/favorite 리스트 + 이력의 ticker_name(백엔드가 채워주면)을 우선 활용하고,
+  // 그래도 모르는 코드는 lazy 로 searchStocks 로 조회해 캐시한다.
+  const [tickerNameCache, setTickerNameCache] = useState<Record<string, string>>({});
+  const tickerNameMap = useMemo(() => {
+    const m: Record<string, string> = { ...tickerNameCache };
+    for (const s of recentStocks) if (s.code && s.name) m[s.code] = s.name;
+    for (const s of favoriteStocks) if (s.code && s.name) m[s.code] = s.name;
+    return m;
+  }, [tickerNameCache, recentStocks, favoriteStocks]);
+  const resolveTickerName = useCallback(
+    (code: string, hint?: string | null) => hint || tickerNameMap[code] || "",
+    [tickerNameMap],
+  );
+  // analysisHistory가 갱신될 때 이름을 모르는 종목만 골라서 동시 조회.
+  useEffect(() => {
+    if (!analysisHistory.length) return;
+    const need = Array.from(
+      new Set(
+        analysisHistory
+          .map((it) => it.ticker)
+          .filter((c): c is string => Boolean(c) && !resolveTickerName(c, analysisHistory.find((x) => x.ticker === c)?.ticker_name)),
+      ),
+    );
+    if (need.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates: Record<string, string> = {};
+      await Promise.all(
+        need.map(async (code) => {
+          try {
+            const res = await searchStocks(code);
+            const hit = res.find((r) => r.code === code) ?? res[0];
+            if (hit?.name) updates[code] = hit.name;
+          } catch { /* ignore */ }
+        }),
+      );
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setTickerNameCache((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisHistory]);
+
   useEffect(() => {
     if (tab === "analysis" && currentUser) {
       refreshAnalysisHistory();
@@ -1286,7 +1363,35 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler);
   }, [tab, handleAnalyze, handleBacktest, handleCancelAnalysis, isRunning, btLoading, btResult]);
 
-  const activeCount = activeAgents.size;
+  const effectiveGuruEnabled = decision?.agents_summary?.guru?.enabled ?? guruEnabled;
+  const analysisVisibleRoles = useMemo<AgentRole[]>(() => {
+    if (effectiveGuruEnabled) return ALL_AGENT_ROLES;
+    return ALL_AGENT_ROLES.filter((role) => role !== "guru_agent");
+  }, [effectiveGuruEnabled]);
+  const analysisVisibleRoleSet = useMemo(() => new Set<AgentRole>(analysisVisibleRoles), [analysisVisibleRoles]);
+
+  const filteredThoughts = useMemo(() => {
+    const next = new Map<AgentRole, AgentThought>();
+    for (const [role, thought] of thoughts) {
+      if (analysisVisibleRoleSet.has(role)) next.set(role, thought);
+    }
+    return next;
+  }, [thoughts, analysisVisibleRoleSet]);
+
+  const filteredActiveAgents = useMemo(() => {
+    const next = new Set<AgentRole>();
+    for (const role of activeAgents) {
+      if (analysisVisibleRoleSet.has(role)) next.add(role);
+    }
+    return next;
+  }, [activeAgents, analysisVisibleRoleSet]);
+
+  const filteredLogs = useMemo(
+    () => logs.filter((item) => analysisVisibleRoleSet.has(item.role)),
+    [logs, analysisVisibleRoleSet],
+  );
+
+  const activeCount = filteredActiveAgents.size;
 
   const handleTickerSelect = useCallback((code: string, name: string) => {
     const item = { code, name };
@@ -1632,879 +1737,6 @@ export default function Home() {
             tradeMarkers={chartTradeMarkers}
           />
 
-          {/* ── Pill Tab Navigation ──────────────────────────── */}
-          <div
-            data-tour="tab-nav"
-            style={{
-              display: "flex",
-              padding: "12px 0 10px",
-              borderBottom: "1px solid var(--border-subtle)",
-              marginBottom: 14,
-              flexShrink: 0,
-            }}
-          >
-            <TabPills<Tab>
-              ariaLabel="작업 영역 선택"
-              fullWidth
-              size="md"
-              value={tab}
-              onChange={(v) => handleTabChange(v)}
-              items={[
-                { value: "analysis", label: "분석", icon: <Icon name="search" size={14} decorative />, badge: activeCount > 0 ? (
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
-                    background: "var(--brand)", color: "var(--text-inverse)", lineHeight: 1.4, marginLeft: 2,
-                  }}>{activeCount}</span>
-                ) : undefined },
-                { value: "backtest", label: "시뮬레이션", icon: <Icon name="chart-bar" size={14} decorative /> },
-                { value: "trading", label: "매매", icon: <Icon name="wallet" size={14} decorative /> },
-                { value: "portfolio", label: "포트폴리오", icon: <Icon name="briefcase" size={14} decorative /> },
-              ]}
-            />
-            <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 6, lineHeight: 1.5, textAlign: "center" }}>
-              {tab === "analysis" && "🔎 종목 하나를 골라 9명의 AI 에이전트가 회의록 형식으로 매수/매도 판단을 내립니다."}
-              {tab === "backtest" && "📊 과거 데이터로 'MA 규칙' 또는 'AI 에이전트' 전략이 어떤 결과를 냈을지 시뮬레이션해봅니다."}
-              {tab === "trading" && "💼 KIS 증권 API와 연결해 실제(또는 모의) 주문을 보내고, 자동 매매 루프를 운영합니다."}
-              {tab === "portfolio" && "🗂 여러 종목을 동시에 모니터링하며 자동 종목 선정 + 분배 매매를 돌립니다."}
-            </p>
-          </div>
-
-          {/* ── Tab content ─────────────────────────────────── */}
-          <AnimatePresence mode="wait">
-            {tab === "analysis" && (
-              <motion.div
-                key="analysis"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={SPRING}
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                {/* Run / Cancel button row */}
-                <div style={{ display: "flex", gap: 6 }}>
-                  <motion.button
-                    onClick={handleAnalyze}
-                    disabled={isRunning}
-                    whileTap={{ scale: 0.97 }}
-                    style={{
-                      flex: 1,
-                      padding: "12px 0",
-                      borderRadius: "var(--radius-xl)",
-                      border: "none",
-                      background: isRunning ? "var(--bg-elevated)" : "var(--brand)",
-                      color: isRunning ? "var(--text-tertiary)" : "var(--text-inverse)",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      cursor: isRunning ? "not-allowed" : "pointer",
-                      boxShadow: isRunning ? "none" : "0 4px 16px var(--brand-glow)",
-                      transition: "all 200ms",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                    }}
-                  >
-                    {isRunning ? (
-                      <>
-                        <Loader size={16} center={false} />
-                        분석 중...
-                      </>
-                    ) : (
-                      <>
-                        <Icon name="search" size={14} decorative />
-                        분석 시작
-                        <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400 }}>Space</span>
-                      </>
-                    )}
-                  </motion.button>
-                  {isRunning && (
-                    <motion.button
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      onClick={handleCancelAnalysis}
-                      whileTap={{ scale: 0.95 }}
-                      style={{
-                        padding: "12px 14px",
-                        borderRadius: "var(--radius-xl)",
-                        border: "1px solid var(--border-default)",
-                        background: "var(--bg-elevated)",
-                        color: "var(--text-tertiary)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                      title="분석 중단 (Esc)"
-                    >
-                      중단
-                    </motion.button>
-                  )}
-                </div>
-
-                {/* Error state */}
-                <AnimatePresence>
-                  {analysisError && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "10px 12px",
-                        borderRadius: "var(--radius-lg)",
-                        background: "var(--error-subtle)",
-                        border: "1px solid var(--error-border)",
-                      }}
-                    >
-                      <Icon name="warning" size={14} decorative style={{ color: "var(--bear)" }} />
-                      <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{analysisError}</p>
-                      <button
-                        onClick={() => setAnalysisError(null)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 0 }}
-                      >
-                        <Icon name="x" size={14} decorative />
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Pipeline progress */}
-                <AnimatePresence>
-                  {(isRunning || thoughts.size > 0) && (
-                    <PipelineProgress
-                      thoughts={thoughts}
-                      isRunning={isRunning}
-                      isDone={!isRunning && !!decision}
-                    />
-                  )}
-                </AnimatePresence>
-
-                {/* Decision card / Analysis report / Empty state */}
-                {decision ? (
-                  <>
-                    <DecisionCard
-                      decision={decision}
-                      onHumanApproval={
-                        decision.agents_summary?.requires_human_approval
-                          ? () => setApprovalModal(true)
-                          : undefined
-                      }
-                      onOpenSettings={() => openSettings("guru")}
-                      onGoTrading={() => { setKisOrderTicker(decision.ticker); handleTabChange("trading"); }}
-                      onGoBacktest={() => handleTabChange("backtest")}
-                      onGoAutoLoop={() => { setKisOrderTicker(decision.ticker); handleTabChange("trading"); }}
-                    />
-                    <AnalysisReport decision={decision} />
-                    <motion.button
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => { setKisOrderTicker(decision.ticker); handleTabChange("trading"); }}
-                      style={{
-                        width: "100%",
-                        padding: "10px 0",
-                        borderRadius: "var(--radius-lg)",
-                        border: "1px solid var(--border-default)",
-                        background: "var(--bg-elevated)",
-                        color: "var(--text-secondary)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        transition: "all 150ms",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <Icon name="wallet" size={13} decorative />
-                      KIS 매매 탭에서 주문하기
-                    </motion.button>
-                  </>
-                ) : (
-                  <>
-                    <AnalysisEmptyState
-                      isRunning={isRunning}
-                      activeCount={activeCount}
-                      hasThoughts={thoughts.size > 0}
-                      hadError={!!analysisError}
-                    />
-                    {!isRunning && analysisHistory.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: 12,
-                          background: "var(--bg-elevated)",
-                          borderRadius: "var(--radius-xl)",
-                          border: "1px solid var(--border-subtle)",
-                          padding: "12px 14px",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                          <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                            <Icon name="clock" size={12} decorative /> 최근 분석 이력
-                          </p>
-                          <button
-                            onClick={refreshAnalysisHistory}
-                            disabled={analysisHistoryLoading}
-                            style={{ fontSize: 10, color: "var(--text-tertiary)", background: "none", border: "none", cursor: analysisHistoryLoading ? "wait" : "pointer" }}
-                          >
-                            {analysisHistoryLoading ? "갱신 중…" : "새로고침"}
-                          </button>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {analysisHistory.slice(0, 10).map((item) => {
-                            const action = item.summary?.action ?? "";
-                            const conf = item.summary?.confidence;
-                            const isDone = item.status === "done";
-                            const actionColor = action === "BUY" ? "var(--bull)" : action === "SELL" ? "var(--bear)" : "var(--text-secondary)";
-                            return (
-                              <button
-                                key={item.session_id}
-                                onClick={async () => {
-                                  if (!isDone) return;
-                                  const detail = await getAnalysisSession(item.session_id);
-                                  if (detail?.result?.decision) {
-                                    setDecision(detail.result.decision);
-                                  }
-                                }}
-                                disabled={!isDone}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "60px 1fr auto",
-                                  gap: 8,
-                                  alignItems: "center",
-                                  padding: "8px 10px",
-                                  background: "var(--bg-surface)",
-                                  border: "1px solid var(--border-default)",
-                                  borderRadius: "var(--radius-md)",
-                                  cursor: isDone ? "pointer" : "not-allowed",
-                                  opacity: isDone ? 1 : 0.6,
-                                  textAlign: "left",
-                                }}
-                              >
-                                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-                                  {item.ticker}
-                                </span>
-                                <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
-                                  {(item.created_at ?? "").slice(0, 16).replace("T", " ")}
-                                  {item.status === "running" && " · 진행 중"}
-                                  {item.status === "error" && ` · 오류${item.error ? `: ${item.error.slice(0, 30)}` : ""}`}
-                                </span>
-                                {isDone && action && (
-                                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                                    <span style={{ fontSize: 11, fontWeight: 800, color: actionColor }}>{action}</span>
-                                    {typeof conf === "number" && (
-                                      <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
-                                        신뢰도 {(conf * 100).toFixed(0)}%
-                                      </span>
-                                    )}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 8, lineHeight: 1.5 }}>
-                          💡 분석 도중 페이지를 떠나도 백엔드는 끝까지 계산을 마치고 결과를 저장해요. 다시 돌아오면 여기에서 확인하고 클릭해 회의록을 다시 볼 수 있습니다.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </motion.div>
-            )}
-
-            {tab === "backtest" && (
-              <motion.div
-                key="backtest"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={SPRING}
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                {/* Strategy selector */}
-                {!btResult && !btLoading && (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {(
-                      [
-                        {
-                          key: "ma" as const,
-                          label: "MA 교차 전략",
-                          desc: "5일 평균이 20일 평균을 위로 뚫으면 매수 · 아래로 뚫으면 매도",
-                          icon: "chart-bar" as const,
-                          tip: "기술적 추세 추종 전략입니다. LLM 사용 없이 과거 가격만으로 동작하므로 빠르고 비용이 발생하지 않습니다.",
-                        },
-                        {
-                          key: "agent" as const,
-                          label: "AI 에이전트 전략",
-                          desc: "매달 AI가 종목을 분석해 매수/매도/보유 신호를 내고 그 다음 거래일에 체결",
-                          icon: "robot" as const,
-                          tip: "설정한 기간을 월 단위로 쪼개서, 매번 기술지표·재무·뉴스 요약을 LLM에 넘겨 BUY/SELL/HOLD 결정을 받습니다. 실제 LLM 호출이 일어나므로 소액의 API 비용이 발생합니다.",
-                        },
-                      ] as const
-                    ).map(({ key, label, desc, icon, tip }) => {
-                      const active = btMode === key;
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => setBtMode(key)}
-                          style={{
-                            flex: 1,
-                            padding: "12px 10px",
-                            borderRadius: "var(--radius-xl)",
-                            border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
-                            background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
-                            cursor: "pointer",
-                            textAlign: "left",
-                            transition: "all 150ms",
-                          }}
-                        >
-                          <p style={{ marginBottom: 6, color: active ? "var(--brand)" : "var(--text-secondary)" }}>
-                            <Icon name={icon} size={20} decorative />
-                          </p>
-                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
-                            <p style={{ fontSize: 13, fontWeight: 700, color: active ? "var(--brand)" : "var(--text-primary)" }}>{label}</p>
-                            <InfoTip tip={tip} subtle={!active} />
-                          </div>
-                          <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>{desc}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                  {!btResult && !btLoading && (
-                    <div
-                      style={{
-                        background: "var(--bg-elevated)",
-                        border: "1px solid var(--border-subtle)",
-                        borderRadius: "var(--radius-lg)",
-                        padding: "10px 11px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          시뮬레이션 설정
-                        </p>
-                        <InfoTip tip="원하는 기간/초기자본을 넣어 동일 전략을 다양한 시장 구간에서 비교할 수 있습니다." subtle />
-                      </div>
-
-                      {/* 기간 프리셋 칩 (B1) */}
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {([
-                          { label: "3개월", months: 3, recommended: false },
-                          { label: "6개월 ★", months: 6, recommended: true },
-                          { label: "1년", months: 12, recommended: false },
-                          { label: "3년", months: 36, recommended: false },
-                        ] as const).map((p) => {
-                          const setPreset = () => {
-                            const end = new Date();
-                            const start = new Date();
-                            start.setMonth(start.getMonth() - p.months);
-                            const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-                            setBtStartDate(fmt(start));
-                            setBtEndDate(fmt(end));
-                          };
-                          return (
-                            <button
-                              key={p.label}
-                              onClick={setPreset}
-                              style={{
-                                padding: "5px 10px",
-                                borderRadius: 99,
-                                border: p.recommended ? "1px solid var(--brand-border)" : "1px solid var(--border-default)",
-                                background: p.recommended ? "var(--brand-subtle)" : "var(--bg-surface)",
-                                color: p.recommended ? "var(--brand-active)" : "var(--text-secondary)",
-                                fontSize: 11,
-                                fontWeight: 700,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {p.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>시작일</span>
-                          <input
-                            type="date"
-                            value={btStartDate}
-                            onChange={(e) => setBtStartDate(e.target.value)}
-                            style={{
-                              borderRadius: "var(--radius-md)",
-                              border: "1px solid var(--border-default)",
-                              background: "var(--bg-input)",
-                              color: "var(--text-primary)",
-                              padding: "9px 10px",
-                              fontSize: 13,
-                            }}
-                          />
-                        </label>
-
-                        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>종료일</span>
-                          <input
-                            type="date"
-                            value={btEndDate}
-                            onChange={(e) => setBtEndDate(e.target.value)}
-                            style={{
-                              borderRadius: "var(--radius-md)",
-                              border: "1px solid var(--border-default)",
-                              background: "var(--bg-input)",
-                              color: "var(--text-primary)",
-                              padding: "9px 10px",
-                              fontSize: 13,
-                            }}
-                          />
-                        </label>
-                      </div>
-
-                      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>초기 자본 (원)</span>
-                        <input
-                          type="number"
-                          min={100000}
-                          step={100000}
-                          value={btInitialCapital}
-                          onChange={(e) => setBtInitialCapital(Number(e.target.value || 0))}
-                          style={{
-                            borderRadius: "var(--radius-md)",
-                            border: "1px solid var(--border-default)",
-                            background: "var(--bg-input)",
-                            color: "var(--text-primary)",
-                            padding: "9px 10px",
-                            fontSize: 13,
-                          }}
-                        />
-                        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>예: 10,000,000원 = 천만원</span>
-                      </label>
-
-                      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-                          판단 주기 (거래일)
-                          <InfoTip tip="며칠마다 한 번씩 매수/매도 여부를 판단할지 정합니다. 1로 두면 매일, 5로 두면 5거래일마다 한 번 판단해요. 값이 작을수록 자주 거래합니다." subtle />
-                        </span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={120}
-                          value={btDecisionIntervalDays}
-                          onChange={(e) => setBtDecisionIntervalDays(Number(e.target.value || 1))}
-                          style={{
-                            borderRadius: "var(--radius-md)",
-                            border: "1px solid var(--border-default)",
-                            background: "var(--bg-input)",
-                            color: "var(--text-primary)",
-                            padding: "9px 10px",
-                            fontSize: 13,
-                          }}
-                        />
-                        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>1 = 매일 판단 · 5 = 일주일에 한 번 · 20 = 한 달에 한 번</span>
-                      </label>
-
-                      <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                        현재 설정: {backtestSummaryText}
-                      </p>
-                    </div>
-                  )}
-
-                {/* Run button → opens pre-run review dialog */}
-                {!btResult && (
-                  <motion.button
-                    onClick={() => setBtConfirmOpen(true)}
-                    disabled={btLoading}
-                    whileTap={{ scale: 0.97 }}
-                    style={{
-                      width: "100%",
-                      padding: "12px 0",
-                      borderRadius: "var(--radius-xl)",
-                      border: "none",
-                      background: btLoading ? "var(--bg-elevated)" : "var(--brand)",
-                      color: btLoading ? "var(--text-tertiary)" : "var(--text-inverse)",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: btLoading ? "not-allowed" : "pointer",
-                      boxShadow: btLoading ? "none" : "0 4px 16px var(--brand-glow)",
-                      transition: "all 200ms",
-                    }}
-                  >
-                    {btLoading ? "실행 중..." : "시뮬레이션 검토 후 실행"}
-                    {!btLoading && <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}>Space</span>}
-                  </motion.button>
-                )}
-
-                {/* Loading state */}
-                {btLoading && (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-                    <Loader
-                      size={48}
-                      label={btMode === "agent" ? "AI 에이전트가 과거 시점마다 판단하는 중…" : "시뮬레이션을 실행 중…"}
-                    />
-                    {btMode === "agent" && btSessionId && (
-                      <button
-                        type="button"
-                        onClick={handleCancelBacktest}
-                        disabled={btCancelling}
-                        style={{
-                          marginTop: 4,
-                          padding: "8px 16px",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--bear)",
-                          background: btCancelling ? "var(--bg-elevated)" : "var(--bear-subtle, rgba(240,68,82,0.1))",
-                          color: "var(--bear)",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: btCancelling ? "not-allowed" : "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <Icon name="x" size={12} decorative />
-                        {btCancelling ? "중단 요청 중…" : "시뮬레이션 중단"}
-                      </button>
-                    )}
-
-                    {btMode === "agent" && btProgress.length > 0 && (
-                      <div
-                        style={{
-                          width: "100%",
-                          background: "var(--bg-elevated)",
-                          borderRadius: "var(--radius-lg)",
-                          padding: "10px 12px",
-                          maxHeight: 160,
-                          overflowY: "auto",
-                        }}
-                      >
-                        <div style={{ marginBottom: 8 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>진행</span>
-                            <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
-                              {btProgress[btProgress.length - 1]?.step ?? 0} / {btProgress[btProgress.length - 1]?.total ?? "?"}
-                            </span>
-                          </div>
-                          <div style={{ height: 3, background: "var(--border-subtle)", borderRadius: 2, overflow: "hidden" }}>
-                            <motion.div
-                              animate={{
-                                width: `${((btProgress[btProgress.length - 1]?.step ?? 0) / (btProgress[btProgress.length - 1]?.total ?? 1)) * 100}%`,
-                              }}
-                              style={{ height: "100%", background: "var(--brand)", borderRadius: 2 }}
-                            />
-                          </div>
-                        </div>
-                        {[...btProgress]
-                          .reverse()
-                          .slice(0, 6)
-                          .map((p, i) => (
-                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-                              <span style={{ fontSize: 8, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{p.date}</span>
-                              <span
-                                style={{
-                                  fontSize: 8,
-                                  fontWeight: 700,
-                                  padding: "1px 5px",
-                                  borderRadius: 99,
-                                  flexShrink: 0,
-                                  background:
-                                    p.signal === "BUY"
-                                      ? "var(--bull-subtle)"
-                                      : p.signal === "SELL"
-                                      ? "var(--bear-subtle)"
-                                      : "var(--bg-surface)",
-                                  color:
-                                    p.signal === "BUY"
-                                      ? "var(--bull)"
-                                      : p.signal === "SELL"
-                                      ? "var(--bear)"
-                                      : "var(--text-tertiary)",
-                                }}
-                              >
-                                {p.signal}
-                              </span>
-                              <span style={{ fontSize: 8, color: "var(--text-tertiary)" }}>{(p.confidence * 100).toFixed(0)}%</span>
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Result */}
-                {btResult && (
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                          fontSize: 9,
-                          fontWeight: 700,
-                          padding: "3px 9px",
-                          borderRadius: 99,
-                          background: "var(--brand-subtle)",
-                          color: "var(--brand)",
-                        }}
-                      >
-                        <Icon name={btMode === "agent" ? "robot" : "chart-bar"} size={12} decorative />
-                        {btMode === "agent" ? "AI 에이전트 전략" : "MA 교차 전략"}
-                      </span>
-                      <button
-                        onClick={() => { setBtResult(null); setBtProgress([]); setBtError(null); }}
-                        style={{
-                          marginLeft: "auto",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "#fff",
-                          background: "var(--brand)",
-                          border: "none",
-                          borderRadius: "var(--radius-md)",
-                          padding: "8px 14px",
-                          cursor: "pointer",
-                          boxShadow: "0 2px 10px var(--brand-glow)",
-                          transition: "transform 120ms ease, box-shadow 120ms ease",
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)"; }}
-                      >
-                        <Icon name="settings" size={13} decorative />
-                        설정 변경하고 다시 실행
-                      </button>
-                    </div>
-                    <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 10 }}>
-                      {backtestSummaryText}
-                    </p>
-                    <BacktestPanel result={btResult} mode={btMode} decisionIntervalDays={btDecisionIntervalDays} />
-                  </div>
-                )}
-
-                {/* Backtest error state */}
-                <AnimatePresence>
-                  {btError && !btLoading && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "10px 12px",
-                        borderRadius: "var(--radius-lg)",
-                        background: "var(--error-subtle)",
-                        border: "1px solid var(--error-border)",
-                      }}
-                    >
-                      <Icon name="warning" size={14} decorative style={{ color: "var(--bear)" }} />
-                      <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{btError}</p>
-                      <button
-                        onClick={() => setBtError(null)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 0 }}
-                      >
-                        <Icon name="x" size={14} decorative />
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Empty state */}
-                {!btResult && !btLoading && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "24px 0",
-                      gap: 10,
-                    }}
-                  >
-                    <span style={{ display: "inline-flex", color: "var(--brand)" }}>
-                      <Icon name="trend-up" size={36} strokeWidth={1.5} decorative />
-                    </span>
-                    <p style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
-                      전략을 선택하고 시뮬레이션 실행 버튼을 누르세요
-                    </p>
-                    <p style={{ fontSize: 10, color: "var(--text-tertiary)", textAlign: "center" }}>
-                      {backtestSummaryText}
-                    </p>
-                  </div>
-                )}
-
-                {/* 최근 시뮬레이션 이력 (실행 중이 아닐 때만) */}
-                {!btLoading && btHistory.length > 0 && (
-                  <div
-                    style={{
-                      background: "var(--bg-elevated)",
-                      borderRadius: "var(--radius-xl)",
-                      border: "1px solid var(--border-subtle)",
-                      padding: "12px 14px",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <Icon name="clock" size={12} decorative /> 최근 시뮬레이션 이력
-                      </p>
-                      <button
-                        onClick={refreshBacktestHistory}
-                        disabled={btHistoryLoading}
-                        style={{
-                          fontSize: 10,
-                          color: "var(--text-tertiary)",
-                          background: "none",
-                          border: "none",
-                          cursor: btHistoryLoading ? "wait" : "pointer",
-                        }}
-                      >
-                        {btHistoryLoading ? "갱신 중…" : "새로고침"}
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {btHistory.slice(0, 8).map((item) => {
-                        const ret = item.summary?.total_return;
-                        const alpha = item.summary?.alpha;
-                        const isDone = item.status === "done";
-                        const dateRange =
-                          item.summary?.start_date && item.summary?.end_date
-                            ? `${item.summary.start_date.slice(0, 10)} ~ ${item.summary.end_date.slice(0, 10)}`
-                            : (item.created_at ?? "").slice(0, 10);
-                        return (
-                          <button
-                            key={item.session_id}
-                            onClick={() => isDone && handleLoadHistoryItem(item.session_id)}
-                            disabled={!isDone}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "60px 1fr auto",
-                              gap: 8,
-                              alignItems: "center",
-                              padding: "8px 10px",
-                              background: "var(--bg-surface)",
-                              border: "1px solid var(--border-default)",
-                              borderRadius: "var(--radius-md)",
-                              cursor: isDone ? "pointer" : "not-allowed",
-                              opacity: isDone ? 1 : 0.6,
-                              textAlign: "left",
-                            }}
-                          >
-                            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-                              {item.ticker}
-                            </span>
-                            <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
-                              {dateRange}
-                              {item.status === "running" && " · 진행 중"}
-                              {item.status === "error" && ` · 오류${item.error ? `: ${item.error.slice(0, 30)}` : ""}`}
-                            </span>
-                            {isDone && typeof ret === "number" && (
-                              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                                <span
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 800,
-                                    color: ret >= 0 ? "var(--bull)" : "var(--bear)",
-                                    fontVariantNumeric: "tabular-nums",
-                                  }}
-                                >
-                                  {ret >= 0 ? "+" : ""}{ret.toFixed(1)}%
-                                </span>
-                                {typeof alpha === "number" && (
-                                  <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
-                                    α {alpha >= 0 ? "+" : ""}{alpha.toFixed(1)}%p
-                                  </span>
-                                )}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 8, lineHeight: 1.5 }}>
-                      💡 시뮬레이션 중에 페이지를 떠나도 백엔드는 끝까지 계산을 마치고 결과를 저장해요. 다시 돌아오면 여기에서 확인하고 클릭해 결과를 다시 볼 수 있습니다.
-                    </p>
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {tab === "trading" && (
-              <motion.div
-                key="trading"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={SPRING}
-              >
-                <KisPanel
-                  prefillTicker={kisOrderTicker || ticker}
-                  onOpenSettings={(tabKey) => openSettings(tabKey)}
-                />
-              </motion.div>
-            )}
-
-            {tab === "portfolio" && (
-              <motion.div
-                key="portfolio"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={SPRING}
-              >
-                <PortfolioLoopPanel
-                  ticker={ticker}
-                  onTradeRecorded={(trade) => {
-                    setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
-                    setLogs((prev) => [
-                      ...prev.slice(-99),
-                      {
-                        agent_id: "portfolio_loop",
-                        role: "portfolio_manager",
-                        status: "done",
-                        content: `포트폴리오 거래: ${trade.ticker} ${trade.side} ${trade.qty}주 (${trade.status})`,
-                        timestamp: new Date().toISOString(),
-                      },
-                    ]);
-                  }}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Keep automation loop mounted so it can run continuously across tabs */}
-          <div style={{ display: tab === "trading" ? "block" : "none" }}>
-            <AutoLoopPanel
-              ticker={ticker}
-              showVisuals={tab === "trading"}
-              onDecision={(autoDecision) => {
-                setDecision(autoDecision);
-                setKisOrderTicker(autoDecision.ticker);
-                setLogs((prev) => [
-                  ...prev.slice(-99),
-                  {
-                    agent_id: "auto_loop",
-                    role: "portfolio_manager",
-                    status: "done",
-                    content: `자동 루프 의사결정: ${autoDecision.action} (${(autoDecision.confidence * 100).toFixed(1)}%)`,
-                    timestamp: new Date().toISOString(),
-                  },
-                ]);
-              }}
-              onTradeRecorded={(trade) => {
-                setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
-              }}
-            />
-          </div>
         </div>
 
         {/* ── Footer ─────────────────────────────────────────── */}
@@ -2555,10 +1787,8 @@ export default function Home() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <BrandMark size={20} />
             <p style={{ fontSize: 12, fontWeight: 700, color: "var(--brand-active)", letterSpacing: "0.08em" }}>
-              에이전트 컨트롤룸
+              트레이딩 스페이스
             </p>
-            {/* MS-A.A6: 파이프라인 진행 바 (DATA·DEBATE·DECISION 배지 대체) */}
-            <PipelineBar thoughts={thoughts} compact />
           </div>
 
           {/* Status badge + Settings */}
@@ -2624,45 +1854,983 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── MS-S1: AgentStage 통합 무대 (PhaserCanvas + 사이드바 + 회의록) ───────── */}
+        {/* ── 작업 영역: 분석 / 시뮬레이션 / 매매 / 포트폴리오 (회의실 무대는 분석 탭 내부 하단) ── */}
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            padding: "10px 14px 12px",
+            overflowY: "auto",
+            padding: "10px 16px 14px",
             display: "flex",
             flexDirection: "column",
           }}
         >
-          <AgentStage thoughts={logs} decision={decision} />
+        {/* ── Pill Tab Navigation ──────────────────────────── */}
+        <div
+          data-tour="tab-nav"
+          style={{
+            display: "flex",
+            padding: "12px 0 10px",
+            borderBottom: "1px solid var(--border-subtle)",
+            marginBottom: 14,
+            flexShrink: 0,
+          }}
+        >
+          <TabPills<Tab>
+            ariaLabel="작업 영역 선택"
+            fullWidth
+            size="md"
+            value={tab}
+            onChange={(v) => handleTabChange(v)}
+            items={[
+              { value: "analysis", label: "분석", icon: <Icon name="search" size={14} decorative />, badge: activeCount > 0 ? (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 99,
+                  background: "var(--brand)", color: "var(--text-inverse)", lineHeight: 1.4, marginLeft: 2,
+                }}>{activeCount}</span>
+              ) : undefined, tooltip: "종목 하나를 골라 9명의 AI 에이전트가 회의록 형식으로 매수/매도 판단을 내립니다." },
+              { value: "backtest", label: "시뮬레이션", icon: <Icon name="chart-bar" size={14} decorative />, tooltip: "과거 데이터로 MA 규칙 또는 AI 에이전트 전략이 어떤 결과를 냈을지 시뮬레이션해봅니다." },
+              { value: "trading", label: "매매", icon: <Icon name="wallet" size={14} decorative />, tooltip: "KIS 증권 API와 연결해 실제(또는 모의) 주문을 보내고, 자동 매매 루프를 운영합니다." },
+              { value: "portfolio", label: "포트폴리오", icon: <Icon name="briefcase" size={14} decorative />, tooltip: "여러 종목을 동시에 모니터링하며 자동 종목 선정 + 분배 매매를 돌립니다." },
+            ]}
+          />
+        </div>
+
+        {/* ── Tab content ─────────────────────────────────── */}
+        <AnimatePresence mode="wait">
+          {tab === "analysis" && (
+            <motion.div
+              key="analysis"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={SPRING}
+              style={{ display: "flex", flexDirection: "column", gap: 10 }}
+            >
+              {/* Run / Cancel button row */}
+              <div style={{ display: "flex", gap: 6 }}>
+                <motion.button
+                  onClick={handleAnalyze}
+                  disabled={isRunning}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    flex: 1,
+                    padding: "12px 0",
+                    borderRadius: "var(--radius-xl)",
+                    border: "none",
+                    background: isRunning ? "var(--bg-elevated)" : "var(--brand)",
+                    color: isRunning ? "var(--text-tertiary)" : "var(--text-inverse)",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: isRunning ? "not-allowed" : "pointer",
+                    boxShadow: isRunning ? "none" : "0 4px 16px var(--brand-glow)",
+                    transition: "all 200ms",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  {isRunning ? (
+                    <>
+                      <Loader size={16} center={false} />
+                      분석 중...
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="search" size={14} decorative />
+                      분석 시작
+                      <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400 }}>Space</span>
+                    </>
+                  )}
+                </motion.button>
+                {isRunning && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    onClick={handleCancelAnalysis}
+                    whileTap={{ scale: 0.95 }}
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "var(--radius-xl)",
+                      border: "1px solid var(--border-default)",
+                      background: "var(--bg-elevated)",
+                      color: "var(--text-tertiary)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                    title="분석 중단 (Esc)"
+                  >
+                    중단
+                  </motion.button>
+                )}
+              </div>
+
+              {/* Error state */}
+              <AnimatePresence>
+                {analysisError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 12px",
+                      borderRadius: "var(--radius-lg)",
+                      background: "var(--error-subtle)",
+                      border: "1px solid var(--error-border)",
+                    }}
+                  >
+                    <Icon name="warning" size={14} decorative style={{ color: "var(--bear)" }} />
+                    <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{analysisError}</p>
+                    <button
+                      onClick={() => setAnalysisError(null)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 0 }}
+                    >
+                      <Icon name="x" size={14} decorative />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Pipeline progress */}
+              <AnimatePresence>
+                {(isRunning || filteredThoughts.size > 0) && (
+                  <PipelineProgress
+                    thoughts={filteredThoughts}
+                    isRunning={isRunning}
+                    isDone={!isRunning && !!decision}
+                    visibleRoles={analysisVisibleRoles}
+                  />
+                )}
+              </AnimatePresence>
+
+              {/* 분석 결과 (단일 패널) / Empty state */}
+              {decision ? (
+                <>
+                  {/* 결과 패널 위에 '돌아가기' 컨트롤 — 이력에서 열어본 결과를 닫고 다시 새 분석/이력 화면으로 */}
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: -4 }}>
+                    <button
+                      onClick={() => { setDecision(null); setAnalysisError(null); }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "4px 10px",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "var(--text-secondary)",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-default)",
+                        borderRadius: "var(--radius-md)",
+                        cursor: "pointer",
+                      }}
+                      title="결과 닫고 이력/새 분석 화면으로"
+                    >
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <Icon name="arrow-left" size={13} decorative /> 새 분석 / 이력으로
+                      </span>
+                    </button>
+                  </div>
+                  <AnalysisResult
+                    decision={decision}
+                    onHumanApproval={
+                      decision.agents_summary?.requires_human_approval
+                        ? () => setApprovalModal(true)
+                        : undefined
+                    }
+                    onOpenSettings={() => openSettings("guru")}
+                    onGoTrading={() => { setKisOrderTicker(decision.ticker); handleTabChange("trading"); }}
+                    onGoBacktest={() => handleTabChange("backtest")}
+                    onGoAutoLoop={() => { setKisOrderTicker(decision.ticker); handleTabChange("trading"); }}
+                  />
+                </>
+              ) : (
+                <>
+                  <AnalysisEmptyState
+                    isRunning={isRunning}
+                    activeCount={activeCount}
+                    hasThoughts={filteredThoughts.size > 0}
+                    hadError={!!analysisError}
+                  />
+                  {!isRunning && analysisHistory.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        background: "var(--bg-elevated)",
+                        borderRadius: "var(--radius-xl)",
+                        border: "1px solid var(--border-subtle)",
+                        padding: "12px 14px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Icon name="clock" size={14} decorative /> 최근 분석 이력
+                        </p>
+                        <button
+                          onClick={refreshAnalysisHistory}
+                          disabled={analysisHistoryLoading}
+                          style={{ fontSize: 12, color: "var(--text-tertiary)", background: "none", border: "none", cursor: analysisHistoryLoading ? "wait" : "pointer" }}
+                        >
+                          {analysisHistoryLoading ? "갱신 중…" : "새로고침"}
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {analysisHistory.slice(0, 10).map((item) => {
+                          const action = item.summary?.action ?? "";
+                          const conf = item.summary?.confidence;
+                          const isDone = item.status === "done";
+                          const actionColor = action === "BUY" ? "var(--bull)" : action === "SELL" ? "var(--bear)" : "var(--text-secondary)";
+                          const stockName = resolveTickerName(item.ticker, item.ticker_name);
+                          return (
+                            <button
+                              key={item.session_id}
+                              onClick={async () => {
+                                if (!isDone) return;
+                                const detail = await getAnalysisSession(item.session_id);
+                                // 백엔드는 decision을 top-level에 저장하고, 레거시 일부는 result.decision에 들어갔을 수 있음.
+                                const dec = detail?.decision ?? detail?.result?.decision ?? null;
+                                if (dec) {
+                                  setDecision(dec);
+                                  setAnalysisError(null);
+                                } else {
+                                  setAnalysisError("이 분석 세션의 결과를 불러오지 못했어요. (서버에 저장된 결정이 비어있을 수 있습니다)");
+                                }
+                              }}
+                              disabled={!isDone}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "1fr auto",
+                                gap: 8,
+                                alignItems: "center",
+                                padding: "8px 10px",
+                                background: "var(--bg-surface)",
+                                border: "1px solid var(--border-default)",
+                                borderRadius: "var(--radius-md)",
+                                cursor: isDone ? "pointer" : "not-allowed",
+                                opacity: isDone ? 1 : 0.6,
+                                textAlign: "left",
+                              }}
+                            >
+                              <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {stockName ? `${stockName} (${item.ticker})` : item.ticker}
+                                </span>
+                                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                                  {formatKstDateTime(item.created_at)}
+                                  {item.status === "running" && " · 진행 중"}
+                                  {item.status === "error" && ` · 오류${item.error ? `: ${item.error.slice(0, 30)}` : ""}`}
+                                </span>
+                              </span>
+                              {isDone && action && (
+                                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 800, color: actionColor }}>{action}</span>
+                                  {typeof conf === "number" && (
+                                    <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                                      신뢰도 {(conf * 100).toFixed(0)}%
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 10, lineHeight: 1.6, display: "flex", alignItems: "flex-start", gap: 6 }}>
+                        <Icon name="lightbulb" size={13} decorative style={{ flexShrink: 0, marginTop: 1, color: "var(--brand-active)" }} />
+                        <span>분석 도중 페이지를 떠나도 백엔드는 끝까지 계산을 마치고 결과를 저장해요. 다시 돌아오면 여기에서 확인하고 클릭해 회의록을 다시 볼 수 있습니다.</span>
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ▼ 에이전트 회의실 — 분석 탭 내부 하단 중앙 임베드 */}
+              <section
+                aria-label="에이전트 회의실"
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: 960,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 4px",
+                  }}
+                >
+                  <Icon name="user" size={14} decorative />
+                  <p style={{ fontSize: 12, fontWeight: 700, color: "var(--brand-active)", letterSpacing: "0.08em", margin: 0 }}>
+                    에이전트 회의실
+                  </p>
+                </div>
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: 960,
+                    height: "min(640px, calc(100vh - 260px))",
+                    minHeight: 360,
+                    flexShrink: 0,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    border: "1px solid var(--border-subtle)",
+                    background: "var(--bg-canvas)",
+                    boxShadow: "var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.18))",
+                    display: "flex",
+                    flexDirection: "column",
+                    contain: "size layout paint",
+                  }}
+                >
+                  <AgentStage
+                    thoughts={filteredLogs}
+                    decision={decision}
+                    visibleRoles={analysisVisibleRoles}
+                    totalAgents={analysisVisibleRoles.length}
+                  />
+                </div>
+              </section>
+            </motion.div>
+          )}
+
+          {tab === "backtest" && (
+            <motion.div
+              key="backtest"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={SPRING}
+              style={{ display: "flex", flexDirection: "column", gap: 10 }}
+            >
+              {/* Strategy selector */}
+              {!btResult && !btLoading && (
+                <div style={{ display: "flex", gap: 8 }}>
+                  {(
+                    [
+                      {
+                        key: "ma" as const,
+                        label: "MA 교차 전략",
+                        desc: "5일 평균이 20일 평균을 위로 뚫으면 매수 · 아래로 뚫으면 매도",
+                        icon: "chart-bar" as const,
+                        tip: "기술적 추세 추종 전략입니다. LLM 사용 없이 과거 가격만으로 동작하므로 빠르고 비용이 발생하지 않습니다.",
+                      },
+                      {
+                        key: "agent" as const,
+                        label: "AI 에이전트 전략",
+                        desc: "매달 AI가 종목을 분석해 매수/매도/보유 신호를 내고 그 다음 거래일에 체결",
+                        icon: "robot" as const,
+                        tip: "설정한 기간을 월 단위로 쪼개서, 매번 기술지표·재무·뉴스 요약을 LLM에 넘겨 BUY/SELL/HOLD 결정을 받습니다. 실제 LLM 호출이 일어나므로 소액의 API 비용이 발생합니다.",
+                      },
+                    ] as const
+                  ).map(({ key, label, desc, icon, tip }) => {
+                    const active = btMode === key;
+                    return (
+                      <div
+                        key={key}
+                        onClick={() => setBtMode(key)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setBtMode(key);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={active}
+                        style={{
+                          flex: 1,
+                          padding: "12px 10px",
+                          borderRadius: "var(--radius-xl)",
+                          border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                          background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          transition: "all 150ms",
+                        }}
+                      >
+                        <p style={{ marginBottom: 6, color: active ? "var(--brand)" : "var(--text-secondary)" }}>
+                          <Icon name={icon} size={20} decorative />
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: active ? "var(--brand)" : "var(--text-primary)" }}>{label}</p>
+                          <InfoTip tip={tip} subtle={!active} />
+                        </div>
+                        <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>{desc}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+                {!btResult && !btLoading && (
+                  <div
+                    style={{
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: "var(--radius-lg)",
+                      padding: "10px 11px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        시뮬레이션 설정
+                      </p>
+                      <InfoTip tip="원하는 기간/초기자본을 넣어 동일 전략을 다양한 시장 구간에서 비교할 수 있습니다." subtle />
+                    </div>
+
+                    {/* 기간 프리셋 칩 (B1) */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {([
+                        { label: "3개월", months: 3, recommended: false },
+                        { label: "6개월 · 추천", months: 6, recommended: true },
+                        { label: "1년", months: 12, recommended: false },
+                        { label: "3년", months: 36, recommended: false },
+                      ] as const).map((p) => {
+                        const active = isBacktestPresetActive(btStartDate, btEndDate, p.months);
+                        const setPreset = () => {
+                          const end = new Date();
+                          const start = new Date();
+                          start.setMonth(start.getMonth() - p.months);
+                          const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                          setBtStartDate(fmt(start));
+                          setBtEndDate(fmt(end));
+                        };
+                        return (
+                          <button
+                            key={p.label}
+                            onClick={setPreset}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 99,
+                              border: active ? "1px solid var(--brand-border)" : "1px solid var(--border-default)",
+                              background: active ? "var(--brand-subtle)" : "var(--bg-surface)",
+                              color: active ? "var(--brand-active)" : "var(--text-secondary)",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>시작일</span>
+                        <input
+                          type="date"
+                          value={btStartDate}
+                          onChange={(e) => setBtStartDate(e.target.value)}
+                          style={{
+                            borderRadius: "var(--radius-md)",
+                            border: "1px solid var(--border-default)",
+                            background: "var(--bg-input)",
+                            color: "var(--text-primary)",
+                            padding: "9px 10px",
+                            fontSize: 13,
+                          }}
+                        />
+                      </label>
+
+                      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>종료일</span>
+                        <input
+                          type="date"
+                          value={btEndDate}
+                          onChange={(e) => setBtEndDate(e.target.value)}
+                          style={{
+                            borderRadius: "var(--radius-md)",
+                            border: "1px solid var(--border-default)",
+                            background: "var(--bg-input)",
+                            color: "var(--text-primary)",
+                            padding: "9px 10px",
+                            fontSize: 13,
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600 }}>초기 자본 (원)</span>
+                      <input
+                        type="number"
+                        min={100000}
+                        step={100000}
+                        value={btInitialCapital}
+                        onChange={(e) => setBtInitialCapital(Number(e.target.value || 0))}
+                        style={{
+                          borderRadius: "var(--radius-md)",
+                          border: "1px solid var(--border-default)",
+                          background: "var(--bg-input)",
+                          color: "var(--text-primary)",
+                          padding: "9px 10px",
+                          fontSize: 13,
+                        }}
+                      />
+                      <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>예: 10,000,000원 = 천만원</span>
+                    </label>
+
+                    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      <span style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                        판단 주기 (거래일)
+                        <InfoTip tip="며칠마다 한 번씩 매수/매도 여부를 판단할지 정합니다. 1로 두면 매일, 5로 두면 5거래일마다 한 번 판단해요. 값이 작을수록 자주 거래합니다." subtle />
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={btDecisionIntervalDays}
+                        onChange={(e) => setBtDecisionIntervalDays(Number(e.target.value || 1))}
+                        style={{
+                          borderRadius: "var(--radius-md)",
+                          border: "1px solid var(--border-default)",
+                          background: "var(--bg-input)",
+                          color: "var(--text-primary)",
+                          padding: "9px 10px",
+                          fontSize: 13,
+                        }}
+                      />
+                      <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>1 = 매일 판단 · 5 = 일주일에 한 번 · 20 = 한 달에 한 번</span>
+                    </label>
+
+                    <p style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                      현재 설정: {backtestSummaryText}
+                    </p>
+                  </div>
+                )}
+
+              {/* Run button → opens pre-run review dialog */}
+              {!btResult && (
+                <motion.button
+                  onClick={() => setBtConfirmOpen(true)}
+                  disabled={btLoading}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    width: "100%",
+                    padding: "12px 0",
+                    borderRadius: "var(--radius-xl)",
+                    border: "none",
+                    background: btLoading ? "var(--bg-elevated)" : "var(--brand)",
+                    color: btLoading ? "var(--text-tertiary)" : "var(--text-inverse)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: btLoading ? "not-allowed" : "pointer",
+                    boxShadow: btLoading ? "none" : "0 4px 16px var(--brand-glow)",
+                    transition: "all 200ms",
+                  }}
+                >
+                  {btLoading ? "실행 중..." : "시뮬레이션 검토 후 실행"}
+                  {!btLoading && <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 6, fontWeight: 400 }}>Space</span>}
+                </motion.button>
+              )}
+
+              {/* Loading state */}
+              {btLoading && (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                  <Loader
+                    size={48}
+                    label={btMode === "agent" ? "AI 에이전트가 과거 시점마다 판단하는 중…" : "시뮬레이션을 실행 중…"}
+                  />
+                  {btMode === "agent" && btSessionId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelBacktest}
+                      disabled={btCancelling}
+                      style={{
+                        marginTop: 4,
+                        padding: "8px 16px",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--bear)",
+                        background: btCancelling ? "var(--bg-elevated)" : "var(--bear-subtle, rgba(240,68,82,0.1))",
+                        color: "var(--bear)",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: btCancelling ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Icon name="x" size={12} decorative />
+                      {btCancelling ? "중단 요청 중…" : "시뮬레이션 중단"}
+                    </button>
+                  )}
+
+                  {btMode === "agent" && btProgress.length > 0 && (
+                    <div
+                      style={{
+                        width: "100%",
+                        background: "var(--bg-elevated)",
+                        borderRadius: "var(--radius-lg)",
+                        padding: "10px 12px",
+                        maxHeight: 160,
+                        overflowY: "auto",
+                      }}
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>진행</span>
+                          <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                            {btProgress[btProgress.length - 1]?.step ?? 0} / {btProgress[btProgress.length - 1]?.total ?? "?"}
+                          </span>
+                        </div>
+                        <div style={{ height: 3, background: "var(--border-subtle)", borderRadius: 2, overflow: "hidden" }}>
+                          <motion.div
+                            animate={{
+                              width: `${((btProgress[btProgress.length - 1]?.step ?? 0) / (btProgress[btProgress.length - 1]?.total ?? 1)) * 100}%`,
+                            }}
+                            style={{ height: "100%", background: "var(--brand)", borderRadius: 2 }}
+                          />
+                        </div>
+                      </div>
+                      {[...btProgress]
+                        .reverse()
+                        .slice(0, 6)
+                        .map((p, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                            <span style={{ fontSize: 8, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>{p.date}</span>
+                            <span
+                              style={{
+                                fontSize: 8,
+                                fontWeight: 700,
+                                padding: "1px 5px",
+                                borderRadius: 99,
+                                flexShrink: 0,
+                                background:
+                                  p.signal === "BUY"
+                                    ? "var(--bull-subtle)"
+                                    : p.signal === "SELL"
+                                    ? "var(--bear-subtle)"
+                                    : "var(--bg-surface)",
+                                color:
+                                  p.signal === "BUY"
+                                    ? "var(--bull)"
+                                    : p.signal === "SELL"
+                                    ? "var(--bear)"
+                                    : "var(--text-tertiary)",
+                              }}
+                            >
+                              {p.signal}
+                            </span>
+                            <span style={{ fontSize: 8, color: "var(--text-tertiary)" }}>{(p.confidence * 100).toFixed(0)}%</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Result */}
+              {btResult && (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        padding: "3px 9px",
+                        borderRadius: 99,
+                        background: "var(--brand-subtle)",
+                        color: "var(--brand)",
+                      }}
+                    >
+                      <Icon name={btMode === "agent" ? "robot" : "chart-bar"} size={12} decorative />
+                      {btMode === "agent" ? "AI 에이전트 전략" : "MA 교차 전략"}
+                    </span>
+                    <button
+                      onClick={() => { setBtResult(null); setBtProgress([]); setBtError(null); }}
+                      style={{
+                        marginLeft: "auto",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#fff",
+                        background: "var(--brand)",
+                        border: "none",
+                        borderRadius: "var(--radius-md)",
+                        padding: "8px 14px",
+                        cursor: "pointer",
+                        boxShadow: "0 2px 10px var(--brand-glow)",
+                        transition: "transform 120ms ease, box-shadow 120ms ease",
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)"; }}
+                    >
+                      <Icon name="settings" size={13} decorative />
+                      설정 변경하고 다시 실행
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 10 }}>
+                    {backtestSummaryText}
+                  </p>
+                  <BacktestPanel result={btResult} mode={btMode} decisionIntervalDays={btDecisionIntervalDays} />
+                </div>
+              )}
+
+              {/* Backtest error state */}
+              <AnimatePresence>
+                {btError && !btLoading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 12px",
+                      borderRadius: "var(--radius-lg)",
+                      background: "var(--error-subtle)",
+                      border: "1px solid var(--error-border)",
+                    }}
+                  >
+                    <Icon name="warning" size={14} decorative style={{ color: "var(--bear)" }} />
+                    <p style={{ fontSize: 11, color: "var(--bear)", flex: 1 }}>{btError}</p>
+                    <button
+                      onClick={() => setBtError(null)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", padding: 0, lineHeight: 0 }}
+                    >
+                      <Icon name="x" size={14} decorative />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Empty state */}
+              {!btResult && !btLoading && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "24px 0",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ display: "inline-flex", color: "var(--brand)" }}>
+                    <Icon name="trend-up" size={36} strokeWidth={1.5} decorative />
+                  </span>
+                  <p style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
+                    전략을 선택하고 시뮬레이션 실행 버튼을 누르세요
+                  </p>
+                  <p style={{ fontSize: 10, color: "var(--text-tertiary)", textAlign: "center" }}>
+                    {backtestSummaryText}
+                  </p>
+                </div>
+              )}
+
+              {/* 최근 시뮬레이션 이력 (실행 중이 아닐 때만) */}
+              {!btLoading && btHistory.length > 0 && (
+                <div
+                  style={{
+                    background: "var(--bg-elevated)",
+                    borderRadius: "var(--radius-xl)",
+                    border: "1px solid var(--border-subtle)",
+                    padding: "12px 14px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <p style={{ fontSize: 11, fontWeight: 800, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Icon name="clock" size={12} decorative /> 최근 시뮬레이션 이력
+                    </p>
+                    <button
+                      onClick={refreshBacktestHistory}
+                      disabled={btHistoryLoading}
+                      style={{
+                        fontSize: 10,
+                        color: "var(--text-tertiary)",
+                        background: "none",
+                        border: "none",
+                        cursor: btHistoryLoading ? "wait" : "pointer",
+                      }}
+                    >
+                      {btHistoryLoading ? "갱신 중…" : "새로고침"}
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {btHistory.slice(0, 8).map((item) => {
+                      const ret = item.summary?.total_return;
+                      const alpha = item.summary?.alpha;
+                      const isDone = item.status === "done";
+                      const dateRange =
+                        item.summary?.start_date && item.summary?.end_date
+                          ? `${item.summary.start_date.slice(0, 10)} ~ ${item.summary.end_date.slice(0, 10)}`
+                          : formatKstDate(item.created_at);
+                      return (
+                        <button
+                          key={item.session_id}
+                          onClick={() => isDone && handleLoadHistoryItem(item.session_id)}
+                          disabled={!isDone}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "60px 1fr auto",
+                            gap: 8,
+                            alignItems: "center",
+                            padding: "8px 10px",
+                            background: "var(--bg-surface)",
+                            border: "1px solid var(--border-default)",
+                            borderRadius: "var(--radius-md)",
+                            cursor: isDone ? "pointer" : "not-allowed",
+                            opacity: isDone ? 1 : 0.6,
+                            textAlign: "left",
+                          }}
+                        >
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
+                            {item.ticker}
+                          </span>
+                          <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>
+                            {dateRange}
+                            {item.status === "running" && " · 진행 중"}
+                            {item.status === "error" && ` · 오류${item.error ? `: ${item.error.slice(0, 30)}` : ""}`}
+                          </span>
+                          {isDone && typeof ret === "number" && (
+                            <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  color: ret >= 0 ? "var(--bull)" : "var(--bear)",
+                                  fontVariantNumeric: "tabular-nums",
+                                }}
+                              >
+                                {ret >= 0 ? "+" : ""}{ret.toFixed(1)}%
+                              </span>
+                              {typeof alpha === "number" && (
+                                <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
+                                  α {alpha >= 0 ? "+" : ""}{alpha.toFixed(1)}%p
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 10, lineHeight: 1.6, display: "flex", alignItems: "flex-start", gap: 6 }}>
+                    <Icon name="lightbulb" size={13} decorative style={{ flexShrink: 0, marginTop: 1, color: "var(--brand-active)" }} />
+                    <span>시뮬레이션 중에 페이지를 떠나도 백엔드는 끝까지 계산을 마치고 결과를 저장해요. 다시 돌아오면 여기에서 확인하고 클릭해 결과를 다시 볼 수 있습니다.</span>
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {tab === "trading" && (
+            <motion.div
+              key="trading"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={SPRING}
+            >
+              <KisPanel
+                prefillTicker={kisOrderTicker || ticker}
+                onOpenSettings={(tabKey) => openSettings(tabKey)}
+              />
+            </motion.div>
+          )}
+
+          {tab === "portfolio" && (
+            <motion.div
+              key="portfolio"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={SPRING}
+            >
+              <PortfolioLoopPanel
+                ticker={ticker}
+                onTradeRecorded={(trade) => {
+                  setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
+                  setLogs((prev) => [
+                    ...prev.slice(-99),
+                    {
+                      agent_id: "portfolio_loop",
+                      role: "portfolio_manager",
+                      status: "done",
+                      content: `포트폴리오 거래: ${trade.ticker} ${trade.side} ${trade.qty}주 (${trade.status})`,
+                      timestamp: new Date().toISOString(),
+                    },
+                  ]);
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Keep automation loop mounted so it can run continuously across tabs */}
+        <div style={{ display: tab === "trading" ? "block" : "none" }}>
+          <AutoLoopPanel
+            ticker={ticker}
+            showVisuals={tab === "trading"}
+            onDecision={(autoDecision) => {
+              setDecision(autoDecision);
+              setKisOrderTicker(autoDecision.ticker);
+              setLogs((prev) => [
+                ...prev.slice(-99),
+                {
+                  agent_id: "auto_loop",
+                  role: "portfolio_manager",
+                  status: "done",
+                  content: `자동 루프 의사결정: ${autoDecision.action} (${(autoDecision.confidence * 100).toFixed(1)}%)`,
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }}
+            onTradeRecorded={(trade) => {
+              setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
+            }}
+          />
+        </div>
         </div>
       </main>
 
       {/* ── 첫 진입 온보딩 위저드 (P3.P1) ─────────────────── */}
       {onboardingStep !== null && (() => {
-        const steps = [
+        const steps: { icon: "user" | "search" | "chart-bar" | "briefcase" | "shield"; title: string; body: string }[] = [
           {
-            emoji: "👋",
+            icon: "user",
             title: "한국 트레이딩 에이전트에 오신 걸 환영합니다",
             body: "9개의 AI 에이전트가 종목을 분석하고, 토론하고, 매매 결정을 제안합니다. 처음이라도 안전하게 사용하실 수 있도록 모의투자가 기본값입니다.",
           },
           {
-            emoji: "🔍",
+            icon: "search",
             title: "1. 분석 탭 — AI에게 종목 의견 묻기",
-            body: "분석 탭에서 종목코드를 입력하고 분석을 실행하면, 9명의 AI가 BUY/SELL/HOLD 의견과 근거를 제시합니다. 결과 카드 하단의 [📝 모의 1주 시도] 버튼으로 바로 다음 단계로 이동할 수 있습니다.",
+            body: "분석 탭에서 종목코드를 입력하고 분석을 실행하면, 9명의 AI가 BUY/SELL/HOLD 의견과 근거를 제시합니다. 결과 카드 하단의 [모의 1주 시도] 버튼으로 바로 다음 단계로 이동할 수 있습니다.",
           },
           {
-            emoji: "📊",
+            icon: "chart-bar",
             title: "2. 백테스트 탭 — 과거 데이터로 검증",
             body: "전략을 실제 자금 투입 전에 과거 3개월/1년/3년 데이터로 시뮬레이션해 보세요. 신호등 등급 카드(샤프/칼마/MDD)로 한눈에 좋음·보통·나쁨을 확인할 수 있습니다.",
           },
           {
-            emoji: "💼",
+            icon: "briefcase",
             title: "3. 트레이딩 탭 — 모의 → 실거래",
-            body: "기본은 모의투자입니다. KIS 실거래 모드로 바꾸면 큰 경고와 체크리스트가 뜹니다. 자동매매를 켜둘 때는 일일 한도(주문수·손실액)와 [⛔ 즉시청산] 버튼이 항상 보입니다.",
+            body: "기본은 모의투자입니다. KIS 실거래 모드로 바꾸면 큰 경고와 체크리스트가 뜹니다. 자동매매를 켜둘 때는 일일 한도(주문수·손실액)와 [즉시청산] 버튼이 항상 보입니다.",
           },
           {
-            emoji: "🚦",
+            icon: "shield",
             title: "원칙 3가지",
             body: "① 모의투자로 충분히 익힌 뒤 실거래로 넘어가세요. ② AI 신뢰도가 높아도 손실 가능성은 항상 존재합니다. ③ 일일 한도와 즉시청산을 적극 활용하세요.",
           },
@@ -2694,9 +2862,9 @@ export default function Home() {
               }}
             >
               <div style={{ padding: "24px 28px 8px" }}>
-                <div style={{ fontSize: 40, marginBottom: 8 }}>{cur.emoji}</div>
-                <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", marginBottom: 10 }}>{cur.title}</h2>
-                <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7 }}>{cur.body}</p>
+                <div style={{ marginBottom: 12, color: "var(--brand-active)" }}><Icon name={cur.icon} size={36} decorative /></div>
+                <h2 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>{cur.title}</h2>
+                <p className="t-critical">{cur.body}</p>
               </div>
               {/* 진행 점 */}
               <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "12px 0" }}>
@@ -2719,9 +2887,9 @@ export default function Home() {
                   type="button"
                   onClick={close}
                   style={{
-                    padding: "10px 14px", borderRadius: "var(--radius-md)",
+                    padding: "11px 16px", borderRadius: "var(--radius-md)",
                     border: "1px solid var(--border-default)", background: "transparent",
-                    color: "var(--text-tertiary)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    color: "var(--text-tertiary)", fontSize: 13, fontWeight: 600, cursor: "pointer",
                   }}
                 >
                   건너뛰기
@@ -2732,9 +2900,9 @@ export default function Home() {
                     type="button"
                     onClick={() => setOnboardingStep((s) => (s ?? 1) - 1)}
                     style={{
-                      padding: "10px 14px", borderRadius: "var(--radius-md)",
+                      padding: "11px 16px", borderRadius: "var(--radius-md)",
                       border: "1px solid var(--border-default)", background: "var(--bg-surface)",
-                      color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      color: "var(--text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer",
                     }}
                   >
                     이전
@@ -2747,9 +2915,9 @@ export default function Home() {
                     else close();
                   }}
                   style={{
-                    padding: "10px 18px", borderRadius: "var(--radius-md)",
+                    padding: "11px 20px", borderRadius: "var(--radius-md)",
                     border: "none", background: "var(--brand-active)",
-                    color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer",
+                    color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer",
                   }}
                 >
                   {onboardingStep < steps.length - 1 ? "다음" : "시작하기"}
@@ -2923,13 +3091,16 @@ export default function Home() {
 
       <SettingsPanel
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+          void refreshGuruEnabled();
+        }}
         initialTab={settingsInitialTab}
         userRole={currentUser?.role}
       />
 
       {/* ── MS-C: 글로벌 인터랙션 레이어 ───────────────────────── */}
-      <AgentInspector thoughts={logs} />
+      <AgentInspector thoughts={filteredLogs} />
       <AskModal
         sessionId={activeAnalysisSessionId}
         onSubmit={async ({ role, question, thoughtTimestamp }) => {

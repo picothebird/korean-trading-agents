@@ -106,16 +106,18 @@ export function extractSignal(metadata: Record<string, unknown> | undefined): Ag
 // Agent role → 표현 색상 (UI 일관성)
 // 기존 AgentOffice의 dotColor 매핑을 SSOT로 옮김
 // ─────────────────────────────────────────────────────────────────────
+// 주의: bull_researcher / bear_researcher 는 의도적으로 시장 신호 컬러(빨강/파랑)를 사용한다.
+// 그 외 역할은 시장 신호와 분리된 hue 를 써서 "차트 색"과 "역할 식별 색"의 혼동을 방지한다.
 export const AGENT_COLOR: Record<AgentRole, string> = {
-  technical_analyst: "#3182F6",
-  fundamental_analyst: "#A855F7",
-  sentiment_analyst: "#F5A623",
-  macro_analyst: "#2FCA73",
-  bull_researcher: "#F04452",
-  bear_researcher: "#2B7EF5",
-  risk_manager: "#F5A623",
-  portfolio_manager: "#3182F6",
-  guru_agent: "#7D6BFF",
+  technical_analyst: "#5B5BD6",   // indigo (brand)
+  fundamental_analyst: "#A855F7", // violet
+  sentiment_analyst: "#F59E0B",   // amber
+  macro_analyst: "#0D9488",       // teal
+  bull_researcher: "#E5384A",     // 시장 상승 (red) — 의도된 매핑
+  bear_researcher: "#1F6FEB",     // 시장 하락 (blue) — 의도된 매핑
+  risk_manager: "#D97706",        // amber-dark
+  portfolio_manager: "#14B8A6",   // teal-light (의사결정자 — 빨강/파랑과 분리)
+  guru_agent: "#7D6BFF",          // periwinkle
 };
 
 // 모든 AgentRole 순회 (UI 카드/리스트용)

@@ -188,7 +188,7 @@ export function AgentInspector({ thoughts }: AgentInspectorProps) {
                   cursor: "pointer",
                 }}
               >
-                💬 질문
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="comment" size={12} decorative /> 질문</span>
               </button>
 
               <button
@@ -464,7 +464,7 @@ function ActivityTab({
                 padding: 0,
               }}
             >
-              {bookmarked ? "★" : "☆"}
+              <Icon name={bookmarked ? "bookmark-filled" : "bookmark"} size={14} decorative style={{ color: bookmarked ? "#F5A524" : "var(--text-tertiary)" }} />
             </button>
           </div>
         );

@@ -54,6 +54,7 @@ const ACTIVE_STATUS_BORDER: Record<AgentStatus, string> = {
 interface Props {
   controller: OfficeSceneController | null;
   thoughts?: ReadonlyArray<AgentThought>;
+  visibleRoles?: ReadonlyArray<AgentRole>;
 }
 
 interface Viewport {
@@ -63,7 +64,7 @@ interface Viewport {
   h: number;
 }
 
-export function Minimap({ controller, thoughts }: Props) {
+export function Minimap({ controller, thoughts, visibleRoles }: Props) {
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -98,6 +99,10 @@ export function Minimap({ controller, thoughts }: Props) {
       statusByRole[t.role] = t.status;
     }
   }
+  const rolesToDraw =
+    visibleRoles && visibleRoles.length > 0
+      ? visibleRoles
+      : (Object.keys(DESK_POSITIONS) as AgentRole[]);
 
   const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!controller) return;
@@ -159,8 +164,9 @@ export function Minimap({ controller, thoughts }: Props) {
           />
         ))}
         {/* 책상 도트 */}
-        {Object.entries(DESK_POSITIONS).map(([role, pos]) => {
-          const status = statusByRole[role as AgentRole] ?? "idle";
+        {rolesToDraw.map((role) => {
+          const pos = DESK_POSITIONS[role];
+          const status = statusByRole[role] ?? "idle";
           const cx = pos.col * CELL + CELL / 2;
           const cy = pos.row * CELL + CELL / 2;
           return (
@@ -169,7 +175,7 @@ export function Minimap({ controller, thoughts }: Props) {
               cx={cx}
               cy={cy}
               r={CELL * 0.7}
-              fill={AGENT_COLOR[role as AgentRole]}
+              fill={AGENT_COLOR[role]}
               stroke={ACTIVE_STATUS_BORDER[status]}
               strokeWidth={1}
             />

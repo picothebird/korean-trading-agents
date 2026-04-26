@@ -274,7 +274,7 @@ export function TimelineToolbar({ visibleCount, totalCount, thoughts }: Timeline
             cursor: "pointer",
           }}
         >
-          ⚡ 신호만
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="bolt" size={12} decorative /> 신호만</span>
         </button>
 
         {hasActiveFilters && (
@@ -293,7 +293,7 @@ export function TimelineToolbar({ visibleCount, totalCount, thoughts }: Timeline
               cursor: "pointer",
             }}
           >
-            ✕ 필터 초기화
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="x" size={12} decorative /> 필터 초기화</span>
           </button>
         )}
       </div>

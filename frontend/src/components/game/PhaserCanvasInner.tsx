@@ -8,6 +8,7 @@
 import { useEffect, useRef } from "react";
 import type Phaser from "phaser";
 import type { AgentRole, AgentThought } from "@/types";
+import { ALL_AGENT_ROLES } from "@/lib/agentLabels";
 import type { OfficeScene as OfficeSceneType } from "./OfficeScene";
 import type { OfficeSceneController } from "./OfficeSceneController";
 
@@ -39,21 +40,25 @@ function cssColorToHex(raw: string): number | null {
 interface Props {
   thoughts?: ReadonlyArray<AgentThought>;
   onAgentClick?: (role: AgentRole) => void;
+  visibleRoles?: ReadonlyArray<AgentRole>;
   onReady?: (controller: OfficeSceneController | null) => void;
 }
 
 export default function PhaserCanvasInner({
   thoughts,
   onAgentClick,
+  visibleRoles,
   onReady,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<unknown>(null); // Phaser.Game (런타임 import이라 unknown)
   const sceneRef = useRef<OfficeSceneType | null>(null);
   const thoughtsRef = useRef<ReadonlyArray<AgentThought>>(thoughts ?? []);
+  const visibleRolesRef = useRef<ReadonlyArray<AgentRole>>(visibleRoles ?? ALL_AGENT_ROLES);
   const clickHandlerRef = useRef<((role: AgentRole) => void) | undefined>(
     onAgentClick,
   );
+  const visibleRolesKey = (visibleRoles ?? ALL_AGENT_ROLES).join("|");
 
   // thoughts가 바뀔 때마다 scene에 적용 (game/scene 미준비 시 ref만 갱신)
   useEffect(() => {
@@ -70,6 +75,10 @@ export default function PhaserCanvasInner({
       onAgentClick ? (role) => clickHandlerRef.current?.(role) : null,
     );
   }, [onAgentClick]);
+
+  useEffect(() => {
+    visibleRolesRef.current = visibleRoles ?? ALL_AGENT_ROLES;
+  }, [visibleRoles]);
 
   // MS5: 테마(--bg-canvas) 동기화. 마운트 시 1회 + data-theme 변경 시 재반영.
   useEffect(() => {
@@ -99,7 +108,7 @@ export default function PhaserCanvasInner({
       if (cancelled || !hostRef.current) return;
 
       const host = hostRef.current;
-      const sceneInstance = new OfficeScene();
+      const sceneInstance = new OfficeScene(visibleRolesRef.current);
       const game = new Phaser.Game({
         type: Phaser.AUTO,
         parent: host,
@@ -179,9 +188,7 @@ export default function PhaserCanvasInner({
       gameRef.current = null;
       sceneRef.current = null;
     };
-    // 의존성 비워 마운트당 1회만. onReady는 cleanup용으로만 캡처(부모는 setController처럼 안정 콜백 권장).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [onReady, visibleRolesKey]);
 
   return (
     <div

@@ -21,7 +21,17 @@ export type IconName =
   // chart / market
   | "trend-up" | "trend-down" | "candle" | "chart-pie"
   // misc
-  | "calendar" | "clock" | "bolt" | "scale" | "cube" | "menu";
+  | "calendar" | "clock" | "bolt" | "scale" | "cube" | "menu"
+  // ── added P5 typography pass (emoji replacement set) ─────────────
+  | "lightbulb" | "bull" | "bear" | "trophy" | "document" | "edit"
+  | "calculator" | "comment" | "stop" | "magic-wand" | "volume" | "volume-off"
+  | "arrow-right" | "arrow-left" | "arrow-up" | "arrow-down"
+  | "chevron-down" | "chevron-right" | "chevron-left" | "chevron-up"
+  | "plus" | "minus" | "refresh" | "fire" | "pin" | "graduation"
+  | "microscope" | "ladder" | "stop-octagon" | "ruler" | "play"
+  | "filter" | "bookmark" | "bookmark-filled" | "trash"
+  | "trending-up" | "trending-down" | "alert-triangle" | "circle"
+  | "external-link" | "home";
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, "name"> & {
   name: IconName;
@@ -308,6 +318,231 @@ const PATHS: Record<IconName, ReactElement> = {
       <path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" />
     </>
   ),
+
+  // ── P5 typography pass: emoji-replacement icons ────────────────
+  lightbulb: (
+    <>
+      <path d="M9 18h6" /><path d="M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-4 10.5c1 1 1.5 2 1.5 3.5h5c0-1.5.5-2.5 1.5-3.5A6 6 0 0 0 12 3Z" />
+    </>
+  ),
+  bull: (
+    <>
+      <circle cx="12" cy="14" r="5" />
+      <path d="m7 9-2-3M17 9l2-3" />
+      <circle cx="10.3" cy="13.5" r="0.7" fill="currentColor" />
+      <circle cx="13.7" cy="13.5" r="0.7" fill="currentColor" />
+      <path d="M10.5 16.5h3" />
+    </>
+  ),
+  bear: (
+    <>
+      <circle cx="12" cy="14" r="5" />
+      <circle cx="7" cy="8.5" r="2" />
+      <circle cx="17" cy="8.5" r="2" />
+      <circle cx="10.3" cy="13.5" r="0.7" fill="currentColor" />
+      <circle cx="13.7" cy="13.5" r="0.7" fill="currentColor" />
+    </>
+  ),
+  trophy: (
+    <>
+      <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+      <path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3" />
+      <path d="M9 20h6" /><path d="M12 14v6" />
+    </>
+  ),
+  document: (
+    <>
+      <path d="M6 3h9l4 4v14H6Z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h7M9 17h5" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M4 20h4l11-11-4-4L4 16Z" />
+      <path d="m14 6 4 4" />
+    </>
+  ),
+  calculator: (
+    <>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <rect x="7.5" y="6" width="9" height="3" rx="1" />
+      <circle cx="9" cy="13" r="0.9" fill="currentColor" />
+      <circle cx="12" cy="13" r="0.9" fill="currentColor" />
+      <circle cx="15" cy="13" r="0.9" fill="currentColor" />
+      <circle cx="9" cy="16" r="0.9" fill="currentColor" />
+      <circle cx="12" cy="16" r="0.9" fill="currentColor" />
+      <circle cx="15" cy="16" r="0.9" fill="currentColor" />
+    </>
+  ),
+  ruler: (
+    <>
+      <path d="M3 17 17 3l4 4L7 21Z" />
+      <path d="M7 11l2 2M11 7l2 2M11 15l2 2M15 11l2 2" />
+    </>
+  ),
+  comment: (
+    <path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12Z" />
+  ),
+  stop: (
+    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+  ),
+  "stop-octagon": (
+    <>
+      <path d="M8 3h8l5 5v8l-5 5H8l-5-5V8Z" />
+      <path d="M9 9l6 6M15 9l-6 6" />
+    </>
+  ),
+  "magic-wand": (
+    <>
+      <path d="M5 19 16 8" />
+      <path d="m14 6 4-4 4 4-4 4Z" />
+      <path d="M3 11h3M4.5 9.5v3" />
+    </>
+  ),
+  volume: (
+    <>
+      <path d="M4 9v6h4l5 4V5L8 9Z" />
+      <path d="M17 8a5 5 0 0 1 0 8" />
+    </>
+  ),
+  "volume-off": (
+    <>
+      <path d="M4 9v6h4l5 4V5L8 9Z" />
+      <path d="m17 9 5 5M22 9l-5 5" />
+    </>
+  ),
+  "arrow-right": (
+    <>
+      <path d="M4 12h16" /><path d="m14 6 6 6-6 6" />
+    </>
+  ),
+  "arrow-left": (
+    <>
+      <path d="M20 12H4" /><path d="m10 6-6 6 6 6" />
+    </>
+  ),
+  "arrow-up": (
+    <>
+      <path d="M12 20V4" /><path d="m6 10 6-6 6 6" />
+    </>
+  ),
+  "arrow-down": (
+    <>
+      <path d="M12 4v16" /><path d="m6 14 6 6 6-6" />
+    </>
+  ),
+  "chevron-down": (
+    <path d="m6 9 6 6 6-6" />
+  ),
+  "chevron-right": (
+    <path d="m9 6 6 6-6 6" />
+  ),
+  "chevron-left": (
+    <path d="m15 6-6 6 6 6" />
+  ),
+  "chevron-up": (
+    <path d="m6 15 6-6 6 6" />
+  ),
+  plus: (
+    <><path d="M12 5v14" /><path d="M5 12h14" /></>
+  ),
+  minus: (
+    <path d="M5 12h14" />
+  ),
+  refresh: (
+    <>
+      <path d="M20 6v5h-5" />
+      <path d="M4 18v-5h5" />
+      <path d="M5 11A7 7 0 0 1 18 8.5L20 11" />
+      <path d="M19 13A7 7 0 0 1 6 15.5L4 13" />
+    </>
+  ),
+  fire: (
+    <path d="M12 3s4 4 4 8a4 4 0 0 1-8 0c0-1.5.5-2.5 1.5-3.5C10 8.5 12 8 12 3Zm-2 14a2 2 0 0 0 4 0c0-1-1-2-2-2s-2 1-2 2Z" />
+  ),
+  pin: (
+    <>
+      <path d="M9 4h6l-1 4 3 3-5 1v8l-2-2v-6l-5-1 3-3z" />
+    </>
+  ),
+  graduation: (
+    <>
+      <path d="m12 4-10 5 10 5 10-5z" />
+      <path d="M6 11v4c0 2 3 3 6 3s6-1 6-3v-4" />
+      <path d="M22 9v5" />
+    </>
+  ),
+  microscope: (
+    <>
+      <path d="M6 21h12" />
+      <path d="M9 18a6 6 0 0 0 8.5-8.5" />
+      <rect x="9" y="3" width="4" height="9" rx="1" />
+      <path d="M9 7h4" />
+    </>
+  ),
+  ladder: (
+    <>
+      <path d="M7 3v18M17 3v18" />
+      <path d="M7 7h10M7 12h10M7 17h10" />
+    </>
+  ),
+  play: (
+    <path d="M8 5v14l11-7z" fill="currentColor" />
+  ),
+  filter: (
+    <path d="M3 5h18l-7 9v6l-4-2v-4z" />
+  ),
+  bookmark: (
+    <path d="M6 3h12v18l-6-4-6 4z" />
+  ),
+  "bookmark-filled": (
+    <path d="M6 3h12v18l-6-4-6 4z" fill="currentColor" />
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V4h6v3" />
+      <path d="M6 7v13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7" />
+      <path d="M10 11v7M14 11v7" />
+    </>
+  ),
+  "trending-up": (
+    <>
+      <path d="m3 17 6-6 4 4 8-8" />
+      <path d="M14 7h7v7" />
+    </>
+  ),
+  "trending-down": (
+    <>
+      <path d="m3 7 6 6 4-4 8 8" />
+      <path d="M14 17h7v-7" />
+    </>
+  ),
+  "alert-triangle": (
+    <>
+      <path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h0" />
+    </>
+  ),
+  circle: (
+    <circle cx="12" cy="12" r="9" />
+  ),
+  "external-link": (
+    <>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M3 12 12 3l9 9" />
+      <path d="M5 10v10h14V10" />
+    </>
+  ),
 };
 
 // Filled icons that should NOT use stroke
@@ -315,6 +550,10 @@ const FILLED: Partial<Record<IconName, true>> = {
   "star-filled": true,
   bolt: true,
   moon: true,
+  stop: true,
+  play: true,
+  "bookmark-filled": true,
+  fire: true,
 };
 
 export function Icon({

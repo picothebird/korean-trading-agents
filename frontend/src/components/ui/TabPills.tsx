@@ -1,11 +1,13 @@
 "use client";
 import React from "react";
+import { Tooltip } from "./Tooltip";
 
 export interface TabItem<T extends string = string> {
   value: T;
   label: React.ReactNode;
   icon?: React.ReactNode;
   badge?: React.ReactNode;
+  tooltip?: React.ReactNode;
   hidden?: boolean;
 }
 
@@ -38,9 +40,8 @@ export function TabPills<T extends string>({
     >
       {visible.map((item) => {
         const active = item.value === value;
-        return (
+        const trigger = (
           <button
-            key={item.value}
             role="tab"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
@@ -77,6 +78,12 @@ export function TabPills<T extends string>({
             <span>{item.label}</span>
             {item.badge}
           </button>
+        );
+
+        return (
+          <React.Fragment key={item.value}>
+            {item.tooltip ? <Tooltip content={item.tooltip}>{trigger}</Tooltip> : trigger}
+          </React.Fragment>
         );
       })}
     </div>

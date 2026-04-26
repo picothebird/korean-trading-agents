@@ -169,8 +169,8 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
         border: `2px solid ${SIGNAL_CFG[decision.action]?.color ?? "var(--border-default)"}`,
         borderRadius: "var(--radius-xl)",
       }}>
-        <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>
-          ⚡ 30초 요약
+        <p className="t-label" style={{ marginBottom: 10, display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <Icon name="bolt" size={11} decorative /> 30초 요약
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10, marginBottom: 10 }}>
           <div>
@@ -224,17 +224,17 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
         borderRadius: "var(--radius-lg)",
         padding: "10px 14px",
       }}>
-        <summary style={{ fontSize: 11, color: "var(--text-secondary)", cursor: "pointer", fontWeight: 700, listStyle: "none" }}>
-          🔀 9개 에이전트는 어떤 순서로 결정에 이르렀나요?
+        <summary style={{ fontSize: 13, color: "var(--text-primary)", cursor: "pointer", fontWeight: 700, listStyle: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="refresh" size={13} decorative /> 9개 에이전트는 어떤 순서로 결정에 이르렀나요?
         </summary>
         <div style={{ marginTop: 10 }}>
           {/* 4단계 파이프라인 */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
             {[
-              { step: "L1", title: "분석", emoji: "🔍", body: "9명이 각자 데이터를 봅니다", color: "var(--brand-active)" },
-              { step: "L2", title: "토론", emoji: "⚔️", body: `강세 vs 약세 ${debate?.rounds ?? 0}라운드`, color: "var(--warning)" },
-              { step: "L3", title: "리스크", emoji: "🛡️", body: "위험·Kelly 산정", color: "var(--bear)" },
-              { step: "L4", title: "결정", emoji: "🎯", body: `${SIGNAL_CFG[decision.action]?.label ?? decision.action} ${confidencePct}%`, color: SIGNAL_CFG[decision.action]?.color ?? "var(--text-primary)" },
+              { step: "L1", title: "분석", icon: "search" as const, body: "9명이 각자 데이터를 봅니다", color: "var(--brand-active)" },
+              { step: "L2", title: "토론", icon: "comment" as const, body: `강세 vs 약세 ${debate?.rounds ?? 0}라운드`, color: "var(--warning)" },
+              { step: "L3", title: "리스크", icon: "shield" as const, body: "위험·Kelly 산정", color: "var(--bear)" },
+              { step: "L4", title: "결정", icon: "check-circle" as const, body: `${SIGNAL_CFG[decision.action]?.label ?? decision.action} ${confidencePct}%`, color: SIGNAL_CFG[decision.action]?.color ?? "var(--text-primary)" },
             ].map((s, i) => (
               <div key={s.step} style={{ position: "relative" }}>
                 <div style={{
@@ -244,22 +244,23 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
                   padding: "8px 6px",
                   textAlign: "center",
                 }}>
-                  <div style={{ fontSize: 16 }}>{s.emoji}</div>
-                  <p style={{ fontSize: 9, color: s.color, fontWeight: 800, marginTop: 2 }}>{s.step} · {s.title}</p>
-                  <p style={{ fontSize: 8, color: "var(--text-tertiary)", marginTop: 2, lineHeight: 1.3 }}>{s.body}</p>
+                  <div style={{ display: "flex", justifyContent: "center", color: s.color }}><Icon name={s.icon} size={18} decorative /></div>
+                  <p style={{ fontSize: 11, color: s.color, fontWeight: 800, marginTop: 4 }}>{s.step} · {s.title}</p>
+                  <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3, lineHeight: 1.4 }}>{s.body}</p>
                 </div>
                 {i < 3 && (
                   <span style={{
                     position: "absolute", right: -6, top: "50%", transform: "translateY(-50%)",
-                    fontSize: 10, color: "var(--text-quaternary)", zIndex: 1,
+                    fontSize: 12, color: "var(--text-quaternary)", zIndex: 1,
+                    display: "inline-flex", alignItems: "center",
                   }}>
-                    →
+                    <Icon name="arrow-right" size={11} decorative />
                   </span>
                 )}
               </div>
             ))}
           </div>
-          <p style={{ fontSize: 9, color: "var(--text-tertiary)", lineHeight: 1.55 }}>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.65 }}>
             각 단계의 산출물이 다음 단계의 입력으로 전달됩니다. 토론 라운드가 길수록 신뢰도가 보정되고, 리스크 매니저가 Kelly 비중을 깎거나 GURU 정책이 결과를 강제로 바꿀 수도 있습니다.
           </p>
         </div>
@@ -294,15 +295,18 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
       {/* MS-D D2: 합의도 도넛 + 반대 의견 강조 */}
       {(() => {
         const finalAction = decision.action;
-        const dEntries = Object.entries(details);
+        const analystKeys = Object.keys(ANALYST_LABEL); // 기대되는 분석가 4명
         let agree = 0;
         let disagree = 0;
         let neutral = 0;
+        let missing = 0;
         const dissent: { key: string; ko: string; signal: string; conf: number }[] = [];
-        for (const [k, d] of dEntries) {
+        for (const k of analystKeys) {
+          const d = details[k];
           const sig = String(d?.signal ?? "").toUpperCase();
+          if (!d || !sig) { missing++; continue; }
           if (sig === finalAction) agree++;
-          else if (sig === "HOLD" || !sig) neutral++;
+          else if (sig === "HOLD") neutral++;
           else {
             disagree++;
             dissent.push({
@@ -313,23 +317,38 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
             });
           }
         }
-        if (agree + disagree + neutral === 0) return null;
+        const reported = agree + disagree + neutral;
+        if (reported === 0 && missing === 0) return null;
+        const expectedTotal = analystKeys.length; // 4
+        const agreePctOfReported = reported > 0 ? Math.round((agree / reported) * 100) : 0;
         return (
           <Section
-            title="1-bis. 9 에이전트 합의도"
-            hint="9명의 AI 에이전트(분석가 4 + 연구원 2 + 리스크/포트폴리오/구루 3)가 최종 결정과 같은 방향이었는지 한눈에 확인."
+            title={`1-bis. 분석가 합의도 (보고 ${reported} / ${expectedTotal}명)`}
+            hint="기술·기본·심리·매크로 4명의 AI 분석가 중 최종 결정과 같은 방향으로 신호를 낸 비율입니다. 보고가 누락된 분석가가 있으면 함께 표시돼요."
             index={0}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <AgreementDonut agree={agree} disagree={disagree} neutral={neutral} size={72} thickness={9} />
-              <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 4 }}>
+              <AgreementDonut agree={agree} disagree={disagree} neutral={neutral} missing={missing} size={72} thickness={9} />
+              <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
                   <Legend color="var(--bull)" label={`찬성 ${agree}명`} />
                   <Legend color="var(--bear)" label={`반대 ${disagree}명`} />
                   <Legend color="var(--text-tertiary)" label={`중립 ${neutral}명`} />
+                  {missing > 0 && (
+                    <Legend color="var(--border-default)" label={`보고 누락 ${missing}명`} />
+                  )}
                 </div>
-                <div style={{ marginTop: 4 }}>
+                <p style={{ fontSize: 10, color: "var(--text-tertiary)", margin: 0, lineHeight: 1.5 }}>
+                  {reported === 0
+                    ? "분석가 보고가 아직 도착하지 않았습니다."
+                    : `보고 기준 합의율 ${agreePctOfReported}% · 결정과 같은 방향 ${agree} / ${reported}명`}
+                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
                   <ConfidenceGauge value={decision.confidence} size={50} thickness={6} />
+                  <span style={{ fontSize: 10, color: "var(--text-secondary)", lineHeight: 1.4 }}>
+                    최종 신뢰도<br />
+                    <span style={{ fontSize: 9, color: "var(--text-tertiary)" }}>(에이전트 9명 종합)</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -343,8 +362,8 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
                   border: "1px solid var(--bear-border)",
                 }}
               >
-                <p style={{ fontSize: 11, fontWeight: 800, color: "var(--bear)", margin: 0 }}>
-                  ⚠ 반대 의견 ({dissent.length}명)
+                <p style={{ fontSize: 13, fontWeight: 800, color: "var(--bear)", margin: 0, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Icon name="warning" size={13} decorative /> 반대 의견 ({dissent.length}명)
                 </p>
                 <p style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4, lineHeight: 1.6 }}>
                   최종 결정과 다른 신호를 낸 에이전트가 있습니다. 결정 전 이 의견을 반드시 검토하세요.
@@ -469,12 +488,12 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
             return (
               <div style={{ marginBottom: 10, padding: "10px 12px", background: "var(--bg-elevated)", borderRadius: "var(--radius-md)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 10, color: "var(--bull)", fontWeight: 700 }}>
-                    🐂 강세 {bullPts}점 / {bullRounds}라운드 {winner === "bull" && "🏆"}
+                  <span style={{ fontSize: 12, color: "var(--bull)", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Icon name="bull" size={12} decorative /> 강세 {bullPts}점 / {bullRounds}라운드 {winner === "bull" && <Icon name="trophy" size={11} decorative />}
                   </span>
-                  <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>토론 결과</span>
-                  <span style={{ fontSize: 10, color: "var(--bear)", fontWeight: 700 }}>
-                    {winner === "bear" && "🏆 "}🐻 약세 {bearPts}점 / {bearRounds}라운드
+                  <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>토론 결과</span>
+                  <span style={{ fontSize: 12, color: "var(--bear)", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    {winner === "bear" && <Icon name="trophy" size={11} decorative />} <Icon name="bear" size={12} decorative /> 약세 {bearPts}점 / {bearRounds}라운드
                   </span>
                 </div>
                 <div style={{ display: "flex", height: 5, borderRadius: 99, overflow: "hidden", background: "var(--border-subtle)" }}>
@@ -728,14 +747,18 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
               background: "var(--warning-subtle)",
               border: "1px solid var(--warning-border)",
               borderRadius: "var(--radius-md)",
-              padding: "8px 12px",
-              fontSize: 10,
-              color: "var(--text-secondary)",
-              lineHeight: 1.6,
+              padding: "10px 14px",
+              fontSize: 13,
+              color: "var(--text-primary)",
+              lineHeight: 1.7,
+              display: "flex",
+              gap: 8,
+              alignItems: "flex-start",
             }}
           >
-            ⚠️ 본 회의록은 AI 의견이며 투자 권유가 아닙니다. 실제 투자 손실에 대한 책임은 사용자에게 있어요.
-            소액부터 시작하고, 한 종목에 자본의 25% 이상을 절대 넣지 마세요.
+            <Icon name="warning" size={14} decorative style={{ flexShrink: 0, marginTop: 2, color: "var(--warning)" }} />
+            <span>본 회의록은 AI 의견이며 투자 권유가 아닙니다. 실제 투자 손실에 대한 책임은 사용자에게 있어요.
+            소액부터 시작하고, 한 종목에 자본의 25% 이상을 절대 넣지 마세요.</span>
           </div>
         </div>
       </Section>

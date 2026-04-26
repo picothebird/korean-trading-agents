@@ -12,9 +12,9 @@ import type { AgentRole, AgentStatus, AgentThought } from "@/types";
 
 interface Props {
   thoughts?: ReadonlyArray<AgentThought>;
+  totalRoles?: number;
 }
 
-const ALL_ROLES_COUNT = 9;
 const ACTIVE: ReadonlyArray<AgentStatus> = [
   "thinking",
   "analyzing",
@@ -22,7 +22,7 @@ const ACTIVE: ReadonlyArray<AgentStatus> = [
   "deciding",
 ];
 
-export function AgentCounter({ thoughts }: Props) {
+export function AgentCounter({ thoughts, totalRoles = 9 }: Props) {
   const counts = useMemo(() => {
     const byRole: Partial<Record<AgentRole, AgentStatus>> = {};
     if (thoughts) {
@@ -39,9 +39,9 @@ export function AgentCounter({ thoughts }: Props) {
     }
     // thoughts에 등장하지 않은 나머지 역할은 idle
     const seen = Object.keys(byRole).length;
-    idle += ALL_ROLES_COUNT - seen;
+    idle += Math.max(0, totalRoles - seen);
     return { active, done, idle };
-  }, [thoughts]);
+  }, [thoughts, totalRoles]);
 
   return (
     <div

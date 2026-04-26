@@ -55,10 +55,34 @@ export async function getStock(ticker: string) {
 
 export async function getStockChart(
   ticker: string,
-  timeframe: "1m" | "3m" | "6m" | "1y" | "2y" = "6m"
+  timeframe: "1d" | "5d" | "1w" | "2w" | "1m" | "3m" | "6m" | "1y" | "2y" = "6m"
 ): Promise<import("@/types").StockChartResponse> {
   const res = await apiFetch(`${BASE_URL}/api/stock/${ticker}/chart?timeframe=${timeframe}`);
-  if (!res.ok) throw new Error(`Failed to load chart: ${ticker}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      const raw = body?.detail ?? body?.message ?? body;
+      if (typeof raw === "string") {
+        detail = raw;
+      } else if (Array.isArray(raw)) {
+        // FastAPI validation: [{loc:[...], msg, type}, ...]
+        detail = raw
+          .map((e: { loc?: unknown[]; msg?: string }) => {
+            const loc = Array.isArray(e?.loc) ? e.loc.join(".") : "";
+            return `${loc}: ${e?.msg ?? ""}`.replace(/^:\s*/, "");
+          })
+          .filter(Boolean)
+          .join("; ");
+      } else if (raw && typeof raw === "object") {
+        detail = JSON.stringify(raw);
+      }
+    } catch {
+      // ignore parse error
+    }
+    const suffix = detail ? ` — ${detail}` : "";
+    throw new Error(`차트를 불러오지 못했어요 (${ticker} / ${timeframe}, HTTP ${res.status})${suffix}`);
+  }
   return res.json();
 }
 
@@ -94,6 +118,26 @@ export function streamAnalysis(
     try {
       const data = JSON.parse(event.data);
       if (data.type === "done") {
+        if (!decisionReceived) {
+          // 방어 로직: SSE final_decision 이벤트를 놓친 경우 세션 결과를 1회 재조회한다.
+          void getAnalysisSession(sessionId)
+            .then((detail) => {
+              const decision = detail?.result?.decision;
+              if (decision) {
+                decisionReceived = true;
+                onDecision(decision);
+                return;
+              }
+              if (detail?.error) {
+                onError?.(detail.error);
+                return;
+              }
+              onError?.("분석이 종료됐지만 최종 결정을 확인하지 못했습니다. 잠시 후 분석 이력에서 다시 확인해 주세요.");
+            })
+            .catch(() => {
+              onError?.("분석 종료 후 결과 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+            });
+        }
         finalize();
       } else if (data.type === "final_decision") {
         decisionReceived = true;
@@ -251,6 +295,8 @@ export async function getAgentBacktestResult(sessionId: string): Promise<import(
 export interface AnalysisHistoryItem {
   session_id: string;
   ticker: string;
+  /** 종목명 — 백엔드가 채워주면 그대로 사용, 없으면 프론트에서 lazy lookup. */
+  ticker_name?: string | null;
   status: "running" | "done" | "error" | string;
   created_at: string | null;
   updated_at: string | null;
@@ -273,6 +319,8 @@ export interface AnalysisSessionDetail {
   session_id: string;
   ticker: string;
   status: string;
+  /** 현행 백엔드는 decision을 top-level에 저장한다. (레거시 result.decision도 존재 가능) */
+  decision?: import("@/types").TradeDecision | null;
   result?: { decision?: import("@/types").TradeDecision | null } | null;
   error?: string | null;
 }

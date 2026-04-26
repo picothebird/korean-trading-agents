@@ -2,7 +2,7 @@
  * OfficeScene — MS1 자산 + MS2 디폴트 맵 + MS3 액터 + MS4 카메라/말풍선
  *
  * - preload(): Kenney Tiny Town + RPG Urban Pack 스프라이트시트 로드
- * - create(): 배경 + 30×20 디폴트 오피스 + 9개 AgentActor + 카메라 컨트롤
+ * - create(): 배경 + 30×20 디폴트 오피스 + 표시 대상 AgentActor + 카메라 컨트롤
  * - update(time): 활성 액터 글로우 펄싱
  * - applyThoughts(): SSE 결과 주입 → 액터 상태 + 말풍선 갱신
  * - 카메라: 마우스 휠 줌 (0.5×~2×), 드래그 팬 (left mouse)
@@ -51,6 +51,7 @@ interface ThoughtSnapshot {
 }
 
 export class OfficeScene extends Phaser.Scene {
+  private readonly visibleRoles: AgentRole[];
   private bootText?: Phaser.GameObjects.Text;
   private mapLayer?: Phaser.GameObjects.Container;
   private bgRect?: Phaser.GameObjects.Rectangle;
@@ -66,8 +67,9 @@ export class OfficeScene extends Phaser.Scene {
   private dragStart: { x: number; y: number; scrollX: number; scrollY: number } | null = null;
   private pendingBgColor: number | null = null;
 
-  constructor() {
+  constructor(visibleRoles: ReadonlyArray<AgentRole> = ALL_AGENT_ROLES) {
     super({ key: OFFICE_SCENE_KEY });
+    this.visibleRoles = [...visibleRoles];
   }
 
   preload(): void {
@@ -168,9 +170,9 @@ export class OfficeScene extends Phaser.Scene {
     }
   }
 
-  /** 9개 AgentRole에 대해 책상 위치에 AgentActor 인스턴스화 + 클릭 핸들러. */
+  /** 표시 대상 AgentRole에 대해 책상 위치에 AgentActor 인스턴스화 + 클릭 핸들러. */
   private spawnActors(): void {
-    for (const role of ALL_AGENT_ROLES) {
+    for (const role of this.visibleRoles) {
       const desk = DESK_POSITIONS[role];
       const x = desk.col * SCREEN_TILE + SCREEN_TILE / 2;
       const y = desk.row * SCREEN_TILE + SCREEN_TILE / 2;

@@ -20,14 +20,14 @@
   --bg-overlay:   #F1F3F6;   /* 입력, 비활성, 코드 블록 */
   --bg-input:     #F7F8FA;   /* 입력 필드 */
   --bg-muted:     #F1F3F6;   /* 보조 영역 */
-  --bg-spotlight: #EEF3FF;   /* 강조 (현재 분석 중, 추천) — brand 5% 틴트 */
+  --bg-spotlight: #EEF0FB;   /* 강조 — brand(indigo) 5% 틴트 */
   --bg-scrim:     rgba(15, 23, 42, 0.40);   /* 모달 dim */
 
   /* ── Borders ── */
   --border-subtle:  rgba(15, 23, 42, 0.06);
   --border-default: rgba(15, 23, 42, 0.10);
   --border-strong:  rgba(15, 23, 42, 0.16);
-  --border-focus:   #3182F6;
+  --border-focus:   #5B5BD6;   /* Indigo: 시장 파랑(--bear)과 분리 */
 
   /* ── Text (4 step) ── */
   --text-primary:   #0F172A;   /* 본문, 헤더 (16.8:1) */
@@ -53,36 +53,38 @@
   --hold-subtle: #F1F5F9;
   --hold-border: #E2E8F0;
 
-  /* ── Brand (Toss blue) ── */
-  --brand:        #3182F6;
-  --brand-hover:  #1E6BE0;
-  --brand-active: #1A60C9;
-  --brand-subtle: #EEF3FF;
-  --brand-border: #CFE0FB;
-  --brand-glow:   rgba(49, 130, 246, 0.18);
+  /* ── Brand (Indigo) ──
+     ⚠ 빨강/파랑은 시장 신호(--bull/--bear) 전용. 일반 UI는 인디고 톤을 사용해
+     사용자가 "이 파랑이 차트 하락 신호인가, 일반 UI인가" 헷갈리지 않게 함. */
+  --brand:        #5B5BD6;
+  --brand-hover:  #4848C7;
+  --brand-active: #3F3FB3;
+  --brand-subtle: #EEF0FB;
+  --brand-border: #D6DBF5;
+  --brand-glow:   rgba(91, 91, 214, 0.18);
 
-  /* ── Semantic ── */
-  --success:        #16A34A;
+  /* ── Semantic (시장과 분리된 시스템 메시지 컬러) ── */
+  --success:        #16A34A;   /* Emerald: "저장됨/연결됨" 등 */
   --success-subtle: #ECFDF3;
   --success-border: #BBF7D0;
-  --warning:        #D97706;
+  --warning:        #D97706;   /* Amber: 주의 */
   --warning-subtle: #FFF8EB;
   --warning-border: #FDE68A;
-  --error:          #DC2626;
-  --error-subtle:   #FEF2F2;
-  --error-border:   #FECACA;
-  --danger:         #DC2626;
-  --danger-subtle:  #FEF2F2;
-  --info:           #3182F6;
-  --info-subtle:    #EEF3FF;
+  --error:          #BE123C;   /* Rose-700: 시장 빨강(--bull #E5384A)과 톤 분리 */
+  --error-subtle:   #FFF1F4;
+  --error-border:   #FBCBD8;
+  --danger:         #BE123C;
+  --danger-subtle:  #FFF1F4;
+  --info:           #5B5BD6;   /* Brand alias */
+  --info-subtle:    #EEF0FB;
 
-  /* ── Agent Status (light-tuned) ── */
+  /* ── Agent Status (시장 컬러와 충돌 없도록 조정) ── */
   --status-idle:     #94A3B8;
-  --status-thinking: #3182F6;
-  --status-analyzing:#0EA5E9;
-  --status-debating: #8B5CF6;
-  --status-deciding: #D97706;
-  --status-done:     #16A34A;
+  --status-thinking: #5B5BD6;   /* indigo (brand) */
+  --status-analyzing:#0EA5E9;   /* sky-500: 시장 파랑보다 채도 낮은 청록 */
+  --status-debating: #8B5CF6;   /* violet */
+  --status-deciding: #D97706;   /* amber */
+  --status-done:     #16A34A;   /* emerald */
 
   /* ── Typography ── */
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
@@ -91,6 +93,42 @@
     "SF Mono", Menlo, Consolas, monospace;
   --font-numeric: "Pretendard Variable", Pretendard, sans-serif;
   --font-feature-numeric: "tnum", "lnum";
+
+  /* ── Type Scale (1.125 × ratio, base 15px)
+     Industry refs: Refactoring UI, Material 3, Toss DS, Apple HIG.
+     - 한국어 본문은 14px가 가독성 마지노선이라 본문 baseline은 15px.
+     - 12px 미만은 메타/sparkline 라벨에만 허용.
+   ───────────────────────────────────────────── */
+  --text-xs:    11px;   /* meta, sparkline labels (decorative only) */
+  --text-sm:    12px;   /* helper text, captions, dense tables */
+  --text-body:  13px;   /* compact controls, dense lists */
+  --text-base:  15px;   /* DEFAULT body, paragraphs (must-read 본문) */
+  --text-md:    16px;   /* section body, important descriptions */
+  --text-lg:    18px;   /* sub-headings, emphasized values */
+  --text-xl:    22px;   /* card titles, page sub-headings */
+  --text-2xl:   28px;   /* hero values, prominent numbers */
+  --text-3xl:   36px;   /* display, decision label */
+  --text-4xl:   48px;   /* hero display */
+
+  /* ── Line Height ── */
+  --leading-tight:  1.2;
+  --leading-snug:   1.4;
+  --leading-normal: 1.55;
+  --leading-relaxed:1.7;
+
+  /* ── Font Weight ── */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-extrabold:800;
+
+  /* ── Letter Spacing ── */
+  --tracking-tighter: -0.02em;
+  --tracking-tight:   -0.01em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.04em;
+  --tracking-wider:   0.08em;
 
   /* ── Radius ── */
   --radius-xs:  4px;
@@ -117,8 +155,8 @@
   --shadow-md:  0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-lg:  0 12px 32px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
   --shadow-xl:  0 24px 56px rgba(15, 23, 42, 0.12), 0 4px 10px rgba(15, 23, 42, 0.04);
-  --shadow-spotlight: 0 8px 24px rgba(49, 130, 246, 0.12);
-  --shadow-focus: 0 0 0 3px rgba(49, 130, 246, 0.20);
+  --shadow-spotlight: 0 8px 24px rgba(91, 91, 214, 0.14);
+  --shadow-focus: 0 0 0 3px rgba(91, 91, 214, 0.22);
 
   /* ── Transitions ── */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -148,14 +186,14 @@
   --bg-overlay:   #232831;   /* 입력, 비활성, 호버 */
   --bg-input:     #161A20;   /* 입력 필드 */
   --bg-muted:     #1A1E25;   /* 보조 영역 */
-  --bg-spotlight: rgba(77, 141, 239, 0.10);   /* brand 10% tint */
+  --bg-spotlight: rgba(129, 140, 248, 0.10);   /* brand(indigo) 10% tint */
   --bg-scrim:     rgba(0, 0, 0, 0.72);        /* 모달 dim */
 
   /* ── Borders (white alpha for clean elevation lines) ── */
   --border-subtle:  rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.10);
   --border-strong:  rgba(255, 255, 255, 0.16);
-  --border-focus:   #4D8DEF;
+  --border-focus:   #818CF8;   /* Indigo (brand) */
 
   /* ── Text (4 step, never pure white) ── */
   --text-primary:    #ECEEF2;   /* 본문/헤더 (14:1) */
@@ -181,13 +219,13 @@
   --hold-subtle: rgba(139, 149, 161, 0.12);
   --hold-border: rgba(139, 149, 161, 0.22);
 
-  /* ── Brand ── */
-  --brand:        #4D8DEF;   /* 라이트의 #3182F6를 다크에서 +12% L */
-  --brand-hover:  #6FA1F4;
-  --brand-active: #3F7DD9;
-  --brand-subtle: rgba(77, 141, 239, 0.12);
-  --brand-border: rgba(77, 141, 239, 0.28);
-  --brand-glow:   rgba(77, 141, 239, 0.24);
+  /* ── Brand (Indigo — 시장 컬러와 분리) ── */
+  --brand:        #818CF8;   /* indigo-400 */
+  --brand-hover:  #A5B4FC;
+  --brand-active: #6366F1;
+  --brand-subtle: rgba(129, 140, 248, 0.12);
+  --brand-border: rgba(129, 140, 248, 0.28);
+  --brand-glow:   rgba(129, 140, 248, 0.24);
 
   /* ── Semantic ── */
   --success:        #34D399;
@@ -196,17 +234,17 @@
   --warning:        #FBBF24;
   --warning-subtle: rgba(251, 191, 36, 0.12);
   --warning-border: rgba(251, 191, 36, 0.28);
-  --error:          #F87171;
-  --error-subtle:   rgba(248, 113, 113, 0.12);
-  --error-border:   rgba(248, 113, 113, 0.28);
-  --danger:         #F87171;
-  --danger-subtle:  rgba(248, 113, 113, 0.12);
-  --info:           #4D8DEF;
-  --info-subtle:    rgba(77, 141, 239, 0.12);
+  --error:          #FB7185;   /* Rose-400: 시장 빨강(--bull #FF5A6B)과 톤 분리 */
+  --error-subtle:   rgba(251, 113, 133, 0.12);
+  --error-border:   rgba(251, 113, 133, 0.28);
+  --danger:         #FB7185;
+  --danger-subtle:  rgba(251, 113, 133, 0.12);
+  --info:           #818CF8;
+  --info-subtle:    rgba(129, 140, 248, 0.12);
 
   /* ── Agent Status ── */
   --status-idle:     #6E7682;
-  --status-thinking: #4D8DEF;
+  --status-thinking: #818CF8;   /* indigo (brand) */
   --status-analyzing:#38BDF8;
   --status-debating: #A78BFA;
   --status-deciding: #FBBF24;
@@ -217,8 +255,8 @@
   --shadow-md:  0 4px 12px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-lg:  0 12px 32px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.40);
   --shadow-xl:  0 24px 56px rgba(0, 0, 0, 0.72), 0 4px 10px rgba(0, 0, 0, 0.45);
-  --shadow-spotlight: 0 8px 24px rgba(77, 141, 239, 0.20);
-  --shadow-focus: 0 0 0 3px rgba(77, 141, 239, 0.35);
+  --shadow-spotlight: 0 8px 24px rgba(129, 140, 248, 0.22);
+  --shadow-focus: 0 0 0 3px rgba(129, 140, 248, 0.35);
 
   /* ── Tooltip (high-contrast on both themes) ── */
   --tooltip-bg:     #1A1E25;
@@ -230,176 +268,6 @@
 :root[data-theme="light"] {
   --tooltip-bg:     #1F2937;
   --tooltip-fg:     #F8FAFC;
-  --tooltip-border: rgba(255, 255, 255, 0.10);
-}
-
-/* ─────────────────────────────────────────────
-   MS-E E4 — Warm theme (베이지·카카오 톤)
-   • 따뜻한 오프-크림 베이스 (#FAF7F2)
-   • 메인 액센트는 차분한 인디고 → 코랄로 대체
-   • 한국 시장 컨벤션 유지 (red=up, blue=down)
-   • light 베이스 위에서 작동 — color-scheme: light
-───────────────────────────────────────────── */
-:root[data-theme="warm"] {
-  --bg-canvas:    #FAF7F2;
-  --bg-base:      #FAF7F2;
-  --bg-surface:   #FFFDF8;
-  --bg-elevated:  #FFFDF8;
-  --bg-overlay:   #F2EDE4;
-  --bg-input:     #FAF7F2;
-  --bg-muted:     #F2EDE4;
-  --bg-spotlight: #FBEEDB; /* 코랄/베이지 5% */
-  --bg-scrim:     rgba(64, 40, 24, 0.40);
-
-  --border-subtle:  rgba(64, 40, 24, 0.08);
-  --border-default: rgba(64, 40, 24, 0.12);
-  --border-strong:  rgba(64, 40, 24, 0.18);
-  --border-focus:   #C2410C;
-
-  --text-primary:   #2A1B0E;
-  --text-secondary: #5A4633;
-  --text-tertiary:  #95826B;
-  --text-quaternary:#C9BBA5;
-  --text-inverse:   #FFFFFF;
-
-  /* Korean market signal preserved */
-  --bull:        #D5384A;
-  --bull-muted:  #A52030;
-  --bull-subtle: #FBE9EB;
-  --bull-border: #F2C9CF;
-  --bull-glow:   rgba(213, 56, 74, 0.18);
-
-  --bear:        #2563EB;
-  --bear-muted:  #1D4ED8;
-  --bear-subtle: #E8EFFD;
-  --bear-border: #C7D7F8;
-  --bear-glow:   rgba(37, 99, 235, 0.18);
-
-  --hold:        #6B5C44;
-  --hold-subtle: #F0EBE0;
-  --hold-border: #DACFB8;
-
-  --brand:        #C2410C;       /* terracotta */
-  --brand-hover:  #9A330A;
-  --brand-active: #7A2807;
-  --brand-subtle: #FBEEDB;
-  --brand-border: #F4D9AE;
-  --brand-glow:   rgba(194, 65, 12, 0.18);
-
-  --success:        #15803D;
-  --success-subtle: #E7F5EC;
-  --success-border: #BFE6CC;
-  --warning:        #B45309;
-  --warning-subtle: #FBEFD9;
-  --warning-border: #F4D9AE;
-  --error:          #B91C1C;
-  --error-subtle:   #FBE9E9;
-  --error-border:   #F2C9C9;
-  --danger:         #B91C1C;
-  --danger-subtle:  #FBE9E9;
-  --info:           #C2410C;
-  --info-subtle:    #FBEEDB;
-
-  --status-idle:     #95826B;
-  --status-thinking: #C2410C;
-  --status-analyzing:#0E7490;
-  --status-debating: #7C3AED;
-  --status-deciding: #B45309;
-  --status-done:     #15803D;
-
-  --shadow-sm:  0 1px 2px rgba(64, 40, 24, 0.05);
-  --shadow-md:  0 4px 12px rgba(64, 40, 24, 0.07), 0 1px 2px rgba(64, 40, 24, 0.05);
-  --shadow-lg:  0 12px 32px rgba(64, 40, 24, 0.10), 0 2px 6px rgba(64, 40, 24, 0.05);
-  --shadow-xl:  0 24px 56px rgba(64, 40, 24, 0.14), 0 4px 10px rgba(64, 40, 24, 0.05);
-  --shadow-spotlight: 0 8px 24px rgba(194, 65, 12, 0.12);
-  --shadow-focus: 0 0 0 3px rgba(194, 65, 12, 0.20);
-
-  --tooltip-bg:     #2A1B0E;
-  --tooltip-fg:     #FFFDF8;
-  --tooltip-border: rgba(255, 255, 255, 0.10);
-}
-
-/* ─────────────────────────────────────────────
-   MS-E E4 — Hanok theme (한옥 묵향 + 한지 톤)
-   • 한지 베이스 (#F4EFE3) + 묵(墨)색 텍스트
-   • 단청에서 영감 받은 액센트 (단청 청록)
-   • 한국 시장 컨벤션 유지
-───────────────────────────────────────────── */
-:root[data-theme="hanok"] {
-  --bg-canvas:    #F4EFE3;        /* 한지 */
-  --bg-base:      #F4EFE3;
-  --bg-surface:   #FBF7EC;        /* 미색 */
-  --bg-elevated:  #FBF7EC;
-  --bg-overlay:   #ECE5D2;
-  --bg-input:     #F4EFE3;
-  --bg-muted:     #ECE5D2;
-  --bg-spotlight: #DEEDE8;        /* 단청 청록 5% */
-  --bg-scrim:     rgba(40, 30, 20, 0.42);
-
-  --border-subtle:  rgba(40, 30, 20, 0.08);
-  --border-default: rgba(40, 30, 20, 0.14);
-  --border-strong:  rgba(40, 30, 20, 0.22);
-  --border-focus:   #2F6E5E;
-
-  --text-primary:   #1F1A12;       /* 묵(墨) */
-  --text-secondary: #4A4030;
-  --text-tertiary:  #8A7C66;
-  --text-quaternary:#BFB29B;
-  --text-inverse:   #FBF7EC;
-
-  --bull:        #C03244;          /* 진사(辰砂) */
-  --bull-muted:  #8E1D2C;
-  --bull-subtle: #F6E5E7;
-  --bull-border: #ECC8CC;
-  --bull-glow:   rgba(192, 50, 68, 0.18);
-
-  --bear:        #1F4E8B;          /* 단청 청람 */
-  --bear-muted:  #14376B;
-  --bear-subtle: #E0E9F5;
-  --bear-border: #BBCDE6;
-  --bear-glow:   rgba(31, 78, 139, 0.18);
-
-  --hold:        #6B5F45;
-  --hold-subtle: #ECE5D2;
-  --hold-border: #D4C9AE;
-
-  --brand:        #2F6E5E;          /* 단청 청록 */
-  --brand-hover:  #235447;
-  --brand-active: #1A4035;
-  --brand-subtle: #DEEDE8;
-  --brand-border: #B8D5CC;
-  --brand-glow:   rgba(47, 110, 94, 0.18);
-
-  --success:        #4F7C3A;        /* 송엽 */
-  --success-subtle: #E5EFD9;
-  --success-border: #C5D9AE;
-  --warning:        #B07A1E;        /* 황토 */
-  --warning-subtle: #F4E8D0;
-  --warning-border: #E2CB99;
-  --error:          #A52030;
-  --error-subtle:   #F2D7DA;
-  --error-border:   #E0AAB1;
-  --danger:         #A52030;
-  --danger-subtle:  #F2D7DA;
-  --info:           #2F6E5E;
-  --info-subtle:    #DEEDE8;
-
-  --status-idle:     #8A7C66;
-  --status-thinking: #2F6E5E;
-  --status-analyzing:#1F4E8B;
-  --status-debating: #6E4A7B;
-  --status-deciding: #B07A1E;
-  --status-done:     #4F7C3A;
-
-  --shadow-sm:  0 1px 2px rgba(40, 30, 20, 0.06);
-  --shadow-md:  0 4px 12px rgba(40, 30, 20, 0.08), 0 1px 2px rgba(40, 30, 20, 0.05);
-  --shadow-lg:  0 12px 32px rgba(40, 30, 20, 0.12), 0 2px 6px rgba(40, 30, 20, 0.05);
-  --shadow-xl:  0 24px 56px rgba(40, 30, 20, 0.16), 0 4px 10px rgba(40, 30, 20, 0.06);
-  --shadow-spotlight: 0 8px 24px rgba(47, 110, 94, 0.14);
-  --shadow-focus: 0 0 0 3px rgba(47, 110, 94, 0.22);
-
-  --tooltip-bg:     #1F1A12;
-  --tooltip-fg:     #FBF7EC;
   --tooltip-border: rgba(255, 255, 255, 0.10);
 }
 
@@ -436,9 +304,60 @@ body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 15px;       /* baseline ↑ 14→15 (Korean readability sweet spot) */
+  line-height: 1.55;
   font-display: optional;
+  letter-spacing: -0.005em;
+}
+
+/* ─────────────────────────────────────────────
+   Typography utilities (drop-in replacement for inline fontSize)
+───────────────────────────────────────────── */
+.t-xs    { font-size: var(--text-xs);   line-height: var(--leading-snug);   letter-spacing: 0; }
+.t-sm    { font-size: var(--text-sm);   line-height: var(--leading-snug); }
+.t-body  { font-size: var(--text-body); line-height: var(--leading-normal); }
+.t-base  { font-size: var(--text-base); line-height: var(--leading-normal); }
+.t-md    { font-size: var(--text-md);   line-height: var(--leading-relaxed); }
+.t-lg    { font-size: var(--text-lg);   line-height: var(--leading-snug); }
+.t-xl    { font-size: var(--text-xl);   line-height: var(--leading-tight); font-weight: 700; }
+.t-2xl   { font-size: var(--text-2xl);  line-height: var(--leading-tight); font-weight: 800; }
+.t-3xl   { font-size: var(--text-3xl);  line-height: var(--leading-tight); font-weight: 800; letter-spacing: -0.015em; }
+
+.t-primary    { color: var(--text-primary); }
+.t-secondary  { color: var(--text-secondary); }
+.t-tertiary   { color: var(--text-tertiary); }
+.t-quaternary { color: var(--text-quaternary); }
+
+.t-medium   { font-weight: 500; }
+.t-semibold { font-weight: 600; }
+.t-bold     { font-weight: 700; }
+.t-xbold    { font-weight: 800; }
+
+/* Critical-read content (disclaimers, instructions, warnings) — never below 14px */
+.t-critical {
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.t-meta {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.t-label {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Prevent duplicate eye icons when custom reveal toggles are rendered. */
+input.kta-no-native-reveal::-ms-reveal,
+input.kta-no-native-reveal::-ms-clear {
+  display: none;
 }
 
 /* ─────────────────────────────────────────────
@@ -585,10 +504,10 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   transition: background var(--duration-fast) ease,
               color var(--duration-fast) ease;
@@ -611,11 +530,11 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 5px 10px;
   background: var(--bg-overlay);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
-  font-size: 12px;
+  font-size: var(--text-body);
   font-variant-numeric: tabular-nums;
 }
 
@@ -647,9 +566,9 @@ body {
   color: var(--text-inverse);
   border: 1px solid var(--brand);
   border-radius: var(--radius-md);
-  padding: 10px 16px;
+  padding: 11px 18px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-base);
   transition: background var(--duration-fast) ease, transform var(--duration-fast) ease;
   cursor: pointer;
 }
@@ -662,9 +581,9 @@ body {
   color: var(--text-primary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  padding: 10px 16px;
+  padding: 11px 18px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-base);
   transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
   cursor: pointer;
 }
@@ -675,9 +594,9 @@ body {
   color: var(--text-secondary);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  padding: 8px 12px;
+  padding: 9px 14px;
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--text-body);
   transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
   cursor: pointer;
 }
@@ -710,10 +629,10 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 24px;
-  padding: 0 10px;
+  height: 26px;
+  padding: 0 11px;
   border-radius: var(--radius-pill);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -745,7 +664,7 @@ body {
   --stage-font-headline: var(--font-sans);
 
   /* 9 에이전트 액센트 — Phaser 액터 색과 1:1 동기 */
-  --agent-c1: #4D8DEF;   /* technical (윤 차트) */
+  --agent-c1: #818CF8;   /* technical (윤 차트) — indigo, brand과 동기 */
   --agent-c2: #38BDF8;   /* fundamental (박 펀더) */
   --agent-c3: #A78BFA;   /* sentiment (한 심리) */
   --agent-c4: #34D399;   /* macro (류 매크로) */

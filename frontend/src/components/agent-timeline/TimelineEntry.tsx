@@ -13,6 +13,7 @@
 
 import { motion } from "framer-motion";
 import type { AgentRole, AgentThought } from "@/types";
+import { Icon } from "@/components/ui";
 import {
   AGENT_LABEL,
   AGENT_COLOR,
@@ -370,7 +371,7 @@ export function TimelineEntry({ thought, rowKey, now }: TimelineEntryProps) {
             padding: 0,
           }}
         >
-          {bookmarked ? "★" : "☆"}
+          <Icon name={bookmarked ? "bookmark-filled" : "bookmark"} size={13} decorative />
         </button>
         <button
           type="button"

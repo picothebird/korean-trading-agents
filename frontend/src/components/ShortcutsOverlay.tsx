@@ -36,8 +36,8 @@ const GROUPS: { title: string; items: Shortcut[] }[] = [
     title: "에이전트",
     items: [
       { keys: ["클릭"], desc: "픽셀 캐릭터 / 발화 카드 → 인스펙터 열기" },
-      { keys: ["💬"], desc: "인스펙터 또는 팔레트에서 후속 질문" },
-      { keys: ["★"], desc: "발화 북마크 (로컬 저장)" },
+      { keys: ["질문"], desc: "인스펙터 또는 팔레트에서 후속 질문" },
+      { keys: ["북마크"], desc: "발화 북마크 (로컬 저장)" },
     ],
   },
 ];

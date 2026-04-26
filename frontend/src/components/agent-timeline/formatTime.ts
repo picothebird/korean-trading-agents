@@ -17,9 +17,10 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
   if (absSec < 3600) return rtf.format(Math.round(diffMs / 60000), "minute");
   if (absSec < 86400) return rtf.format(Math.round(diffMs / 3600000), "hour");
 
-  // 24시간 이상 전이면 시각 표기
+  // 24시간 이상 전이면 시각 표기 (KST 고정)
   const d = new Date(t);
   return d.toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -31,6 +32,7 @@ export function formatAbsoluteTime(iso: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return iso;
   return new Date(t).toLocaleTimeString("ko-KR", {
+    timeZone: "Asia/Seoul",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",

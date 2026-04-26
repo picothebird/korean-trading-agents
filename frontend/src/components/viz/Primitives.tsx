@@ -19,7 +19,7 @@ export function ConfidenceGauge({
   value,
   size = 56,
   color = "var(--brand)",
-  trackColor = "var(--border-subtle)",
+  trackColor = "var(--bg-overlay)",
   thickness = 6,
   showLabel = true,
 }: {
@@ -36,16 +36,17 @@ export function ConfidenceGauge({
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - thickness / 2;
-  // 반원: π → 0
+  // 반원: 좌측(180°) → 상단(90°) → 우측(0°). SVG는 y축이 아래로 향하므로 sin 부호를 뒤집음.
   const startAngle = Math.PI;
   const endAngle = Math.PI - Math.PI * v;
   const x1 = cx + r * Math.cos(startAngle);
-  const y1 = cy + r * Math.sin(startAngle);
+  const y1 = cy - r * Math.sin(startAngle);
   const x2 = cx + r * Math.cos(endAngle);
-  const y2 = cy + r * Math.sin(endAngle);
-  const largeArc = v > 0.5 ? 1 : 0;
-  const arcPath = `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
-  const trackPath = `M ${cx - r} ${cy} A ${r} ${r} 0 1 1 ${cx + r} ${cy}`;
+  const y2 = cy - r * Math.sin(endAngle);
+  // 반원 게이지는 항상 ≤ π (반원) 이므로 large-arc = 0.
+  const arcPath = `M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`;
+  // 트랙(빈 공간)도 동일한 위쪽 반원으로 그려 빈 영역이 옅은 회색으로 보이도록.
+  const trackPath = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
   const pct = Math.round(v * 100);
 
   return (
@@ -116,21 +117,24 @@ export function Sparkline({
 }
 
 // ── 3) 합의도 도넛 ───────────────────────────────────────────────
-// counts: { agree, disagree, neutral } — 합쳐서 100%로 표시
+// counts: { agree, disagree, neutral, missing } — 합쳐서 100%로 표시
+//   missing: 아직 보고가 도착하지 않은 에이전트 수 (회색 점선 트랙으로 표시)
 export function AgreementDonut({
   agree,
   disagree,
   neutral = 0,
+  missing = 0,
   size = 64,
   thickness = 8,
 }: {
   agree: number;
   disagree: number;
   neutral?: number;
+  missing?: number;
   size?: number;
   thickness?: number;
 }) {
-  const total = agree + disagree + neutral;
+  const total = agree + disagree + neutral + missing;
   if (total === 0) return null;
   const r = size / 2 - thickness / 2;
   const c = 2 * Math.PI * r;
@@ -141,9 +145,12 @@ export function AgreementDonut({
   const a = (agree / total) * c;
   const d = (disagree / total) * c;
   const n = (neutral / total) * c;
-  const agreePct = Math.round((agree / total) * 100);
+  const m = (missing / total) * c;
+  const reported = agree + disagree + neutral;
+  // 라벨은 "보고된 분석가 중 찬성 비율"로 표시 (보고 누락은 분모에서 제외)
+  const agreePct = reported > 0 ? Math.round((agree / reported) * 100) : 0;
 
-  const seg = (offset: number, len: number, color: string, key: string) => (
+  const seg = (offset: number, len: number, color: string, key: string, dashed = false) => (
     <circle
       key={key}
       cx={cx}
@@ -152,23 +159,38 @@ export function AgreementDonut({
       fill="none"
       stroke={color}
       strokeWidth={thickness}
-      strokeDasharray={`${len.toFixed(2)} ${(c - len).toFixed(2)}`}
-      strokeDashoffset={(-offset).toFixed(2)}
+      strokeDasharray={dashed ? `3 4` : `${len.toFixed(2)} ${(c - len).toFixed(2)}`}
+      strokeDashoffset={dashed ? undefined : (-offset).toFixed(2)}
       transform={`rotate(-90 ${cx} ${cy})`}
+      style={dashed ? { opacity: 0.5 } : undefined}
     />
   );
 
   return (
     <span
       role="img"
-      aria-label={`합의도 ${agreePct}% (찬성 ${agree}, 반대 ${disagree}, 중립 ${neutral})`}
+      aria-label={`합의도 ${agreePct}% (찬성 ${agree}, 반대 ${disagree}, 중립 ${neutral}${missing > 0 ? `, 보고 누락 ${missing}` : ""})`}
       style={{ position: "relative", display: "inline-block", width: size, height: size }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth={thickness} />
-        {seg(0, a, "var(--bull)", "agree")}
-        {seg(a, d, "var(--bear)", "disagree")}
-        {seg(a + d, n, "var(--text-tertiary)", "neutral")}
+        {agree > 0 && seg(0, a, "var(--bull)", "agree")}
+        {disagree > 0 && seg(a, d, "var(--bear)", "disagree")}
+        {neutral > 0 && seg(a + d, n, "var(--text-tertiary)", "neutral")}
+        {missing > 0 && (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke="var(--border-default)"
+            strokeWidth={thickness}
+            strokeDasharray={`${m.toFixed(2)} ${(c - m).toFixed(2)}`}
+            strokeDashoffset={(-(a + d + n)).toFixed(2)}
+            transform={`rotate(-90 ${cx} ${cy})`}
+            style={{ opacity: 0.55 }}
+          />
+        )}
       </svg>
       <span
         style={{

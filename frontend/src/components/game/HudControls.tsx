@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { Icon } from "@/components/ui";
 import type { OfficeSceneController } from "./OfficeSceneController";
 import { isSfxEnabled, setSfxEnabled, playSfx } from "./sfx";
 
@@ -88,7 +89,7 @@ export function HudControls({ controller }: Props) {
         onClick={toggleMute}
         style={{ ...BTN_STYLE, fontSize: 11, fontWeight: 500 }}
       >
-        {muted ? "♪̸" : "♪"}
+        <Icon name={muted ? "volume-off" : "volume"} size={14} decorative />
       </button>
     </div>
   );

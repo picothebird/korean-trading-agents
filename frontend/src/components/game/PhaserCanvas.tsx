@@ -9,9 +9,10 @@
  * 반응형: ResizeObserver로 부모 컨테이너 크기를 추적해 game.scale.resize 호출.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AgentRole, AgentThought } from "@/types";
+import { ALL_AGENT_ROLES } from "@/lib/agentLabels";
 import type { OfficeSceneController } from "./OfficeSceneController";
 import { HudControls } from "./HudControls";
 import { Minimap } from "./Minimap";
@@ -40,14 +41,20 @@ const PhaserCanvasInner = dynamic(() => import("./PhaserCanvasInner"), {
 interface Props {
   thoughts?: ReadonlyArray<AgentThought>;
   onAgentClick?: (role: AgentRole) => void;
+  /** 무대에 표시할 역할 목록. 미지정 시 전체 역할 표시. */
+  visibleRoles?: ReadonlyArray<AgentRole>;
   /** HUD 표시 여부 (기본 true). 작은 미리보기에서는 false 권장. */
   showHud?: boolean;
 }
 
-export function PhaserCanvas({ thoughts, onAgentClick, showHud = true }: Props) {
+export function PhaserCanvas({ thoughts, onAgentClick, visibleRoles, showHud = true }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [controller, setController] = useState<OfficeSceneController | null>(
     null,
+  );
+  const activeRoles = useMemo<ReadonlyArray<AgentRole>>(
+    () => (visibleRoles && visibleRoles.length > 0 ? visibleRoles : ALL_AGENT_ROLES),
+    [visibleRoles],
   );
 
   useEffect(() => {
@@ -75,13 +82,14 @@ export function PhaserCanvas({ thoughts, onAgentClick, showHud = true }: Props) 
       <PhaserCanvasInner
         thoughts={thoughts}
         onAgentClick={onAgentClick}
+        visibleRoles={activeRoles}
         onReady={setController}
       />
       {showHud && (
         <>
-          <AgentCounter thoughts={thoughts} />
+          <AgentCounter thoughts={thoughts} totalRoles={activeRoles.length} />
           <HudControls controller={controller} />
-          <Minimap controller={controller} thoughts={thoughts} />
+          <Minimap controller={controller} thoughts={thoughts} visibleRoles={activeRoles} />
         </>
       )}
     </div>

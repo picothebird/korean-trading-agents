@@ -12,6 +12,7 @@ import { LAYER_ROLES, LAYER_LABEL } from "@/lib/agentLabels";
 
 interface StageProgressProps {
   thoughts: AgentThought[];
+  visibleRoles?: ReadonlyArray<AgentRole>;
 }
 
 interface LayerSummary {
@@ -37,7 +38,12 @@ function summarizeLayer(thoughts: AgentThought[], roles: AgentRole[]): LayerSumm
   return { total: roles.length, done, active };
 }
 
-export function StageProgress({ thoughts }: StageProgressProps) {
+export function StageProgress({ thoughts, visibleRoles }: StageProgressProps) {
+  const visibleRoleSet = new Set<AgentRole>(visibleRoles ?? LAYER_ROLES.flat());
+  const visibleLayers = LAYER_ROLES
+    .map((roles, idx) => ({ idx, roles: roles.filter((role) => visibleRoleSet.has(role)) }))
+    .filter((layer) => layer.roles.length > 0);
+
   return (
     <div
       style={{
@@ -48,13 +54,13 @@ export function StageProgress({ thoughts }: StageProgressProps) {
       aria-label="단계별 진행률"
     >
       <div className="stage-label">진행률</div>
-      {LAYER_ROLES.map((roles, i) => {
-        const s = summarizeLayer(thoughts, roles);
+      {visibleLayers.map((layer) => {
+        const s = summarizeLayer(thoughts, layer.roles);
         const isComplete = s.done === s.total;
         const isActive = s.active > 0;
         return (
           <div
-            key={i}
+            key={layer.idx}
             style={{
               display: "grid",
               gridTemplateColumns: "1fr auto",
@@ -75,7 +81,7 @@ export function StageProgress({ thoughts }: StageProgressProps) {
                   letterSpacing: "-0.01em",
                 }}
               >
-                {LAYER_LABEL[i]}
+                {LAYER_LABEL[layer.idx]}
               </span>
               <div style={{ display: "flex", gap: 3 }}>
                 {Array.from({ length: s.total }).map((_, k) => {

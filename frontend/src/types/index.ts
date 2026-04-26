@@ -133,12 +133,26 @@ export interface StockChartPoint {
   ma5: number | null;
   ma20: number | null;
   ma60: number | null;
+  /** 백엔드 사전계산 — 표시 윈도우 첫 봉부터 값이 채워진다. */
+  ma120?: number | null;
+  bb_upper?: number | null;
+  bb_mid?: number | null;
+  bb_lower?: number | null;
+  rsi?: number | null;
+  macd?: number | null;
+  macd_signal?: number | null;
+  macd_hist?: number | null;
+  vwap?: number | null;
 }
 
 export interface StockChartResponse {
   ticker: string;
-  timeframe: "1m" | "3m" | "6m" | "1y" | "2y";
+  timeframe: "1d" | "5d" | "1w" | "2w" | "1m" | "3m" | "6m" | "1y" | "2y";
+  /** "intraday" 면 date 필드가 "YYYY-MM-DD HH:MM" 형태, "daily" 면 "YYYY-MM-DD". */
+  resolution?: "intraday" | "daily";
   points: StockChartPoint[];
+  /** 데이터를 받지 못했을 때만 채워지는 진단 메시지. */
+  warning?: string;
 }
 
 export interface BacktestMetrics {
