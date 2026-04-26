@@ -464,25 +464,14 @@ feat(scope): 한국어 한 줄 요약
 
 ## 11. Testing
 
-### 11.1 Smoke tests at repo root
-
-```powershell
-.\.venv\Scripts\python.exe test_comprehensive.py  # full pipeline, 5 tickers
-.\.venv\Scripts\python.exe test_final.py          # quick sanity
-.\.venv\Scripts\python.exe test_backtest.py       # backtest paths
-```
-
-These hit the real OpenAI/DART APIs — keep them out of CI unless secrets are
-provisioned.
-
-### 11.2 Component-level checks
+### 11.1 Component-level checks
 
 There is no formal pytest suite yet. When adding new agents or data sources,
 write a temporary verifier under the repo root (e.g.
 `_verify_<feature>.py`), run it against 3+ real tickers, and **delete it
 before committing** unless it's promoted into a permanent test.
 
-### 11.3 Real-data discipline
+### 11.2 Real-data discipline
 
 The project's working principle is **garbage-in / garbage-out**: any new
 signal must be validated against at least 3 live tickers before being merged

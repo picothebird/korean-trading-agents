@@ -8,13 +8,12 @@ from the per-area audits (backend, frontend, KRX market realism, auto trading
 supervisor, user-level DB schema, UX) and tracks remediation status against
 the production-launch gate.
 
-Inputs:
-- [BACKEND_AUDIT.md](BACKEND_AUDIT.md)
-- [FRONTEND_AUDIT.md](FRONTEND_AUDIT.md)
+Inputs (live):
 - [KOREAN_MARKET_REALISM_AUDIT.md](KOREAN_MARKET_REALISM_AUDIT.md)
 - [AUTO_TRADING_SUPERVISOR.md](AUTO_TRADING_SUPERVISOR.md)
-- [USER_LEVEL_DB_SCHEMA.md](USER_LEVEL_DB_SCHEMA.md)
-- [UX_BEGINNER_TO_EXPERT_AUDIT.md](UX_BEGINNER_TO_EXPERT_AUDIT.md)
+
+Prior internal audits (backend, frontend, DB schema, UX) have been folded
+into the items below and are no longer maintained as separate documents.
 
 ---
 
@@ -35,15 +34,19 @@ to be complete and the QA suite in section 6 to be green.
 
 ---
 
-## 1. Re-verification of Prior Audits
+## 1. Audit Folding Summary
 
-| Source audit                        | Items | Verified now | Notes                                                                 |
-|-------------------------------------|------:|-------------:|-----------------------------------------------------------------------|
-| BACKEND_AUDIT.md                    |     9 |            9 | Residual risks from §7 promoted to this document                      |
-| FRONTEND_AUDIT.md                   |    12 |           12 | 14 newly observed items added below                                   |
-| KOREAN_MARKET_REALISM_AUDIT.md      |     - |        Matrix| VI, T+2, holiday, half-day, lot_size now closed (commit `ccb9ece`)    |
-| AUTO_TRADING_SUPERVISOR.md          |     4 |            2 | 2 items remain: SSE events, strategy-profile separation               |
-| USER_LEVEL_DB_SCHEMA.md (Hardening) |     8 |            8 | All eight closed in commits `950d8d0`, `ccb9ece`                      |
+The per-area audit documents that previously tracked the items below have
+been archived (kept in git history). The verified outcomes are:
+
+| Source audit                | Items | Status   | Notes                                                              |
+|-----------------------------|------:|----------|--------------------------------------------------------------------|
+| Backend audit               |     9 | Closed   | Residual risks promoted to this document                           |
+| Frontend audit              |    12 | Closed   | 14 newly observed items moved into sections below                  |
+| Korean market realism       |     - | Matrix   | VI, T+2, holiday, half-day, lot_size closed (commit `ccb9ece`)     |
+| Auto trading supervisor     |     4 |    2/4   | Remaining: SSE events, strategy-profile separation                 |
+| User-level DB schema        |     8 | Closed   | All eight closed in commits `950d8d0`, `ccb9ece`                   |
+| UX beginner-to-expert       | 25    |    24/25 | One item out of scope                                              |
 
 ---
 
