@@ -164,10 +164,11 @@ export class AgentActor implements IAgentActor {
   }
 
   getLabelAnchor(): { x: number; y: number } {
-    return { x: this.head.x, y: this.headBaseY - HEAD_H / 2 - 8 };
+    return { x: this.head.x, y: this.headBaseY - HEAD_H / 2 };
   }
+  /** 이름표는 머리 끝 월드 좌표 (overlay에서 화면 px 오프셋 적용). */
   getNameAnchor(): { x: number; y: number } {
-    return { x: this.head.x, y: this.legs.y + 6 };
+    return { x: this.head.x, y: this.headBaseY - HEAD_H / 2 };
   }
   getBubble(): { text: string; visible: boolean } {
     return { text: this.bubbleTextValue ?? "", visible: this.bubbleVisible && !!this.bubbleTextValue };

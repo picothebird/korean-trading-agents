@@ -89,6 +89,7 @@ export class SpriteAgentActor implements IAgentActor {
   private animKind: AnimKind = "idle";
   private animPhase = 0;
   private lastAnimTick = 0;
+  private lastPulseTick = 0;
   private spriteBaseY: number;
   private wanderPhase: number;
   private wanderX = 0;
@@ -156,13 +157,16 @@ export class SpriteAgentActor implements IAgentActor {
     this.hitRect.setDepth(DEPTH.LABEL + 1);
   }
 
-  /** DOM overlay에서 읽는 현재 스크린 anchor (캐릭터 머리 위). */
+  /** DOM overlay 말풍선 anchor — 좌석 고정 좌표의 머리 위 (동적 sprite.y 아닌 고정값 사용). */
   getLabelAnchor(): { x: number; y: number } {
-    return { x: this.sprite.x, y: this.spriteBaseY - 50 };
+    // sprite 시작점: y - 4. 스프라이트 display height = 96 (16×32 × scale 3),
+    // origin (0.5, 0.5) → 머리 끝 = sprite center y - 48.
+    return { x: this.x, y: this.y - 4 - 48 };
   }
-  /** DOM overlay에서 읽는 현재 이름표 anchor (캐릭터 아래). */
+  /** DOM overlay 이름표 anchor — 좌석 고정 좌표 캠릭터 발끝. */
   getNameAnchor(): { x: number; y: number } {
-    return { x: this.sprite.x, y: this.spriteBaseY + 50 };
+    // 발끝 세계 y = sprite center y + 48 = (this.y - 4) + 48 = this.y + 44.
+    return { x: this.x, y: this.y + 44 };
   }
   getBubble(): { text: string; visible: boolean } {
     return { text: this.bubbleTextValue ?? "", visible: this.bubbleVisible && !!this.bubbleTextValue };
@@ -194,8 +198,11 @@ export class SpriteAgentActor implements IAgentActor {
     this.glow.setVisible(active);
   }
 
-  /** Scene update에서 매 프레임 호출. animation + glow + wander. */
+  /** Scene update에서 매 프레임 호출. animation + glow + wander.
+   *  CPU 보호: 33ms (≈30fps) 미만 호출은 스킵. 9 actors × 60fps Math.cos/sin 폭주를 막는다. */
   pulse(time: number): void {
+    if (time - this.lastPulseTick < 33) return;
+    this.lastPulseTick = time;
     // wander
     let nextWx = 0;
     let nextWy = 0;

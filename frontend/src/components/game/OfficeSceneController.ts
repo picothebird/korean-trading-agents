@@ -31,6 +31,11 @@ export interface OfficeSceneController {
   getCameraMode(): CameraMode;
   focusAgent(role: AgentRole, opts?: { instant?: boolean }): void;
   focusZone(worldX: number, worldY: number, opts?: { instant?: boolean }): void;
+  /** Stage 0=L1, 1=L2, 2=L3 (zone bbox에 fit). roleHint로 stage 2 sub-zone 결정. */
+  focusStage(
+    stageIndex: 0 | 1 | 2,
+    opts?: { instant?: boolean; roleHint?: AgentRole; force?: boolean },
+  ): void;
 
   // Phase 4 추가 — 미니맵/HUD가 layout v2 좌석/존을 SSOT로 읽기 위함.
   getSeats(): Array<{ role: AgentRole; x: number; y: number; label?: string }>;

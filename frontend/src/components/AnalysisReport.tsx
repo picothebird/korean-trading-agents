@@ -765,6 +765,121 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
           </div>
         </div>
       </Section>
+
+      {/* 6. 친근한 아티클 — 토스/뉴닉 톤 */}
+      {s.article_report && (
+        <Section
+          title="6. 쉽게 풀어 읽는 종목 이야기"
+          hint="회의록을 비전문가도 부담 없이 읽을 수 있게 정리한 아티클이에요. 결론에 도달한 흐름과 실행 방법을 한 호흡으로 풀어줍니다."
+          index={5}
+        >
+          <article
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              fontSize: 14,
+              lineHeight: 1.85,
+              color: "var(--text-primary)",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                margin: 0,
+                lineHeight: 1.4,
+                color: "var(--text-primary)",
+              }}
+            >
+              {s.article_report.title}
+            </h2>
+            <p
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                margin: 0,
+                color: "var(--text-primary)",
+                background: "var(--bg-elevated)",
+                borderLeft: "3px solid var(--accent)",
+                padding: "12px 14px",
+                borderRadius: "var(--radius-md)",
+                ...PRE_LINE_STYLE,
+              }}
+            >
+              {breakLongText(s.article_report.lede)}
+            </p>
+
+            <ArticleBlock heading="오늘 이 종목, 어떤 상황일까요" body={s.article_report.situation_today} />
+            <ArticleBlock heading="왜 이런 결론에 도달했을까요" body={s.article_report.why_this_decision} />
+            <ArticleBlock heading="실행한다면 이렇게 해보세요" body={s.article_report.how_to_act} />
+
+            {s.article_report.what_to_watch && s.article_report.what_to_watch.length > 0 && (
+              <div>
+                <h4
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    margin: "0 0 8px 0",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  앞으로 함께 지켜볼 포인트
+                </h4>
+                <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {s.article_report.what_to_watch.map((item, i) => (
+                    <li key={i} style={{ color: "var(--text-secondary)", lineHeight: 1.7, ...PRE_LINE_STYLE }}>
+                      {breakLongText(item)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p
+              style={{
+                fontSize: 13,
+                color: "var(--text-tertiary)",
+                fontStyle: "italic",
+                margin: 0,
+                paddingTop: 8,
+                borderTop: "1px dashed var(--border-default)",
+                lineHeight: 1.7,
+                ...PRE_LINE_STYLE,
+              }}
+            >
+              {breakLongText(s.article_report.closing)}
+            </p>
+          </article>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function ArticleBlock({ heading, body }: { heading: string; body: string }) {
+  return (
+    <div>
+      <h4
+        style={{
+          fontSize: 13,
+          fontWeight: 800,
+          margin: "0 0 6px 0",
+          color: "var(--text-primary)",
+        }}
+      >
+        {heading}
+      </h4>
+      <p
+        style={{
+          margin: 0,
+          color: "var(--text-secondary)",
+          lineHeight: 1.85,
+          ...PRE_LINE_STYLE,
+        }}
+      >
+        {breakLongText(body)}
+      </p>
     </div>
   );
 }

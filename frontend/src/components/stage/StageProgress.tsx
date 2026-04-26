@@ -66,7 +66,48 @@ export function StageProgress({ thoughts, visibleRoles }: StageProgressProps) {
     layerSummaries.length > 0 &&
     layerSummaries.every((l) => l.summary.done === l.summary.total);
 
-  if (allDone) return null;
+  // v3.4: 모두 완료되어도 마지막 stage(3단계)를 유지해서 표시.
+  // 이전에는 null로 숨겨서 완료 직후 진행률 창이 사라졌던 문제를 해결.
+  if (allDone) {
+    const lastLayer = allLayers[allLayers.length - 1];
+    if (!lastLayer) return null;
+    return (
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 8, opacity: 0.92 }}
+        aria-label="단계별 진행률"
+      >
+        <div className="stage-label">진행률</div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: "var(--success)",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {LAYER_LABEL[lastLayer.idx]}
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: "var(--success)",
+            }}
+          >
+            완료
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

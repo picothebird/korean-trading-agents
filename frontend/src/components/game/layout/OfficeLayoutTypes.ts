@@ -56,6 +56,21 @@ export interface LayoutZone {
   row0: number;
   col1: number;
   row1: number;
+  /** 옵션: zone 안에 깔리는 area rug. tileSprite로 16x16 텍스처 반복. */
+  rug?: LayoutRug;
+}
+
+export interface LayoutRug {
+  /** FLOOR_CATALOG.id (예: rug_warm). */
+  texture: string;
+  /** 좌상단 col (tile). */
+  col: number;
+  /** 좌상단 row (tile). */
+  row: number;
+  /** rug 가로 tile 수. */
+  cols: number;
+  /** rug 세로 tile 수. */
+  rows: number;
 }
 
 /** 좌상단 (0,0)에서 cell index 계산. */

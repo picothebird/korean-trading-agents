@@ -101,6 +101,10 @@ export default function PhaserCanvasInner({
 
   useEffect(() => {
     let cancelled = false;
+    // effect-scoped game holder. shared gameRef는 외부 접근 용도만,
+    // cleanup은 반드시 이 effect가 만든 인스턴스만 책임진다 (strict mode 더블 마운트 안전).
+    let localGame: Phaser.Game | null = null;
+    let localRo: ResizeObserver | null = null;
 
     void (async () => {
       const Phaser = (await import("phaser")).default;
@@ -115,6 +119,9 @@ export default function PhaserCanvasInner({
         width: host.clientWidth || 320,
         height: host.clientHeight || 240,
         backgroundColor: "#f6f7f9",
+        // Phaser 내부 RAF 루프를 30fps로 cap — CPU 폭주 방어.
+        // 분석 화면은 게임이 아니라 시각화이므로 30fps로 충분히 부드러움.
+        fps: { target: 30, forceSetTimeOut: false, smoothStep: true, min: 15 },
         scale: {
           mode: Phaser.Scale.RESIZE,
           autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -126,6 +133,12 @@ export default function PhaserCanvasInner({
         antialias: false,
         banner: false,
       });
+      // cleanup이 이미 실행됐다면 즉시 폐기.
+      if (cancelled) {
+        try { game.destroy(true); } catch { /* no-op */ }
+        return;
+      }
+      localGame = game;
       gameRef.current = game;
       sceneRef.current = sceneInstance;
 
@@ -150,6 +163,7 @@ export default function PhaserCanvasInner({
           getCameraMode: () => sceneInstance.getCameraMode(),
           focusAgent: (role, opts) => sceneInstance.focusAgent(role, opts),
           focusZone: (x, y, opts) => sceneInstance.focusZone(x, y, opts),
+          focusStage: (idx, opts) => sceneInstance.focusStage(idx, opts),
           getSeats: () => sceneInstance.getSeats(),
           getZones: () => sceneInstance.getZones(),
           getOverlaySnapshot: () => sceneInstance.getOverlaySnapshot(),
@@ -163,38 +177,26 @@ export default function PhaserCanvasInner({
       }
 
       // 부모 크기 변경에 맞춰 캔버스 리사이즈
-      const ro = new ResizeObserver(() => {
+      localRo = new ResizeObserver(() => {
         if (!host || !game.scale) return;
         game.scale.resize(host.clientWidth, host.clientHeight);
       });
-      ro.observe(host);
-
-      // cleanup 클로저
-      (game as unknown as { __cleanup?: () => void }).__cleanup = () => {
-        ro.disconnect();
-      };
+      localRo.observe(host);
     })();
 
     return () => {
       cancelled = true;
       onReady?.(null);
-      const game = gameRef.current as
-        | (Phaser.Game & { __cleanup?: () => void })
-        | null;
-      if (game) {
-        try {
-          game.__cleanup?.();
-        } catch {
-          /* no-op */
-        }
-        try {
-          game.destroy(true);
-        } catch {
-          /* no-op */
-        }
+      // shared ref 정리 (다른 인스턴스가 덮어쓰지 않은 경우만).
+      if (gameRef.current === localGame) {
+        gameRef.current = null;
+        sceneRef.current = null;
       }
-      gameRef.current = null;
-      sceneRef.current = null;
+      try { localRo?.disconnect(); } catch { /* no-op */ }
+      if (localGame) {
+        try { localGame.destroy(true); } catch { /* no-op */ }
+        localGame = null;
+      }
     };
   }, [onReady, visibleRolesKey]);
 

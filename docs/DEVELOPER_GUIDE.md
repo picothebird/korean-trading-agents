@@ -396,10 +396,40 @@ DB name comes from `MONGODB_DB`.
 | Service | Purpose | Env keys |
 |---|---|---|
 | OpenAI | LLM calls (Chat Completions) | `OPENAI_API_KEY`, `LLM_MODEL_*` |
-| OpenDART | Filings, financials | `DART_API_KEY` |
+| OpenDART | Filings, financials, multi-quarter history | `DART_API_KEY` |
+| BOK ECOS | KR rates, foreign/institution flows, 100 macro indicators | `BOK_API_KEY` |
 | FinanceDataReader / pykrx / yfinance | OHLCV, indices | none (rate-limited) |
 | Korean Investment Securities | Brokerage | `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT_NUMBER`, `KIS_ENV` |
 | MongoDB | Storage | `MONGODB_URI`, `MONGODB_DB` |
+
+### 9.1 BOK ECOS (한국은행 경제통계)
+
+Issued at <https://ecos.bok.or.kr/api/> (free, instant after signup). Wraps:
+
+| Function (`data/market/bok.py`) | Endpoint | Window |
+|---|---|---|
+| `get_foreign_net_buy_daily(days=30)` | `802Y001` (KOSPI/KOSDAQ 외국인 일별 순매수) | 30D rolling |
+| `get_investor_net_buy_monthly(months=6)` | `901Y055` (KOSPI 월별 기관/개인/외국인) | 6 months |
+| `get_kr_rates_daily(days=60)` | `817Y002` (국고 3Y/10Y, 회사채 AA-, 콜, KORIBOR3M) | 60 days |
+| `get_key_indicators(top=100)` | `KeyStatisticList` (100대 거시지표) | latest |
+| `get_macro_snapshot()` | aggregate | yield curve, credit spread, KR3Y 20D Δ |
+
+Auto-derived: `yield_curve_10y_minus_3y_bp`, `credit_spread_bp`, `kr3yt_20d_change_bp`. Falls back to pykrx if `BOK_API_KEY` missing (note: pykrx 1.2.4 KRX investor parser is broken — set BOK key).
+
+### 9.2 데이터 윈도우·시점 라벨링 (학술 가이드라인)
+
+각 분석가는 데이터의 **시점(as_of)** 과 **윈도우(N거래일/N일/N분기)** 를 프롬프트에 명시. 학술 표준 윈도우:
+
+| 분석가 | 윈도우 | 근거 |
+|---|---|---|
+| Technical | 252 거래일 (1Y) | Jegadeesh & Titman (1993) — 3-12M 모멘텀; 52주 high/low, MA200 |
+| Fundamental | 직전 6개 보고서 (≈1.5Y) | Piotroski (2000) F-Score — 최소 4분기 |
+| Sentiment | 30일 뉴스+공시 | Tetlock (2007) / Loughran-McDonald (2011) — 7-30D 톤 영향 |
+| Macro flow | 5D/20D + 6M 월별 | Choe-Kho-Stulz (1999) — 외국인 5-60D 지속성 |
+| Macro rates | 60D + KeyStat 최신 | Estrella-Mishkin (1996) — 수익률곡선 12M 선행 |
+| Macro vol | 20D MA + level | Whaley (2009) — VIX |
+
+`get_technical_indicators` returns explicit `as_of`, `last_bar_date`, `bars_used`, `has_full_year_history`. `dart.get_financials_history` returns periods labeled by `year` + `period_label` (연간/3분기누적/반기/1분기). All analyst prompts open with `[분석 기준 시각]` block citing the timestamp.
 
 ---
 

@@ -74,6 +74,11 @@ export interface FloorSpec {
 export const FLOOR_CATALOG: ReadonlyArray<FloorSpec> = [
   { id: "floor_0", url: "/game/pixel-agents/floors/floor_0.png" }, // 기본 마루
   { id: "floor_1", url: "/game/pixel-agents/floors/floor_1.png" }, // 카펫
+  // === Area rugs (16x16 base tile, 반복용) ===
+  { id: "rug_warm",  url: "/game/pixel-agents/floors/rug_warm.png"  }, // 분석가실 — 따뜻한 우드
+  { id: "rug_cool",  url: "/game/pixel-agents/floors/rug_cool.png"  }, // 토론장 — 회의실 청회색
+  { id: "rug_mint",  url: "/game/pixel-agents/floors/rug_mint.png"  }, // 결정실 — 민트 카펫
+  { id: "rug_royal", url: "/game/pixel-agents/floors/rug_royal.png" }, // 회장실 — 와인 럭셔리
 ];
 
 export const WALL_CATALOG: ReadonlyArray<FloorSpec> = [

@@ -34,6 +34,14 @@ void tintFloor;
 const DEFAULT_FLOOR = 0xf2f3f7;
 const WALL_COLOR = 0x3d4250;
 
+/** 0xRRGGBB 색을 amount(0~1)만큼 어둡게. */
+function darken(color: number, amount: number): number {
+  const r = Math.max(0, Math.round(((color >> 16) & 0xff) * (1 - amount)));
+  const g = Math.max(0, Math.round(((color >> 8) & 0xff) * (1 - amount)));
+  const b = Math.max(0, Math.round((color & 0xff) * (1 - amount)));
+  return (r << 16) | (g << 8) | b;
+}
+
 export interface LayoutRenderHandle {
   destroy(): void;
 }
@@ -71,12 +79,14 @@ export function renderLayout(
     return obj;
   };
 
-  // === 1. 바닥 — v3: 색박스 제거. 전체를 단일 톤(DEFAULT_FLOOR) 한 장으로.
-  // (사용자 피드백: "3종 컬러로 실 박스 표시해둔거 확실하게 삭제")
+  // === 1. 바닥 — v3.2: zone 별 색상으로 룸 구분.
+  // 벽 sprite 없이 바닥 톤만으로 시각적 구획. zone 영역에 zone.color, 그 외엔 DEFAULT_FLOOR.
+  // 각 zone 위에 매우 옅은 가로 plank seam 라인을 깔아 단조로움 제거.
   {
     const totalW = layout.cols * tilePx;
     const totalH = layout.rows * tilePx;
-    const rect = scene.add.rectangle(
+    // 베이스 fallback (zone 미지정 영역)
+    const base = scene.add.rectangle(
       totalW / 2,
       totalH / 2,
       totalW,
@@ -84,8 +94,91 @@ export function renderLayout(
       DEFAULT_FLOOR,
       1,
     );
-    rect.setDepth(depthForFloor());
-    add(rect);
+    base.setDepth(depthForFloor());
+    add(base);
+
+    // zone별 컬러 바닥
+    for (const z of layout.zones) {
+      const w = (z.col1 - z.col0 + 1) * tilePx;
+      const h = (z.row1 - z.row0 + 1) * tilePx;
+      const cx = z.col0 * tilePx + w / 2;
+      const cy = z.row0 * tilePx + h / 2;
+      const zoneFloor = scene.add.rectangle(cx, cy, w, h, z.color, 1);
+      zoneFloor.setDepth(depthForFloor() + 0.1);
+      add(zoneFloor);
+
+      // 매 row 가로 seam 라인 (매우 연하게) — plank 결 시뮬레이션
+      const seamColor = darken(z.color, 0.06);
+      for (let r = z.row0 + 1; r <= z.row1; r++) {
+        const seam = scene.add.rectangle(cx, r * tilePx, w, 1, seamColor, 0.5);
+        seam.setDepth(depthForFloor() + 0.2);
+        add(seam);
+      }
+
+      // 짝수 row 미세 톤 변화 band (plank 폭 2 row)
+      const bandColor = darken(z.color, 0.04);
+      for (let r = z.row0; r <= z.row1; r += 2) {
+        const band = scene.add.rectangle(
+          cx,
+          r * tilePx + tilePx / 2,
+          w,
+          tilePx,
+          bandColor,
+          0.5,
+        );
+        band.setDepth(depthForFloor() + 0.15);
+        add(band);
+      }
+
+      // zone 경계 — 옅은 구획선 (좌우 인접 zone 사이만)
+      // 우측 경계
+      if (z.col1 < layout.cols - 1) {
+        const sep = scene.add.rectangle(
+          (z.col1 + 1) * tilePx,
+          cy,
+          2,
+          h,
+          0xb8bcc6,
+          0.35,
+        );
+        sep.setDepth(depthForFloor() + 0.3);
+        add(sep);
+      }
+      // 하단 경계
+      if (z.row1 < layout.rows - 1) {
+        const sep = scene.add.rectangle(
+          cx,
+          (z.row1 + 1) * tilePx,
+          w,
+          2,
+          0xb8bcc6,
+          0.35,
+        );
+        sep.setDepth(depthForFloor() + 0.3);
+        add(sep);
+      }
+
+      // === Area rug — 16x16 텍스처를 N×M tile 영역에 tileSprite로 깔기 ===
+      if (z.rug && scene.textures.exists(z.rug.texture)) {
+        const rug = z.rug;
+        const rx = rug.col * tilePx;
+        const ry = rug.row * tilePx;
+        const rw = rug.cols * tilePx;
+        const rh = rug.rows * tilePx;
+        const rugSprite = scene.add.tileSprite(
+          rx,
+          ry,
+          rw,
+          rh,
+          rug.texture,
+        );
+        rugSprite.setOrigin(0, 0);
+        rugSprite.setTileScale(opts.tileScale, opts.tileScale);
+        // 바닥 위, 가구 아래
+        rugSprite.setDepth(depthForFloor() + 0.5);
+        add(rugSprite);
+      }
+    }
   }
 
   // (구버전: zone별 색 floor + 복도 fallback 루프 제거됨)

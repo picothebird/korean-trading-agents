@@ -57,13 +57,6 @@ interface Props {
   visibleRoles?: ReadonlyArray<AgentRole>;
 }
 
-interface Viewport {
-  x: number; // SVG coord
-  y: number;
-  w: number;
-  h: number;
-}
-
 interface SeatDot {
   role: AgentRole;
   /** SVG 좌표. */
@@ -84,11 +77,11 @@ interface ZoneRect {
 const WORLD_TO_SVG = CELL / 32;
 
 export function Minimap({ controller, thoughts, visibleRoles }: Props) {
-  const [viewport, setViewport] = useState<Viewport | null>(null);
   const [seatDots, setSeatDots] = useState<SeatDot[]>([]);
   const [zoneRects, setZoneRects] = useState<ZoneRect[]>([]);
-  const [pulse, setPulse] = useState(0);
   const rafRef = useRef<number | null>(null);
+  // 카메라 뷰포트 SVG <rect> — React state 없이 setAttribute로 직접 갱신.
+  const viewportRef = useRef<SVGRectElement | null>(null);
 
   // 컬트롤러 준비 시 좌석/존 스냅샷 (1회).
   useEffect(() => {
@@ -118,26 +111,38 @@ export function Minimap({ controller, thoughts, visibleRoles }: Props) {
     );
   }, [controller]);
 
-  // 카메라 정보 폴링 (60fps requestAnimationFrame, 컨트롤러 변경 시 정리)
+  // 카메라 뷰포트 갱신 — imperative DOM mutation. setState 없음, React reconciliation 0회.
+  // 30fps로 throttle (미니맵엔 충분히 부드러움, CPU 절반).
   useEffect(() => {
     if (!controller) return;
     let cancelled = false;
-    let pulseTick = 0;
-    const tick = () => {
+    let lastX = NaN;
+    let lastY = NaN;
+    let lastW = NaN;
+    let lastH = NaN;
+    let lastTickTime = 0;
+    const tick = (now: number) => {
       if (cancelled) return;
-      pulseTick = (pulseTick + 1) % 60;
-      // 1초에 ~1회 펄스 레임 시그널.
-      if (pulseTick === 0) setPulse((p) => (p + 1) % 1000);
-      const info = controller.getCameraInfo();
-      if (info && info.worldWidth > 0 && info.worldHeight > 0) {
-        setViewport({
-          x: (info.scrollX / info.worldWidth) * VIEW_W,
-          y: (info.scrollY / info.worldHeight) * VIEW_H,
-          w: (info.viewWidth / info.worldWidth) * VIEW_W,
-          h: (info.viewHeight / info.worldHeight) * VIEW_H,
-        });
-      }
       rafRef.current = requestAnimationFrame(tick);
+      if (now - lastTickTime < 33) return;
+      lastTickTime = now;
+      const rect = viewportRef.current;
+      if (!rect) return;
+      const info = controller.getCameraInfo();
+      if (!info || info.worldWidth <= 0 || info.worldHeight <= 0) {
+        if (rect.style.display !== "none") rect.style.display = "none";
+        return;
+      }
+      const x = (info.scrollX / info.worldWidth) * VIEW_W;
+      const y = (info.scrollY / info.worldHeight) * VIEW_H;
+      const w = (info.viewWidth / info.worldWidth) * VIEW_W;
+      const h = (info.viewHeight / info.worldHeight) * VIEW_H;
+      // 동일값이면 attr 생략 (DOM write 최소화).
+      if (x !== lastX) { rect.setAttribute("x", String(x)); lastX = x; }
+      if (y !== lastY) { rect.setAttribute("y", String(y)); lastY = y; }
+      if (w !== lastW) { rect.setAttribute("width", String(w)); lastW = w; }
+      if (h !== lastH) { rect.setAttribute("height", String(h)); lastH = h; }
+      if (rect.style.display === "none") rect.style.display = "";
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
@@ -243,20 +248,25 @@ export function Minimap({ controller, thoughts, visibleRoles }: Props) {
                   status === "analyzing" ||
                   status === "debating" ||
                   status === "deciding";
-                // 60-frame 주기에서 sin 펄스. r 폭: 0.55~0.95 사이.
-                const phase = (pulse % 12) / 12;
-                const r = isActive
-                  ? CELL * (0.7 + 0.25 * Math.sin(phase * Math.PI * 2))
-                  : CELL * 0.7;
+                // 펄스: CSS 키프레임으로 백그라운드 처리. JS rAF/setState 없음.
                 return (
                   <circle
                     key={seat.role}
                     cx={seat.x}
                     cy={seat.y}
-                    r={r}
+                    r={CELL * 0.7}
                     fill={AGENT_COLOR[seat.role]}
                     stroke={ACTIVE_STATUS_BORDER[status]}
                     strokeWidth={isActive ? 1.5 : 1}
+                    className={isActive ? "ktt-minimap-pulse" : undefined}
+                    style={
+                      isActive
+                        ? {
+                            transformBox: "fill-box",
+                            transformOrigin: "center",
+                          }
+                        : undefined
+                    }
                   />
                 );
               })
@@ -277,19 +287,19 @@ export function Minimap({ controller, thoughts, visibleRoles }: Props) {
                 />
               );
             })}
-        {/* 카메라 뷰포트 */}
-        {viewport && (
-          <rect
-            x={viewport.x}
-            y={viewport.y}
-            width={viewport.w}
-            height={viewport.h}
-            fill="rgba(49,130,246,0.12)"
-            stroke="#3182f6"
-            strokeWidth={1}
-            pointerEvents="none"
-          />
-        )}
+        {/* 카메라 뷰포트 — ref로 imperative 갱신 (rAF에서 setAttribute). */}
+        <rect
+          ref={viewportRef}
+          x={0}
+          y={0}
+          width={0}
+          height={0}
+          fill="rgba(49,130,246,0.12)"
+          stroke="#3182f6"
+          strokeWidth={1}
+          pointerEvents="none"
+          style={{ display: "none" }}
+        />
       </svg>
     </div>
   );

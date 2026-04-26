@@ -148,6 +148,54 @@ export class CameraSystem {
     this.scene.cameras.main.centerOn(worldX, worldY);
   }
 
+  /**
+   * 월드 직사각형(rect)을 화면에 fit. follow 모드로 전환.
+   *  - 기본으로는 manual hold 중이면 무시.
+   *  - opts.force=true이면 hold를 강제 좀 해제하고 포커스 (stage 전환 용).
+   */
+  focusRect(
+    rect: { x: number; y: number; w: number; h: number },
+    opts?: { instant?: boolean; padding?: number; force?: boolean },
+  ): void {
+    if (this.isManuallyHeld() && !opts?.force) return;
+    if (opts?.force) {
+      // 자동 stage 포커스는 manual hold보다 우선 — hold 해제 후 재설정.
+      this.manualOverrideUntil = 0;
+    }
+    const cam = this.scene.cameras.main;
+    const padding = opts?.padding ?? this.opts.fitPadding;
+    const availW = Math.max(1, cam.width - padding * 2);
+    const availH = Math.max(1, cam.height - padding * 2);
+    const zoom = Math.min(
+      this.opts.fitZoomMax,
+      Math.max(this.opts.fitZoomMin, Math.min(availW / rect.w, availH / rect.h)),
+    );
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    this.followTarget = { x: cx, y: cy };
+    this.mode = "follow";
+    this.applyBounds();
+    if (opts?.instant || this.prefersReducedMotion()) {
+      cam.setZoom(zoom);
+      cam.centerOn(cx, cy);
+      return;
+    }
+    this.cancelTween();
+    const targetScrollX = cx - cam.width / zoom / 2;
+    const targetScrollY = cy - cam.height / zoom / 2;
+    this.currentTween = this.scene.tweens.add({
+      targets: cam,
+      scrollX: targetScrollX,
+      scrollY: targetScrollY,
+      zoom,
+      duration: this.opts.followTweenMs,
+      ease: "Sine.easeOut",
+      onComplete: () => {
+        this.currentTween = null;
+      },
+    });
+  }
+
   /** 줌 입력. fit이면 free로 강등, manual hold 갱신. */
   zoomBy(delta: number, min: number, max: number): void {
     const cam = this.scene.cameras.main;

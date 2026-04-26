@@ -28,6 +28,7 @@ interface Props {
 
 interface NameRefs {
   el: HTMLDivElement | null;
+  lastVisible: boolean;
 }
 interface BubbleRefs {
   wrap: HTMLDivElement | null;
@@ -59,6 +60,8 @@ export function AgentLabelOverlay({ controller, roles }: Props) {
     if (!controller) return;
     let cancelled = false;
     const localZoneRefs = zoneRefs.current;
+    let lastTickTime = 0;
+    // Overlay rAF는 30fps로 throttle (33ms). 시각적으론 차이 없고 CPU 절반.
 
     const ensureZoneNodes = (zones: Array<{ name: string; x: number; y: number }>) => {
       const host = zoneListRef.current;
@@ -68,7 +71,7 @@ export function AgentLabelOverlay({ controller, roles }: Props) {
         if (localZoneRefs.has(z.name)) continue;
         const el = document.createElement("div");
         el.style.cssText =
-          "position:absolute;left:0;top:0;font-size:12px;font-weight:600;color:#7a7d85;letter-spacing:0.02em;white-space:nowrap;text-shadow:0 1px 2px rgba(255,255,255,0.85);will-change:transform;";
+          "position:absolute;left:0;top:0;font-size:13px;font-weight:700;color:#3d4250;letter-spacing:0.04em;white-space:nowrap;background:rgba(255,255,255,0.78);padding:3px 10px;border-radius:999px;border:1px solid rgba(0,0,0,0.08);box-shadow:0 1px 3px rgba(0,0,0,0.06);will-change:transform;";
         el.textContent = z.name;
         host.appendChild(el);
         localZoneRefs.set(z.name, { el });
@@ -80,9 +83,12 @@ export function AgentLabelOverlay({ controller, roles }: Props) {
       }
     };
 
-    const tick = () => {
+    const tick = (now: number) => {
       if (cancelled) return;
       rafRef.current = window.requestAnimationFrame(tick);
+      // 30fps throttle — 33ms 미만 경과 시 skip.
+      if (now - lastTickTime < 33) return;
+      lastTickTime = now;
       let s: ReturnType<OfficeSceneController["getOverlaySnapshot"]> | null = null;
       try {
         s = controller.getOverlaySnapshot();
@@ -100,24 +106,41 @@ export function AgentLabelOverlay({ controller, roles }: Props) {
         const sy = (z.y - cam.scrollY) * cam.zoom;
         refs.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, 0)`;
       }
+      // 이름표는 캐릭터 발끝 아래에, 말풍선은 머리 위에.
+      // 이름표 anchor = 좌석 고정 좌표의 발 끝 → translate(-50%, 0) + 아래로 살짝 offset.
+      // 말풍선 anchor = 좌석 고정 좌표의 머리 위 → translate(-50%, -100%) + 위로 살짝 offset.
+      const NAME_SCREEN_OFFSET = 4;    // 발끝 아래 4px (라벨 박스가 발끝에 붙어 보이도록)
+      const BUBBLE_SCREEN_OFFSET = 8;  // 머리 위 8px
+      // 줌 1.0 이상에서 항상 표시 (stage 자동 줌 시 항상 보장).
+      const ZOOM_VISIBLE_THRESHOLD = 1.0;
+      const showLabels = cam.zoom >= ZOOM_VISIBLE_THRESHOLD;
       for (const a of s.agents) {
+        const speaking = a.bubbleVisible && !!a.bubbleText;
         const nameR = nameRefs.current.get(a.role);
         if (nameR?.el) {
-          const sx = (a.nameX - cam.scrollX) * cam.zoom;
-          const sy = (a.nameY - cam.scrollY) * cam.zoom;
-          nameR.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, 0)`;
+          if (showLabels !== nameR.lastVisible) {
+            nameR.el.style.display = showLabels ? "block" : "none";
+            nameR.lastVisible = showLabels;
+          }
+          if (showLabels) {
+            const sx = Math.round((a.nameX - cam.scrollX) * cam.zoom);
+            const sy = Math.round((a.nameY - cam.scrollY) * cam.zoom + NAME_SCREEN_OFFSET);
+            // 이름표는 anchor(발끝) 기준으로 아래로 떨어지도록 translate(-50%, 0).
+            nameR.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, 0)`;
+          }
         }
         const bubR = bubbleRefs.current.get(a.role);
         if (bubR?.wrap) {
-          const sx = (a.bubbleX - cam.scrollX) * cam.zoom;
-          const sy = (a.bubbleY - cam.scrollY) * cam.zoom;
+          // 말풍선은 줌아웃에서도 발화 중이면 표시.
+          const bubbleVisible = speaking;
+          const sx = Math.round((a.bubbleX - cam.scrollX) * cam.zoom);
+          const sy = Math.round((a.bubbleY - cam.scrollY) * cam.zoom - BUBBLE_SCREEN_OFFSET);
           bubR.wrap.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
-          const visible = a.bubbleVisible && !!a.bubbleText;
-          if (visible !== bubR.lastVisible) {
-            bubR.wrap.style.display = visible ? "block" : "none";
-            bubR.lastVisible = visible;
+          if (bubbleVisible !== bubR.lastVisible) {
+            bubR.wrap.style.display = bubbleVisible ? "block" : "none";
+            bubR.lastVisible = bubbleVisible;
           }
-          if (visible && bubR.text && a.bubbleText !== bubR.lastText) {
+          if (bubbleVisible && bubR.text && a.bubbleText !== bubR.lastText) {
             bubR.text.textContent = a.bubbleText;
             bubR.lastText = a.bubbleText;
           }
@@ -160,7 +183,7 @@ export function AgentLabelOverlay({ controller, roles }: Props) {
             ref={(el) => {
               const cur = nameRefs.current.get(role);
               if (cur) cur.el = el;
-              else nameRefs.current.set(role, { el });
+              else nameRefs.current.set(role, { el, lastVisible: false });
             }}
             style={{
               position: "absolute",
@@ -176,6 +199,7 @@ export function AgentLabelOverlay({ controller, roles }: Props) {
               whiteSpace: "nowrap",
               boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
               willChange: "transform",
+              display: "none",
             }}
           >
             {AGENT_LABEL[role] ?? role}

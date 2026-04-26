@@ -29,10 +29,18 @@ function withAuthHeaders(init?: HeadersInit): Headers {
 
 async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = withAuthHeaders(init?.headers);
-  return fetch(input, {
-    ...init,
-    headers,
-  });
+  // 기본 타임아웃 12초 — 백엔드 응답 지연 시 무한 대기 방지.
+  // 호출자가 signal을 직접 전달했으면 그대로 사용.
+  if (init?.signal) {
+    return fetch(input, { ...init, headers });
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    return await fetch(input, { ...init, headers, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function buildEventSourceUrl(path: string): string {

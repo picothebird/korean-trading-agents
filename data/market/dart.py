@@ -131,25 +131,88 @@ def get_corp_code(ticker: str) -> str | None:
 # ──────────────────────────────────────────────
 
 # 표준 계정명 → 우리 키 매핑 (재무상태표·손익계산서 핵심)
+# 한국 기업의 분기/반기 보고서에서 계정명이 다양하게 표기되므로 가능한 변형을 모두 포함.
+# 매칭 시 좌우 공백·중점("ㆍ"·"·")·괄호 등을 정규화한 후 비교한다(_normalize_account_nm).
 _ACCOUNT_MAP = {
-    # 손익계산서 (CIS)
+    # 손익계산서 (CIS) — 매출액
     "매출액": "revenue",
     "영업수익": "revenue",
-    "수익(매출액)": "revenue",
+    "수익매출액": "revenue",
+    "수익": "revenue",
+    "매출": "revenue",
+    # 영업이익 — 손실 표기 변형 포함
     "영업이익": "operating_income",
-    "영업이익(손실)": "operating_income",
+    "영업이익손실": "operating_income",
+    "영업손익": "operating_income",
+    # 당기/분기/반기 순이익 — 보고서 종류에 따라 표기 다름
     "당기순이익": "net_income",
-    "당기순이익(손실)": "net_income",
+    "당기순이익손실": "net_income",
+    "당기순손익": "net_income",
+    "당기연결순이익": "net_income",
+    "분기순이익": "net_income",
+    "분기순이익손실": "net_income",
+    "분기연결순이익": "net_income",
+    "반기순이익": "net_income",
+    "반기순이익손실": "net_income",
+    "반기연결순이익": "net_income",
+    "당기순이익지배기업의소유주에게귀속되는당기순이익": "net_income",  # IFRS 분리 표기
     # 재무상태표 (BS)
     "자산총계": "total_assets",
+    "자산의총계": "total_assets",
     "부채총계": "total_liabilities",
+    "부채의총계": "total_liabilities",
     "자본총계": "total_equity",
+    "자본의총계": "total_equity",
+    "자본합계": "total_equity",
     "유동자산": "current_assets",
     "유동부채": "current_liabilities",
     # 현금흐름표 (CF)
     "영업활동현금흐름": "cfo",
-    "영업활동으로 인한 현금흐름": "cfo",
+    "영업활동으로인한현금흐름": "cfo",
+    "영업활동순현금흐름": "cfo",
 }
+
+
+# IFRS / DART XBRL account_id 표준 태그 → 우리 키.
+# account_nm 매칭 실패 시 폴백으로 사용. 표기 흔들림을 흡수하므로 가장 견고하다.
+_ACCOUNT_ID_MAP = {
+    # 매출
+    "ifrs-full_Revenue": "revenue",
+    "ifrs_Revenue": "revenue",
+    "dart_Sales": "revenue",
+    # 영업이익 (DART 확장 태그)
+    "dart_OperatingIncomeLoss": "operating_income",
+    # 순이익
+    "ifrs-full_ProfitLoss": "net_income",
+    "ifrs_ProfitLoss": "net_income",
+    "ifrs-full_ProfitLossAttributableToOwnersOfParent": "net_income",
+    # 자산/부채/자본
+    "ifrs-full_Assets": "total_assets",
+    "ifrs_Assets": "total_assets",
+    "ifrs-full_Liabilities": "total_liabilities",
+    "ifrs_Liabilities": "total_liabilities",
+    "ifrs-full_Equity": "total_equity",
+    "ifrs_Equity": "total_equity",
+    "ifrs-full_CurrentAssets": "current_assets",
+    "ifrs-full_CurrentLiabilities": "current_liabilities",
+    # 현금흐름
+    "ifrs-full_CashFlowsFromUsedInOperatingActivities": "cfo",
+    "ifrs_CashFlowsFromUsedInOperatingActivities": "cfo",
+}
+
+
+_ACCOUNT_NM_NORMALIZE_RE = re.compile(r"[\s\(\)\[\]·ㆍ,.:：\-_/]")
+
+
+def _normalize_account_nm(name: str) -> str:
+    """계정명 비교용 정규화: 공백·괄호·중점 등 제거.
+
+    예) "당기순이익(손실)" → "당기순이익손실"
+        "영업활동으로 인한 현금흐름" → "영업활동으로인한현금흐름"
+    """
+    if not name:
+        return ""
+    return _ACCOUNT_NM_NORMALIZE_RE.sub("", name)
 
 
 def _parse_fnllt_response(payload: dict) -> dict[str, int | None]:
@@ -171,8 +234,13 @@ def _parse_fnllt_response(payload: dict) -> dict[str, int | None]:
     for it in items:
         if not isinstance(it, dict):
             continue
+        # 1차: account_nm 정규화 매칭. 2차: account_id (IFRS XBRL 표준 태그) 매칭.
         account_nm = (it.get("account_nm") or "").strip()
-        key = _ACCOUNT_MAP.get(account_nm)
+        norm_nm = _normalize_account_nm(account_nm)
+        key = _ACCOUNT_MAP.get(norm_nm) or _ACCOUNT_MAP.get(account_nm)
+        if not key:
+            account_id = (it.get("account_id") or "").strip()
+            key = _ACCOUNT_ID_MAP.get(account_id)
         if not key:
             continue
         # 당기 금액 우선 (thstrm_amount)
@@ -302,15 +370,21 @@ def get_latest_financials(ticker: str) -> dict[str, Any]:
             base_result["period_label"] = label_map.get(reprt_code, "?")
             base_result["raw"] = raw
             base_result["available"] = True
-            base_result["ratios"] = _compute_ratios(raw)
+            base_result["ratios"] = _compute_ratios(raw, reprt_code)
             return base_result
 
     base_result["error"] = "최근 2년치 모든 보고서에서 재무 데이터 미발견"
     return base_result
 
 
-def _compute_ratios(raw: dict[str, int | None]) -> dict[str, float | None]:
-    """원시 재무 수치 → 핵심 비율(%)."""
+def _compute_ratios(raw: dict[str, int | None], reprt_code: str | None = None) -> dict[str, float | None]:
+    """원시 재무 수치 → 핵심 비율(%).
+
+    ROE 만 연환산(annualization) 적용:
+    - 분기/반기 보고서의 net_income 은 부분기 누적치이므로 그대로 자본총계로 나누면 ROE 가 비현실적으로 작게 나온다.
+    - 보고서 종류에 따라 연간 환산 계수를 곱한다 (1Q ×4, 반기 ×2, 3Q ×4/3, 연간 ×1).
+    - 영업이익률·순이익률은 (이익/매출) 비율이므로 분자·분모 모두 같은 기간이라 환산 불필요.
+    """
     revenue = raw.get("revenue")
     op_inc = raw.get("operating_income")
     net_inc = raw.get("net_income")
@@ -319,6 +393,18 @@ def _compute_ratios(raw: dict[str, int | None]) -> dict[str, float | None]:
     total_equity = raw.get("total_equity")
     cur_assets = raw.get("current_assets")
     cur_liab = raw.get("current_liabilities")
+
+    # 보고서별 ROE 연환산 계수.
+    # 분기/반기 누적 순이익을 연간 추정치로 변환해 자본총계로 나눈다.
+    annualize_factor = {
+        REPRT_Q1: 4.0,
+        REPRT_HY: 2.0,
+        REPRT_Q3: 4.0 / 3.0,
+        REPRT_ANN: 1.0,
+    }.get(reprt_code or "", 1.0)
+    net_inc_annualized = (
+        int(net_inc * annualize_factor) if isinstance(net_inc, (int, float)) else None
+    )
 
     def pct(num, den):
         v = _safe_div(num, den)
@@ -330,8 +416,58 @@ def _compute_ratios(raw: dict[str, int | None]) -> dict[str, float | None]:
         "debt_to_equity_pct": pct(total_liab, total_equity),
         "equity_ratio_pct": pct(total_equity, total_assets),
         "current_ratio_pct": pct(cur_assets, cur_liab),
-        "roe_pct": pct(net_inc, total_equity),
+        "roe_pct": pct(net_inc_annualized, total_equity),
     }
+
+
+def get_financials_history(ticker: str, n_periods: int = 6) -> list[dict[str, Any]]:
+    """직전 N 분기/반기/연간 보고서 시계열 (가장 최신 → 과거 순).
+
+    펀더멘털 추세(YoY/QoQ) 분석용. Piotroski (2000) F-Score 류 분석은 최소 4분기,
+    가급적 8분기 이상의 시계열을 요구한다. 여기서는 기본 6개 (≈1.5년) 를 반환.
+
+    Returns: list of {
+      "year": int, "report_code": str, "period_label": str,
+      "raw": {...}, "ratios": {...}, "available": bool
+    }
+    """
+    if not is_enabled():
+        return []
+    corp_code = get_corp_code(ticker)
+    if not corp_code:
+        return []
+
+    label_map = {
+        REPRT_ANN: "연간",
+        REPRT_Q3: "3분기누적",
+        REPRT_HY: "반기",
+        REPRT_Q1: "1분기",
+    }
+
+    this_year = datetime.now().year
+    # 시간 역순 후보 (최신 → 과거 4년치)
+    candidates: list[tuple[int, str]] = []
+    for y in range(this_year, this_year - 4, -1):
+        # 분기 보고서는 보통 분기 종료 후 45일 내 제출 → 최신부터 시도하면 비정상 응답이 빠르게 None 처리됨.
+        for code in (REPRT_ANN, REPRT_Q3, REPRT_HY, REPRT_Q1):
+            candidates.append((y, code))
+
+    out: list[dict[str, Any]] = []
+    for year, reprt_code in candidates:
+        if len(out) >= n_periods:
+            break
+        raw = _fetch_financial_statements(corp_code, year, reprt_code)
+        if not any(v is not None for v in raw.values()):
+            continue
+        out.append({
+            "year": year,
+            "report_code": reprt_code,
+            "period_label": label_map.get(reprt_code, "?"),
+            "raw": raw,
+            "ratios": _compute_ratios(raw, reprt_code),
+            "available": True,
+        })
+    return out
 
 
 # ──────────────────────────────────────────────
@@ -562,6 +698,7 @@ __all__ = [
     "is_enabled",
     "get_corp_code",
     "get_latest_financials",
+    "get_financials_history",
     "get_recent_disclosures",
     "healthcheck",
     "REPRT_ANN", "REPRT_HY", "REPRT_Q1", "REPRT_Q3",

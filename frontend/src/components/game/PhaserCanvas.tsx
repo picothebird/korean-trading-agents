@@ -15,9 +15,11 @@ import type { AgentRole, AgentThought } from "@/types";
 import { ALL_AGENT_ROLES } from "@/lib/agentLabels";
 import type { OfficeSceneController } from "./OfficeSceneController";
 import { HudControls } from "./HudControls";
-import { Minimap } from "./Minimap";
+import { Minimap as _Minimap } from "./Minimap";
+void _Minimap;
 import { AgentCounter } from "./AgentCounter";
 import { AgentLabelOverlay } from "./AgentLabelOverlay";
+import { StageBadge } from "./StageBadge";
 
 // Phaser는 동적 로드만 사용. 컴포넌트 자체는 client-only.
 const PhaserCanvasInner = dynamic(() => import("./PhaserCanvasInner"), {
@@ -58,6 +60,20 @@ export function PhaserCanvas({ thoughts, onAgentClick, visibleRoles, showHud = t
     [visibleRoles],
   );
 
+  // 긴급 비활성화 스위치:
+  //   localStorage.setItem('kta_disable_phaser','1')  → 다음 로드부터 Phaser 안 띄움.
+  //   제거: localStorage.removeItem('kta_disable_phaser')
+  // CPU 폭주 겹격 시 우선 탈출용.
+  const [phaserDisabled, setPhaserDisabled] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (window.localStorage.getItem("kta_disable_phaser") === "1") {
+        setPhaserDisabled(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -80,18 +96,40 @@ export function PhaserCanvas({ thoughts, onAgentClick, visibleRoles, showHud = t
         background: "var(--bg-canvas, #f6f7f9)",
       }}
     >
-      <PhaserCanvasInner
-        thoughts={thoughts}
-        onAgentClick={onAgentClick}
-        visibleRoles={activeRoles}
-        onReady={setController}
-      />
-      <AgentLabelOverlay controller={controller} roles={activeRoles} />
-      {showHud && (
+      {phaserDisabled ? (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-muted, #888)",
+            fontSize: 12,
+            textAlign: "center",
+            padding: 16,
+          }}
+        >
+          픽셀 오피스가 비활성화되어 있습니다.
+          <br />
+          (재활성: DevTools → Application → Local Storage → kta_disable_phaser 제거)
+        </div>
+      ) : (
         <>
-          <AgentCounter thoughts={thoughts} totalRoles={activeRoles.length} />
-          <HudControls controller={controller} />
-          <Minimap controller={controller} thoughts={thoughts} visibleRoles={activeRoles} />
+          <PhaserCanvasInner
+            thoughts={thoughts}
+            onAgentClick={onAgentClick}
+            visibleRoles={activeRoles}
+            onReady={setController}
+          />
+          <AgentLabelOverlay controller={controller} roles={activeRoles} />
+          <StageBadge thoughts={thoughts ?? []} />
+          {showHud && (
+            <>
+              <AgentCounter thoughts={thoughts} totalRoles={activeRoles.length} />
+              <HudControls controller={controller} />
+            </>
+          )}
         </>
       )}
     </div>

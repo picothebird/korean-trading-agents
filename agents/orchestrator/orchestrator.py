@@ -27,6 +27,7 @@ from agents.schemas import (
     RiskOutput,
     PortfolioManagerOutput,
     GuruOutput,
+    ArticleReportOutput,
 )
 
 
@@ -230,15 +231,15 @@ async def researcher_debate(
 {bear_stance if bear_stance else '(첫 라운드)'}
 
 종목 {ticker}에 대해 매수를 지지하는 논거를 제시하세요. 
-JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
+JSON: {{"argument": "주장 (충분한 말량으로 상세 논증. 600자 이내 권장)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
 
         bull_key_points = []
         try:
+            # 토론은 추론(reasoning) 핵심 → fast=False 로 reasoning_effort 적용.
             bull_out = await create_structured_response(
                 system="당신은 강세 주식 연구원입니다.",
                 user=bull_prompt,
                 schema_model=DebateStanceOutput,
-                fast=True,
             )
             bull_stance = bull_out.argument
             bull_key_points = list(bull_out.key_points)
@@ -286,15 +287,15 @@ JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2"
 {bull_stance}
 
 종목 {ticker}에 대해 매도 또는 관망을 지지하는 논거를 제시하세요.
-JSON: {{"argument": "주장 (200자)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
+JSON: {{"argument": "주장 (충분한 말량으로 상세 논증. 600자 이내 권장)", "key_points": ["포인트1", "포인트2", "포인트3"], "confidence": 0.0~1.0}}"""
 
         bear_key_points = []
         try:
+            # 토론은 추론(reasoning) 핵심 → fast=False 로 reasoning_effort 적용.
             bear_out = await create_structured_response(
                 system="당신은 약세 주식 연구원입니다.",
                 user=bear_prompt,
                 schema_model=DebateStanceOutput,
-                fast=True,
             )
             bear_stance = bear_out.argument
             bear_key_points = list(bear_out.key_points)
@@ -427,9 +428,9 @@ async def risk_manager(
 {json.dumps({k: {kk: vv for kk, vv in v.items() if kk in ['signal','confidence','risk_level','summary']}
              for k, v in analyst_results.items() if isinstance(v, dict)}, ensure_ascii=False)}
 
-[연구원 토론 결과]
-강세론: {debate_results.get('bull_stance', '')[:200]}
-약세론: {debate_results.get('bear_stance', '')[:200]}
+[연구원 토론 결과 — 전문]
+강세론: {debate_results.get('bull_stance', '')}
+약세론: {debate_results.get('bear_stance', '')}
 
 [Kelly Criterion 계산 결과]
 - 에이전트 평균 신뢰도: {avg_confidence_pct:.1f}% → Half-Kelly 권장 포지션: {kelly_pct}%
@@ -450,7 +451,7 @@ async def risk_manager(
 5. 최종 stop_loss_pct 는 반드시 [3.0, 15.0] 범위 내.
 
 종목 {ticker}의 투자 리스크를 평가하세요.
-JSON: {{"risk_level": "LOW|MEDIUM|HIGH|CRITICAL", "max_position_pct": 0~25, "kelly_position_pct": {kelly_pct}, "stop_loss_pct": <위 규칙으로 산출>, "key_risks": ["리스크1", "리스크2", "리스크3"], "approval": true|false, "requires_human_approval": true|false, "summary": "150자 — 손절폭의 근거(ATR / σ / 스윙로우 중 무엇)를 명시"}}
+JSON: {{"risk_level": "LOW|MEDIUM|HIGH|CRITICAL", "max_position_pct": 0~25, "kelly_position_pct": {kelly_pct}, "stop_loss_pct": <위 규칙으로 산출>, "key_risks": ["리스큓1", "리스큓2", "리스큓3"], "approval": true|false, "requires_human_approval": true|false, "summary": "500자 이내 — 손절폭의 근거(ATR / σ / 스윈로우 중 무엇)를 명시"}}
 
 requires_human_approval=true 조건: 신뢰도 80% 이상이고 포지션 20% 초과, 또는 위험도 CRITICAL"""
 
@@ -543,16 +544,25 @@ async def portfolio_manager(
 위험도: {risk_result.get('risk_level')} | 승인: {risk_result.get('approval')}
 Kelly 포지션: {kelly_pct}% | 최대 허용: {risk_result.get('max_position_pct')}%
 손절: {risk_result.get('stop_loss_pct')}%
-핵심 리스크: {', '.join(risk_result.get('key_risks', [])[:2])}
+핵심 리스크: {', '.join(risk_result.get('key_risks', []))}
 
-[연구원 토론]
-강세론: {debate_results.get('bull_stance', '')[:300]}
-약세론: {debate_results.get('bear_stance', '')[:300]}
+[연구원 토론 — 전문]
+강세론: {debate_results.get('bull_stance', '')}
+약세론: {debate_results.get('bear_stance', '')}
 {(chr(10) + memory_block) if memory_block else ''}
 종목 {ticker}에 대한 최종 투자 결정을 내리세요.
 Kelly 모델 기반 적정 포지션: {position_pct:.1f}%
 
-JSON: {{"action": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "reasoning": "결정 근거 300자", "position_size_pct": {position_pct:.0f}, "entry_strategy": "진입 전략 (가격대, 분할 여부)", "exit_strategy": "청산 전략 (목표가, 손절가)"}}"""
+[진입 전략 작성 규칙 — 매우 중요]
+- position_size_pct 는 반드시 {position_pct:.1f} 로 둔다 (Kelly·max_position 제약 결과).
+- entry_strategy 본문에 명시되는 분할 매수 비중의 **합계**는 반드시 position_size_pct({position_pct:.1f}%)와 **정확히 일치**해야 한다.
+  · 예: position_size_pct=12 → "총 12% 한도 내 3분할 (4%·4%·4%)" (○)
+  · 예: position_size_pct=22.8 → "총 22.8% 한도 내 3분할 (7.6%·7.6%·7.6%)" (○)
+  · 금지: position_size_pct=22.8 인데 본문에는 "12% 분할" 이라고 쓰는 것 (✗)
+- 한도 내 1회 매수도 가능 (예: "현재가 100% 진입 {position_pct:.1f}%"). 분할 시 합계만 일치하면 분할 횟수는 자유.
+- entry_strategy 첫 줄에 반드시 "총 {position_pct:.1f}% 한도" 문구를 포함한다.
+
+JSON: {{"action": "BUY|SELL|HOLD", "confidence": 0.0~1.0, "reasoning": "결정 근거 — 충분한 말량 (제한 없음, 800자 권장)", "position_size_pct": {position_pct:.1f}, "entry_strategy": "진입 전략 (위 규칙 준수, 분할 합계 = position_size_pct)", "exit_strategy": "청산 전략 (목표가, 손절가)"}}"""
 
 
     try:
@@ -714,7 +724,7 @@ async def guru_manager(
 - require_user_confirmation: {require_user_confirmation}
 
 [포트폴리오 매니저 초안]
-action={base_decision.action}, confidence={base_decision.confidence:.3f}, reasoning={str(base_decision.reasoning or '')[:400]}
+action={base_decision.action}, confidence={base_decision.confidence:.3f}, reasoning={str(base_decision.reasoning or '')}
 
 [리스크 매니저]
 risk_level={risk_result.get('risk_level')}, approval={risk_result.get('approval')}, stop_loss_pct={risk_result.get('stop_loss_pct')}
@@ -723,19 +733,19 @@ risk_level={risk_result.get('risk_level')}, approval={risk_result.get('approval'
 {json.dumps({k: {kk: vv for kk, vv in v.items() if kk in ['signal', 'confidence', 'risk_level', 'summary']}
              for k, v in analyst_results.items() if isinstance(v, dict)}, ensure_ascii=False)}
 
-[토론 요약]
-강세론: {str(debate_results.get('bull_stance', ''))[:260]}
-약세론: {str(debate_results.get('bear_stance', ''))[:260]}
+[토론 요약 — 전문]
+강세론: {str(debate_results.get('bull_stance', ''))}
+약세론: {str(debate_results.get('bear_stance', ''))}
 {(chr(10) + memory_block) if memory_block else ''}
 출력은 JSON만:
-{{"action":"BUY|SELL|HOLD","confidence":0.0~1.0,"reasoning":"300자 이내","policy_notes":["핵심 포인트1","핵심 포인트2"]}}"""
+{{"action":"BUY|SELL|HOLD","confidence":0.0~1.0,"reasoning":"권고 이유 — 충분한 말량 (800자 권장)","policy_notes":["핵심 포인트1","핵심 포인트2"]}}"""
 
         try:
+            # GURU 는 사용자 원칙과 룰을 다다그 렌더링 하는 판단 레이어 → 추론이 핵심.
             guru_out = await create_structured_response(
                 system="당신은 개인화 투자 원칙을 엄격히 적용하는 GURU 에이전트입니다.",
                 user=prompt,
                 schema_model=GuruOutput,
-                fast=True,
             )
             llm_action = _normalize_action(guru_out.action)
             llm_confidence = _clamp01(float(guru_out.confidence))
@@ -794,7 +804,7 @@ risk_level={risk_result.get('risk_level')}, approval={risk_result.get('approval'
 
     base_decision.action = final_action
     base_decision.confidence = round(_clamp01(final_confidence), 4)
-    base_decision.reasoning = final_reasoning[:1500]
+    base_decision.reasoning = final_reasoning
     base_decision.agents_summary["requires_human_approval"] = requires_human
     base_decision.agents_summary["guru"] = {
         "enabled": True,
@@ -829,6 +839,126 @@ risk_level={risk_result.get('risk_level')}, approval={risk_result.get('approval'
     ))
 
     return base_decision
+
+
+async def write_article_report(
+    ticker: str,
+    company_name: str,
+    analyst_results: dict,
+    debate_results: dict,
+    risk_result: dict,
+    decision: TradeDecision,
+    session_id: str,
+) -> dict | None:
+    """회의록 하단 부착용 친근한 아티클형 리포트 (토스/뉴닉 톤).
+
+    실패 시 None 반환 — 의사결정 응답을 막지 않는다.
+    """
+    await emit_thought(session_id, AgentThought(
+        agent_id="article_writer",
+        role=AgentRole.PORTFOLIO_MANAGER,
+        status=AgentStatus.THINKING,
+        content="회의 결과를 일반 독자용 아티클로 정리 중...",
+        metadata={"ticker": ticker},
+    ))
+
+    try:
+        summary = decision.agents_summary or {}
+        risk_block = summary.get("risk") or {}
+        guru_block = summary.get("guru") or {}
+
+        # 분석가별 본문을 그대로 전달 (요약하지 않음 — reasoning 모델이 직접 활용)
+        analyst_block_lines = []
+        for key, label in [
+            ("technical", "기술"),
+            ("fundamental", "펀더멘털"),
+            ("sentiment", "심리/뉴스"),
+            ("macro", "매크로"),
+        ]:
+            r = analyst_results.get(key, {}) or {}
+            sig = r.get("signal") or r.get("market_condition") or "-"
+            conf = float(r.get("confidence") or 0.0)
+            ks = r.get("key_signals") or r.get("key_factors") or []
+            s = r.get("summary") or ""
+            analyst_block_lines.append(
+                f"[{label} 분석가] signal={sig}, confidence={conf:.2f}\n"
+                f"근거: {' / '.join(ks)}\n"
+                f"요약: {s}"
+            )
+        analyst_block = "\n\n".join(analyst_block_lines)
+
+        prompt = f"""당신은 토스피드 / 뉴닉 같은 매체에서 일반 독자에게 금융을 쉽게 풀어주는 에디터입니다.
+아래 AI 투자 회의 결과를 받아, 주식을 잘 모르는 사람도 부담 없이 읽을 수 있는 아티클을 작성하세요.
+
+[톤·스타일 가이드]
+- 존댓말 + 친근한 2인칭 ("이런 분이라면…", "오늘은 이 부분을 같이 볼게요").
+- 비유와 일상 언어 (예: "체력 좋은 회사", "분위기가 식었어요").
+- 짧은 문장과 자연스러운 흐름. 단락마다 한 가지 메시지.
+- 숫자는 그냥 던지지 말고 의미를 같이 풀어주세요 ("PER 8배는 시장 평균 대비 저렴한 편이에요").
+- 전문용어는 한 번 쓰면 한 번 풀어주세요.
+- 단정·과장 금지. "할 가능성이 있어요", "지켜볼 만해요" 같은 절제된 표현.
+- 이모지 / 불릿 / 마크다운 헤더 사용 금지. JSON 필드 안은 평문 단락.
+
+[기본 정보]
+종목: {ticker} ({company_name})
+최종 결정: {decision.action} (신뢰도 {decision.confidence*100:.0f}%)
+포지션: {summary.get('position_size_pct', 0)}% / Kelly {risk_block.get('kelly_position_pct', 0)}%
+리스크: {risk_block.get('risk_level','-')} / 손절 {risk_block.get('stop_loss_pct','-')}%
+진입: {decision.entry_strategy or '-'}
+청산: {decision.exit_strategy or '-'}
+
+[분석가 회의 결과]
+{analyst_block}
+
+[강세론 vs 약세론]
+강세: {debate_results.get('bull_stance','')}
+약세: {debate_results.get('bear_stance','')}
+판정: {(debate_results.get('judge_score') or {}).get('reasoning','')}
+
+[리스크 매니저 코멘트]
+{risk_block.get('summary','')}
+핵심 리스크: {' / '.join(risk_block.get('key_risks') or [])}
+
+[GURU 정책 메모]
+{' / '.join(guru_block.get('notes') or [])}
+
+[최종 결정 근거 (PM/GURU)]
+{decision.reasoning}
+
+위 정보를 바탕으로 ArticleReportOutput 스키마에 맞춰 JSON 으로만 답하세요.
+- title: 종목명을 포함한 한 줄 헤드라인
+- lede: 결론과 핵심 이유를 한 단락(200~300자)으로 요약
+- situation_today: 시장·기업·뉴스·매크로 상황을 600~1000자 산문으로 풀어주세요
+- why_this_decision: 분석가 토론·리스크 결과를 인용하며 왜 이 결론인지 600~1000자로 설명
+- how_to_act: 이 결론을 따른다면 어떻게 진입/관리할지 400~700자 가이드 (분할·손절·목표가 포함)
+- what_to_watch: 앞으로 점검할 체크포인트 3~6개를 한 문장씩
+- closing: 위험 고지와 의사결정 책임 환기로 따뜻하게 마무리(200~400자)
+"""
+
+        out = await create_structured_response(
+            system="당신은 금융 콘텐츠를 친근하게 풀어주는 에디터입니다.",
+            user=prompt,
+            schema_model=ArticleReportOutput,
+        )
+        article = out.model_dump()
+
+        await emit_thought(session_id, AgentThought(
+            agent_id="article_writer",
+            role=AgentRole.PORTFOLIO_MANAGER,
+            status=AgentStatus.DONE,
+            content=f"아티클 작성 완료: {article.get('title','')}",
+            metadata={"chars": sum(len(str(v)) for v in article.values())},
+        ))
+        return article
+    except Exception as exc:
+        await emit_thought(session_id, AgentThought(
+            agent_id="article_writer",
+            role=AgentRole.PORTFOLIO_MANAGER,
+            status=AgentStatus.DONE,
+            content=f"아티클 작성 건너뜀: {exc}",
+            metadata={},
+        ))
+        return None
 
 
 async def run_analysis(
@@ -907,6 +1037,22 @@ async def run_analysis(
         session_id=session_id,
         memory_block=memory_block,
     )
+
+    # 5.5단계: 토스/뉴닉 톤 아티클 리포트 (회의록 하단 부착)
+    try:
+        article = await write_article_report(
+            ticker=ticker,
+            company_name=company_name,
+            analyst_results=analyst_results,
+            debate_results=debate,
+            risk_result=risk,
+            decision=decision,
+            session_id=session_id,
+        )
+        if article:
+            decision.agents_summary["article_report"] = article
+    except Exception:
+        pass
 
     # 6단계: 의사결정 메모리 영속화 (사용자가 식별된 경우만)
     if user_id:

@@ -116,3 +116,41 @@ class GuruOutput(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     reasoning: str = Field(description="결정 근거 300자 이내")
     policy_notes: list[str] = Field(default_factory=list, description="적용된 정책 포인트 1~3개")
+
+
+class ArticleReportOutput(BaseModel):
+    """토스/뉴닉 스타일 친근한 아티클형 종목 리포트 출력.
+
+    회의록 하단에 첨부되어, 비전문가도 흐름을 따라 읽으며 결론·근거·실행안을
+    이해할 수 있도록 작성된다. 모든 본문 필드는 일반 한국어 산문(존댓말, 친근한 톤)이며
+    줄바꿈/이모지 없이 평문 단락으로 작성한다.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(description="기사 제목 — 한 줄, 30자 내외, 종목/결론을 함축")
+    lede: str = Field(description="리드 한 단락 — 결론과 핵심 이유를 200~300자로 요약")
+    situation_today: str = Field(
+        description=(
+            "오늘 이 종목을 둘러싼 시장/기업 상황을 친근하게 풀어쓴 단락 "
+            "(가격 흐름, 펀더멘털, 뉴스/공시, 매크로). 600~1000자."
+        )
+    )
+    why_this_decision: str = Field(
+        description=(
+            "왜 BUY/SELL/HOLD 라는 결론에 도달했는지를 분석가 토론과 리스크 검토 결과를 "
+            "이야기 형식으로 풀어낸 단락. 600~1000자."
+        )
+    )
+    how_to_act: str = Field(
+        description=(
+            "이 결론을 실행에 옮긴다면 어떻게 하면 좋은지 — 진입 비중·분할·손절·목표가를 "
+            "친근한 톤으로 안내. 400~700자."
+        )
+    )
+    what_to_watch: list[str] = Field(
+        default_factory=list,
+        description="앞으로 점검해야 할 체크포인트 3~6개. 각 항목은 한 문장, 80~150자.",
+    )
+    closing: str = Field(
+        description="마무리 한 단락 — 위험 고지 + 사용자 의사결정 책임 환기. 200~400자."
+    )

@@ -31,24 +31,176 @@ def get_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
 
 
 def get_market_index(days: int = 90) -> dict:
-    """KOSPI, KOSDAQ 주요 지수 최근 데이터"""
+    """한국·미국 거시 지표 묶음.
+
+    포함 시리즈 (FinanceDataReader 기반, 실패 시 조용히 스킵):
+    - KOSPI, KOSDAQ            : 한국 주가지수
+    - USD_KRW                  : 원/달러 환율
+    - SPX, NASDAQ              : 미국 시장 (글로벌 리스크 온/오프)
+    - VKOSPI                   : 한국 변동성지수 (코스피 옵션 IV)
+    - KR3YT, KR10YT            : 국고채 3년/10년 (장기금리 추세)
+
+    각 시리즈는 pandas DataFrame(`Close` 컬럼 포함). 호출자는 비어있는 시리즈를 허용해야 한다.
+    """
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    
-    indices = {}
-    try:
-        indices["KOSPI"] = fdr.DataReader("KS11", start, end)
-    except Exception:
-        pass
-    try:
-        indices["KOSDAQ"] = fdr.DataReader("KQ11", start, end)
-    except Exception:
-        pass
-    try:
-        indices["USD_KRW"] = fdr.DataReader("USD/KRW", start, end)
-    except Exception:
-        pass
+
+    indices: dict[str, pd.DataFrame] = {}
+    # (라벨, FDR 심볼). FDR 은 내부적으로 Yahoo 를 쓰므로 한국 변동성지수(VKOSPI)와
+    # 한국 국채 수익률은 종종 404 가 난다. 그 경우 VIX·^TNX 로 글로벌 risk proxy 를 대체 사용한다.
+    # 향후 ECOS API 통합 시 KR 국고채 3Y/10Y, 기준금리, VKOSPI 를 정식 추가할 수 있다.
+    series_specs = [
+        ("KOSPI", "KS11"),
+        ("KOSDAQ", "KQ11"),
+        ("USD_KRW", "USD/KRW"),
+        ("SPX", "US500"),       # S&P 500
+        ("NASDAQ", "IXIC"),     # NASDAQ Composite
+        ("VIX", "VIX"),         # 미국 변동성지수 (VKOSPI 대체 proxy)
+        ("US10YT", "^TNX"),     # 미국 10년 국채 수익률 (글로벌 금리 proxy)
+    ]
+    for label, sym in series_specs:
+        try:
+            df = fdr.DataReader(sym, start, end)
+            if df is not None and not df.empty:
+                indices[label] = df
+        except Exception:
+            pass
     return indices
+
+
+def get_investor_flows(days: int = 5) -> dict:
+    """KOSPI/KOSDAQ 외국인·기관 순매수.
+
+    데이터 소스 우선순위:
+      1) BOK ECOS (일별 외국인 순매수, 단위: 억원) — 한국은행 공식
+      2) pykrx 폴백 — 외국인+기관 합계 (현재 1.2.4 KRX 파서 버그로 실패 가능)
+
+    Returns:
+        {
+          "source": "BOK" | "pykrx" | "none",
+          "KOSPI":  {"foreign_total_eokwon": ..., "foreign_last_eokwon": ..., "window_days": N, ...},
+          "KOSDAQ": {...},
+          # BOK 인 경우 추가 필드:
+          "monthly_breakdown": {              # 월별 기관/개인/외국인 순매수 (KOSPI, 단위: 억원)
+              "months": ["202510", ...],
+              "institution_eokwon": [...],
+              "individual_eokwon": [...],
+              "foreigner_eokwon": [...],
+          }
+        }
+    """
+    out: dict = {"source": "none"}
+
+    # 1) BOK ECOS 우선
+    try:
+        from data.market import bok as _bok
+        if _bok.is_enabled():
+            bok_daily = _bok.get_foreign_net_buy_daily(days=max(days, 20))
+            if bok_daily.get("enabled") and bok_daily.get("summary"):
+                summary = bok_daily.get("summary", {})
+                kospi_vals = bok_daily.get("KOSPI", {}).get("values_eokwon", [])
+                kosdaq_vals = bok_daily.get("KOSDAQ", {}).get("values_eokwon", [])
+                out["source"] = "BOK"
+                out["KOSPI"] = {
+                    "foreign_total_eokwon": summary.get(f"kospi_{max(days, 20)}d_eokwon")
+                                            or summary.get("kospi_20d_eokwon"),
+                    "foreign_5d_eokwon": summary.get("kospi_5d_eokwon"),
+                    "foreign_20d_eokwon": summary.get("kospi_20d_eokwon"),
+                    "foreign_last_eokwon": summary.get("kospi_last_eokwon"),
+                    "window_days": len(kospi_vals),
+                    "unit": "억원",
+                }
+                out["KOSDAQ"] = {
+                    "foreign_total_eokwon": summary.get(f"kosdaq_{max(days, 20)}d_eokwon")
+                                            or summary.get("kosdaq_20d_eokwon"),
+                    "foreign_5d_eokwon": summary.get("kosdaq_5d_eokwon"),
+                    "foreign_20d_eokwon": summary.get("kosdaq_20d_eokwon"),
+                    "foreign_last_eokwon": summary.get("kosdaq_last_eokwon"),
+                    "window_days": len(kosdaq_vals),
+                    "unit": "억원",
+                }
+                # 월별 KOSPI 투자자별 분해 (기관/개인/외국인)
+                try:
+                    bok_monthly = _bok.get_investor_net_buy_monthly(months=6)
+                    if bok_monthly.get("enabled") and bok_monthly.get("months"):
+                        out["monthly_breakdown"] = {
+                            "months": bok_monthly.get("months", []),
+                            "institution_eokwon": bok_monthly.get("institution_eokwon", []),
+                            "individual_eokwon": bok_monthly.get("individual_eokwon", []),
+                            "foreigner_eokwon": bok_monthly.get("foreigner_eokwon", []),
+                            "unit": "억원",
+                        }
+                except Exception:
+                    pass
+                return out
+    except Exception:
+        pass
+
+    # 2) pykrx 폴백
+    try:
+        from pykrx import stock as pykrx_stock
+    except Exception:
+        return out
+
+    today = datetime.now()
+    start = (today - timedelta(days=max(days * 2, 10))).strftime("%Y%m%d")
+    end = today.strftime("%Y%m%d")
+
+    for market_label in ("KOSPI", "KOSDAQ"):
+        try:
+            df = pykrx_stock.get_market_trading_value_by_investor(start, end, market_label)
+            if df is None or df.empty:
+                continue
+            foreign_col = next((c for c in df.columns if "외국인" in c and "합계" in c), None)
+            inst_col = next((c for c in df.columns if "기관" in c and "합계" in c), None)
+            entry: dict = {"unit": "원"}
+            if foreign_col is not None:
+                entry["foreign_total_won"] = _safe_float(df[foreign_col].sum())
+                entry["foreign_last_won"] = _safe_float(df[foreign_col].iloc[-1])
+            if inst_col is not None:
+                entry["institution_total_won"] = _safe_float(df[inst_col].sum())
+                entry["institution_last_won"] = _safe_float(df[inst_col].iloc[-1])
+            entry["window_days"] = int(len(df))
+            if any(k.endswith("_won") for k in entry):
+                out[market_label] = entry
+                out["source"] = "pykrx"
+        except Exception:
+            pass
+    return out
+
+
+def get_kr_rates_summary() -> dict:
+    """한국 시장금리·기준금리·매크로 핵심 스냅샷 (BOK ECOS).
+
+    Returns:
+        {
+          "enabled": bool,
+          "rates": {  # 일별 시장금리 (단위: %)
+              "kr3yt_last": 3.496,
+              "kr10yt_last": 3.817,
+              "kr_yield_curve_10y_minus_3y_bp": 32.1,
+              "credit_spread_bp": 64.9,
+              "kr3yt_20d_change_bp": -8.6,
+          },
+          "key_indicators": [  # 100대 통계 중 매크로 핵심
+              {"name": "한국은행 기준금리", "value": 2.5, "unit": "%", "as_of": "..."},
+              ...
+          ]
+        }
+    """
+    try:
+        from data.market import bok as _bok
+        if not _bok.is_enabled():
+            return {"enabled": False, "reason": "BOK_API_KEY 미설정"}
+        rates = _bok.get_kr_rates_daily(days=60)
+        snap = _bok.get_macro_snapshot()
+        return {
+            "enabled": True,
+            "rates": rates.get("summary", {}) if rates.get("enabled") else {},
+            "key_indicators": snap.get("items", []) if snap.get("enabled") else [],
+        }
+    except Exception as exc:
+        return {"enabled": False, "reason": str(exc)}
 
 
 @lru_cache(maxsize=1)
@@ -182,9 +334,20 @@ def get_stock_info(ticker: str) -> dict:
         return {"ticker": ticker, "error": str(e)}
 
 
-def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | None = None) -> dict:
-    """기술 지표 계산 (MACD, RSI, 볼린저 밴드)
-    
+def get_technical_indicators(ticker: str, days: int = 380, as_of_date: str | None = None) -> dict:
+    """기술 지표 계산 (MACD, RSI, 볼린저 밴드, 다중 모멘텀).
+
+    윈도우 설계 (학술 가이드라인 기반):
+    - days=380 캘린더 ≒ 252 거래일 (1Y) → 52주 high/low, MA200, 12개월 모멘텀까지 안정적 산출.
+      참고: Jegadeesh & Titman (1993) "Returns to Buying Winners and Selling Losers"
+    - 너무 큰 윈도우는 비용/캐시 부담 + 직관성 저하 → 1Y 가 표준.
+
+    Returns 의 각 키는 **시점 명시**:
+    - `as_of`: 분석 기준일 (YYYY-MM-DD)
+    - `last_bar_date`: 데이터 마지막 봉 날짜 (휴장일이면 직전 영업일)
+    - `bars_used`: 계산에 사용한 거래일 봉 수
+    - 모멘텀(`mom_1m`, `mom_3m`, `mom_6m`, `mom_12m`): 각각 ~21/63/126/252 거래일 수익률 (%)
+
     as_of_date: "YYYY-MM-DD" 형식. 지정 시 해당 날짜까지의 데이터만 사용 (백테스트용, look-ahead 방지).
     """
     if as_of_date:
@@ -247,8 +410,27 @@ def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | Non
     sigma_pct = (sigma_val * 100) if sigma_val is not None else None
     swing_drop_pct = ((cur_price - swing_val) / cur_price * 100) if (swing_val and cur_price) else None
 
+    # 다중 호라이즌 모멘텀 (Jegadeesh & Titman 1993; 한국 시장 모멘텀은 3-12M 영역에서 유효).
+    def _mom(bars: int) -> float | None:
+        if len(close) <= bars or cur_price is None:
+            return None
+        past = _safe_float(close.iloc[-1 - bars])
+        if past is None or past == 0:
+            return None
+        return (cur_price - past) / past * 100
+
+    bars_used = int(len(close))
+    has_full_year = bars_used >= 252
+
     return {
         "ticker": ticker,
+        # ── 시점 메타 (LLM 이 데이터의 시기적 위치를 인지하도록) ──
+        "as_of": end,
+        "last_bar_date": str(df.index[-1].date()) if hasattr(df.index[-1], "date") else str(df.index[-1])[:10],
+        "bars_used": bars_used,
+        "window_calendar_days": int(days),
+        "has_full_year_history": has_full_year,
+        # ── 가격/지표 ──
         "current_price": cur_price,
         "change_pct": _safe_float((latest["Close"] - df.iloc[-2]["Close"]) / df.iloc[-2]["Close"] * 100) if len(df) > 1 else 0.0,
         "volume": int(latest.get("Volume", 0) or 0),
@@ -262,8 +444,16 @@ def get_technical_indicators(ticker: str, days: int = 120, as_of_date: str | Non
         "ma5": _safe_float(close.rolling(5).mean().iloc[-1]),
         "ma20": _safe_float(close.rolling(20).mean().iloc[-1]),
         "ma60": _safe_float(close.rolling(60).mean().iloc[-1]) if len(close) >= 60 else None,
-        "high_52w": _safe_float(close.rolling(min(252, len(close))).max().iloc[-1]),
-        "low_52w": _safe_float(close.rolling(min(252, len(close))).min().iloc[-1]),
+        "ma120": _safe_float(close.rolling(120).mean().iloc[-1]) if len(close) >= 120 else None,
+        "ma200": _safe_float(close.rolling(200).mean().iloc[-1]) if len(close) >= 200 else None,
+        # 52주 (정확히 ~252 거래일이 있을 때만 신뢰)
+        "high_52w": _safe_float(close.rolling(252).max().iloc[-1]) if has_full_year else None,
+        "low_52w": _safe_float(close.rolling(252).min().iloc[-1]) if has_full_year else None,
+        # 다중 호라이즌 수익률 (%) — 모멘텀 분석용
+        "mom_1m_pct": _safe_float(_mom(21)),
+        "mom_3m_pct": _safe_float(_mom(63)),
+        "mom_6m_pct": _safe_float(_mom(126)),
+        "mom_12m_pct": _safe_float(_mom(252)) if has_full_year else None,
         # 변동성/손절 산정 지표
         "atr_14": atr_val,
         "atr_pct": _safe_float(atr_pct),

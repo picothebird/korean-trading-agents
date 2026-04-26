@@ -14,6 +14,7 @@
 import Phaser from "phaser";
 import type { AgentRole, AgentStatus, AgentThought } from "@/types";
 import { ALL_AGENT_ROLES } from "@/lib/agentLabels";
+import { layerOfRole } from "@/lib/agentLabels";
 import { ALL_SHEETS, TINY_TOWN } from "./assets";
 import {
   DEFAULT_OFFICE_LAYOUT,
@@ -109,6 +110,10 @@ export class OfficeScene extends Phaser.Scene {
   // Phase 1 systems
   private cameraSystem: CameraSystem | null = null;
   private lastThoughts: ReadonlyArray<AgentThought> = [];
+  /** v3.3: 자동 stage 카메라 추적용. 마지막으로 fit한 stage(0/1/2 또는 -1=미설정). */
+  private lastFocusedStage: number = -1;
+  /** v3.4: stage 2 sub-zone 추적 ("decision"=결정실, "guru"=회장실, null=stage 2 아님). */
+  private lastSubZone: "decision" | "guru" | null = null;
   // Phase 4: layout v2 핸들 + 활성 layout 참조.
   private layoutHandle: LayoutRenderHandle | null = null;
   private zoneOverlayHandle: LayoutRenderHandle | null = null;
@@ -341,6 +346,35 @@ export class OfficeScene extends Phaser.Scene {
     this.cameraSystem?.focus(worldX, worldY, opts);
   }
 
+  /**
+   * Stage(0=L1 분석가실, 1=L2 토론장, 2=L3 결정실 또는 회장실)에 카메라 fit.
+   * stage 2는 union이 너무 넓어 줌이 너무 아웃되므로 roleHint로 단일 zone에 fit.
+   *  - guru_agent          → zones[3] (회장실)
+   *  - risk/portfolio       → zones[2] (결정실)
+   */
+  focusStage(
+    stageIndex: 0 | 1 | 2,
+    opts?: { instant?: boolean; roleHint?: AgentRole; force?: boolean },
+  ): void {
+    if (!this.cameraSystem) return;
+    const zones = this.getZones();
+    if (zones.length < 4) return;
+    let rect: { x: number; y: number; w: number; h: number } | null = null;
+    if (stageIndex === 0) {
+      const z = zones[0]; rect = { x: z.x, y: z.y, w: z.w, h: z.h };
+    } else if (stageIndex === 1) {
+      const z = zones[1]; rect = { x: z.x, y: z.y, w: z.w, h: z.h };
+    } else {
+      const useRight = opts?.roleHint === "guru_agent";
+      const z = useRight ? zones[3] : zones[2];
+      rect = { x: z.x, y: z.y, w: z.w, h: z.h };
+    }
+    this.cameraSystem.focusRect(rect, {
+      instant: opts?.instant,
+      force: opts?.force,
+    });
+  }
+
   getCameraInfo(): {
     scrollX: number;
     scrollY: number;
@@ -452,16 +486,21 @@ export class OfficeScene extends Phaser.Scene {
         // actor may be mid-destroy; skip this frame for it.
       }
     }
-    const zonesArr = this.getZones().map((z) => ({ name: z.name, x: z.x + z.w / 2, y: z.y + 8 }));
     return {
       cam: { scrollX: cam.scrollX, scrollY: cam.scrollY, zoom: cam.zoom, viewW: cam.width, viewH: cam.height },
       agents,
-      zones: zonesArr,
+      // v3.3: zone 라벨 표시 안 함 (사용자 요청).
+      zones: [],
     };
   }
 
   /** SSE 결과 주입 (create 이전에도 호출 안전). */
   applyThoughts(thoughts: ReadonlyArray<AgentThought>): void {
+    // 재시작 감지: 직전엔 thoughts가 있었는데 빈 배열로 리셋된 경우.
+    if (thoughts.length === 0 && this.lastThoughts.length > 0) {
+      this.lastFocusedStage = -1;
+      this.lastSubZone = null;
+    }
     // role별 마지막 thought를 채택
     const latest = new Map<AgentRole, ThoughtSnapshot>();
     for (const t of thoughts) {
@@ -480,12 +519,26 @@ export class OfficeScene extends Phaser.Scene {
       this.applySnapshot(role, snap);
     }
 
-    // Phase 1: 새 thought에 대해 자동 카메라 포커스 (manual hold 시 무시).
+    // Phase 1 + v3.3 stage focus: 새 thought가 다른 layer로 넘어가면 해당 stage로 카메라 fit.
+    // 같은 layer 내 변화는 무시 (stage 단위로만 카메라 이동).
     if (USE_FOCUS_SYSTEM && this.cameraSystem) {
       const target = diffFocusTarget(this.lastThoughts, thoughts);
       if (target) {
-        const actor = this.actors.get(target.role);
-        if (actor) this.cameraSystem.focus(actor.x, actor.y);
+        const layer = layerOfRole(target.role);
+        // stage 2에서는 같은 layer여도 결정실↔회장실 이동 시 재포커스 가능하도록 roleHint 전달.
+        const isGuruShift = layer === 2 && target.role === "guru_agent";
+        const isDecisionShift = layer === 2 && target.role !== "guru_agent";
+        const stageChanged = layer !== this.lastFocusedStage;
+        const subZoneChanged =
+          layer === 2 && this.lastFocusedStage === 2 &&
+          ((isGuruShift && this.lastSubZone !== "guru") ||
+            (isDecisionShift && this.lastSubZone !== "decision"));
+        if (stageChanged || subZoneChanged) {
+          this.lastFocusedStage = layer;
+          this.lastSubZone = layer === 2 ? (isGuruShift ? "guru" : "decision") : null;
+          // stage 전환은 항상 포커스 (manual hold보다 우선) — user는 이후 다시 휠/드래그로 조정 가능.
+          this.focusStage(layer as 0 | 1 | 2, { roleHint: target.role, force: true });
+        }
       }
     }
     this.lastThoughts = thoughts;

@@ -99,6 +99,16 @@ export interface TradeDecision {
       rules_applied: string[];
       notes: string[];
     };
+    /** 토스/뉴닉 톤 아티클형 리포트 (회의록 하단) */
+    article_report?: {
+      title: string;
+      lede: string;
+      situation_today: string;
+      why_this_decision: string;
+      how_to_act: string;
+      what_to_watch: string[];
+      closing: string;
+    };
   };
   timestamp: string;
 }
