@@ -1110,7 +1110,10 @@ async def start_portfolio_loop(req: PortfolioLoopStartRequest, request: Request)
         owner_user_id=_user_id_str(user),
         runtime_profile=dict(runtime_profile),
     )
-    rt = await portfolio_supervisor.start(settings_obj)
+    try:
+        rt = await portfolio_supervisor.start(settings_obj)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return {
         "loop_id": rt.loop_id,
         "status": "running",
