@@ -140,6 +140,11 @@ def get_request_token(request: Request) -> str | None:
         if token:
             return token
 
+    # Critical A1: HttpOnly 세션 쿠키 우선 읽기 (이하 fallback)
+    cookie_token = str(request.cookies.get("kta_session", "") or "").strip()
+    if cookie_token:
+        return cookie_token
+
     query_token = str(request.query_params.get("access_token", "") or "").strip()
     if query_token:
         return query_token

@@ -27,6 +27,7 @@ from data.market.krx_rules import (
     round_to_tick,
     session_slippage_multiplier,
 )
+from data.market.market_meta import get_lot_size
 
 
 KST = ZoneInfo("Asia/Seoul")
@@ -84,6 +85,10 @@ class AutoLoopSettings:
     initial_cash: float = 10_000_000.0
     owner_user_id: str = ""
     runtime_profile: dict[str, Any] | None = None
+    # Critical M5: 부분체결 시뮬레이션 활성화 시 60~100% 체결
+    simulate_partial_fills: bool = False
+    # Critical M4: T+N 결제 (한국 일반주식 = 2)
+    settlement_days: int = 2
 
 
 @dataclass
@@ -121,6 +126,28 @@ class PaperPortfolio:
     realized_pnl: float = 0.0
     total_fees: float = 0.0
     total_taxes: float = 0.0
+    # Critical M4: T+2 결제 — 매도 대금은 settlement_date까지 사용 불가.
+    # 각 항목: {"amount": float, "settle_date": "YYYY-MM-DD"}
+    pending_settlements: list[dict] = field(default_factory=list)
+
+    def available_cash(self) -> float:
+        """결제 대기 금액을 제외한 사용 가능 현금."""
+        pending = sum(float(p.get("amount", 0.0)) for p in self.pending_settlements)
+        return max(0.0, float(self.cash) - pending)
+
+    def settle_due(self, today_iso: str) -> float:
+        """오늘까지 결제 도래분을 cash에 반영 (이미 cash에 포함되어 있으므로 pending 제거만)."""
+        if not self.pending_settlements:
+            return 0.0
+        kept: list[dict] = []
+        released = 0.0
+        for p in self.pending_settlements:
+            if str(p.get("settle_date", "")) <= today_iso:
+                released += float(p.get("amount", 0.0))
+            else:
+                kept.append(p)
+        self.pending_settlements = kept
+        return released
 
 
 @dataclass
@@ -196,6 +223,7 @@ class AutoTradingSupervisor:
             self._loops[loop_id] = rt
             rt.task = asyncio.create_task(self._run_loop(rt), name=f"auto-loop:{loop_id}")
 
+        await self._persist_snapshot(rt, status="running")
         return rt
 
     async def stop(self, loop_id: str) -> bool:
@@ -218,6 +246,7 @@ class AutoTradingSupervisor:
 
         rt.stopped_at = _utc_now_iso()
         self._append_log(rt, "warn", "자동 루프 중지")
+        await self._persist_snapshot(rt, status="stopped")
         return True
 
     async def status(self, loop_id: str) -> dict | None:
@@ -413,6 +442,10 @@ class AutoTradingSupervisor:
         finally:
             rt.cycle_running = False
             rt.last_run_at = _utc_now_iso()
+            try:
+                await self._persist_snapshot(rt)
+            except Exception:
+                pass
 
     def _should_block_by_supervision(self, level: SupervisionLevel, requires_human: bool, risk_level: str) -> bool:
         if level == SupervisionLevel.STRICT:
@@ -432,6 +465,14 @@ class AutoTradingSupervisor:
         halt_yn = str(price_res.get("halt_yn", "") or "").upper()
         if halt_yn == "Y":
             return "거래정지 상태로 주문을 차단합니다."
+
+        # Critical M1: VI 발동 종목은 모든 감독 레벨에서 차단
+        try:
+            from data.market.market_meta import is_vi_engaged
+            if is_vi_engaged(price_res):
+                return "VI 발동 종목으로 주문을 보류합니다."
+        except Exception:
+            pass
 
         warning_code = str(price_res.get("warning_code", "") or "").strip()
         if level == SupervisionLevel.STRICT and warning_code not in {"", "0", "00"}:
@@ -496,7 +537,7 @@ class AutoTradingSupervisor:
                 by_budget = int(max(0.0, min(live_cash / max(1.0, effective_price), budget / max(1.0, effective_price))))
                 by_qty = int(max(1, rt.settings.order_qty * confidence_weight * supervision_weight))
                 qty = min(by_budget, by_qty) if by_budget > 0 else 0
-            qty = normalize_share_qty(qty, lot_size=1)
+            qty = normalize_share_qty(qty, lot_size=get_lot_size(rt.settings.ticker))
             return {
                 "side": "buy",
                 "qty": max(0, qty),
@@ -511,7 +552,7 @@ class AutoTradingSupervisor:
         else:
             shares_to_sell = int(live_shares * (delta_pct / 100.0))
             qty = max(0, min(int(live_shares), shares_to_sell if shares_to_sell > 0 else int(rt.settings.order_qty)))
-        qty = normalize_share_qty(qty, lot_size=1)
+        qty = normalize_share_qty(qty, lot_size=get_lot_size(rt.settings.ticker))
         return {
             "side": "sell",
             "qty": max(0, qty),
@@ -522,7 +563,23 @@ class AutoTradingSupervisor:
         if rt.paper is None:
             return
 
-        qty = normalize_share_qty(qty, lot_size=1)
+        qty = normalize_share_qty(qty, lot_size=get_lot_size(rt.settings.ticker))
+
+        # Critical M5: 부분체결 시뮬레이션
+        if rt.settings.simulate_partial_fills and qty > 0:
+            try:
+                from data.market.market_meta import simulate_partial_fill
+                qty = simulate_partial_fill(qty, enable=True)
+            except Exception:
+                pass
+
+        # Critical M4: 도래한 매도 결제분 회수 (pending 정리)
+        try:
+            from data.market.krx_holidays import now_kst
+            today_iso = now_kst().date().isoformat()
+            rt.paper.settle_due(today_iso)
+        except Exception:
+            pass
         if qty <= 0:
             rt.stats.skipped_cycles += 1
             self._append_log(rt, "info", "호가/수량 규칙 반영 후 주문 수량이 0이어서 보류합니다.")
@@ -543,9 +600,10 @@ class AutoTradingSupervisor:
 
         if side == "buy":
             total_cost = gross + fee
-            if total_cost > rt.paper.cash + 1e-6:
+            # Critical M4: 결제 대기 금액을 제외한 가용 현금으로 매수 가능 여부 판단
+            if total_cost > rt.paper.available_cash() + 1e-6:
                 rt.stats.skipped_cycles += 1
-                self._append_log(rt, "warn", "모의 매수 보류 · 현금 부족")
+                self._append_log(rt, "warn", "모의 매수 보류 · 가용 현금 부족 (T+2 결제 대기 차감)")
                 return
             prev_shares = rt.paper.shares
             new_shares = prev_shares + qty
@@ -554,7 +612,7 @@ class AutoTradingSupervisor:
             rt.paper.shares = new_shares
             rt.paper.cash -= total_cost
         else:
-            sell_qty = normalize_share_qty(min(int(rt.paper.shares), qty), lot_size=1)
+            sell_qty = normalize_share_qty(min(int(rt.paper.shares), qty), lot_size=get_lot_size(rt.settings.ticker))
             if sell_qty <= 0:
                 rt.stats.skipped_cycles += 1
                 self._append_log(rt, "warn", "모의 매도 보류 · 보유 수량 없음")
@@ -570,6 +628,15 @@ class AutoTradingSupervisor:
                 rt.paper.shares = 0.0
                 rt.paper.avg_buy_price = 0.0
             rt.paper.cash += net
+            # Critical M4: T+2 결제일까지 매도 대금 사용 제한 등록
+            try:
+                from data.market.krx_holidays import now_kst
+                from data.market.market_meta import settlement_trade_date
+                today = now_kst().date()
+                settle = settlement_trade_date(today, days=int(rt.settings.settlement_days))
+                rt.paper.pending_settlements.append({"amount": float(net), "settle_date": settle.isoformat()})
+            except Exception:
+                pass
             qty = sell_qty
 
         rt.paper.total_fees += fee
@@ -598,7 +665,7 @@ class AutoTradingSupervisor:
     async def _execute_live_trade(self, rt: AutoLoopRuntime, side: str, qty: int, market_price: int, confidence: float, reason: str) -> None:
         from data.kis.trading import place_order
 
-        live_qty = normalize_share_qty(qty, lot_size=1)
+        live_qty = normalize_share_qty(qty, lot_size=get_lot_size(rt.settings.ticker))
         if live_qty <= 0:
             rt.stats.skipped_cycles += 1
             self._append_log(rt, "info", "호가/수량 규칙 반영 후 실전 주문 수량이 0이어서 보류합니다.")
@@ -647,6 +714,29 @@ class AutoTradingSupervisor:
         stamp = datetime.now().strftime("%H:%M:%S")
         rt.logs.append(LoopLog(timestamp=stamp, level=level, message=message))
         rt.logs = rt.logs[-180:]
+
+    async def _persist_snapshot(self, rt: AutoLoopRuntime, *, status: str | None = None) -> None:
+        """Critical C1: 루프 상태를 trading_loops 컬렉션에 upsert."""
+        try:
+            from backend.core.mongodb import get_mongo_database
+            db = get_mongo_database()
+        except Exception:
+            return
+        try:
+            snap = self._serialize_runtime(rt)
+        except Exception:
+            return
+        snap["kind"] = "auto"
+        snap["status"] = status or ("running" if rt.running else "stopped")
+        snap["updated_at"] = datetime.utcnow()
+        try:
+            await db.trading_loops.update_one(
+                {"loop_id": rt.loop_id},
+                {"$set": snap},
+                upsert=True,
+            )
+        except Exception:
+            pass
 
     def _serialize_runtime(self, rt: AutoLoopRuntime) -> dict:
         paper = rt.paper

@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.core.mongodb import get_mongo_database
@@ -81,6 +82,45 @@ def _build_session_doc(user_id: ObjectId) -> tuple[str, dict[str, Any]]:
         "expires_at": expires_at,
     }
     return token, doc
+
+
+# ── Critical A1/A5: HttpOnly 세션 쿠키 + CSRF (double-submit) ──────────
+_SESSION_COOKIE_MAX_AGE = 14 * 24 * 3600
+_COOKIE_SECURE_DEFAULT = False  # 운영 HTTPS에서 True 권장 (env에서 오버라이드 가능)
+
+
+def _set_session_cookies(response: JSONResponse, token: str) -> None:
+    """HttpOnly 세션 쿠키와 더블서밋 CSRF 쿠키를 함께 발급."""
+    try:
+        from backend.core.config import settings as _settings
+        secure = (not _settings.debug)
+    except Exception:
+        secure = _COOKIE_SECURE_DEFAULT
+
+    response.set_cookie(
+        key="kta_session",
+        value=token,
+        max_age=_SESSION_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+    csrf = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key="kta_csrf",
+        value=csrf,
+        max_age=_SESSION_COOKIE_MAX_AGE,
+        httponly=False,  # JS가 읽어 X-CSRF-Token 헤더로 동봉
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_session_cookies(response: JSONResponse) -> None:
+    response.delete_cookie("kta_session", path="/")
+    response.delete_cookie("kta_csrf", path="/")
 
 
 @router.get("/auth/bootstrap")
@@ -176,12 +216,15 @@ async def auth_register(req: AuthRegisterRequest, request: Request):
         status_code=200,
     )
 
-    return {
+    payload = {
         "access_token": token,
         "token_type": "bearer",
         "expires_in_sec": 14 * 24 * 3600,
         "user": sanitize_user(created_user),
     }
+    resp = JSONResponse(content=payload)
+    _set_session_cookies(resp, token)
+    return resp
 
 
 @router.post("/auth/login")
@@ -247,12 +290,15 @@ async def auth_login(req: AuthLoginRequest, request: Request):
         status_code=200,
     )
 
-    return {
+    payload = {
         "access_token": token,
         "token_type": "bearer",
         "expires_in_sec": 14 * 24 * 3600,
         "user": sanitize_user(user),
     }
+    resp = JSONResponse(content=payload)
+    _set_session_cookies(resp, token)
+    return resp
 
 
 @router.post("/auth/logout")
@@ -264,6 +310,8 @@ async def auth_logout(request: Request):
     token_value = ""
     if token.lower().startswith("bearer "):
         token_value = token[7:].strip()
+    if not token_value:
+        token_value = str(request.cookies.get("kta_session", "") or "").strip()
     if not token_value:
         token_value = str(request.query_params.get("access_token", "") or "").strip()
 
@@ -278,7 +326,9 @@ async def auth_logout(request: Request):
         status_code=200,
     )
 
-    return {"ok": True}
+    resp = JSONResponse(content={"ok": True})
+    _clear_session_cookies(resp)
+    return resp
 
 
 @router.get("/auth/me")

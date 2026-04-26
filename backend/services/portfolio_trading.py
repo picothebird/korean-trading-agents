@@ -23,6 +23,7 @@ from agents.orchestrator.orchestrator import run_analysis
 from backend.core.events import clear_thought_queue
 from backend.core.user_runtime_settings import runtime_profile_context
 from data.market.fetcher import get_market_universe, get_stock_info, get_technical_indicators
+from data.market.market_meta import get_lot_size, is_vi_engaged
 from data.market.krx_rules import (
     KrxSession,
     get_krx_session,
@@ -104,6 +105,10 @@ class PortfolioLoopSettings:
     execution_session_mode: ExecutionSessionMode = ExecutionSessionMode.REGULAR_ONLY
     owner_user_id: str = ""
     runtime_profile: dict[str, Any] | None = None
+    # Critical M5: 부분체결 시뮬레이션
+    simulate_partial_fills: bool = False
+    # Critical M4: T+N 결제 (한국 일반주식 = 2)
+    settlement_days: int = 2
 
 
 @dataclass
@@ -173,6 +178,25 @@ class PortfolioAccount:
     realized_pnl: float = 0.0
     total_fees: float = 0.0
     total_taxes: float = 0.0
+    # Critical M4: T+2 결제 대기 항목
+    pending_settlements: list[dict] = field(default_factory=list)
+
+    def available_cash(self) -> float:
+        pending = sum(float(p.get("amount", 0.0)) for p in self.pending_settlements)
+        return max(0.0, float(self.cash) - pending)
+
+    def settle_due(self, today_iso: str) -> float:
+        if not self.pending_settlements:
+            return 0.0
+        kept: list[dict] = []
+        released = 0.0
+        for p in self.pending_settlements:
+            if str(p.get("settle_date", "")) <= today_iso:
+                released += float(p.get("amount", 0.0))
+            else:
+                kept.append(p)
+        self.pending_settlements = kept
+        return released
 
 
 @dataclass
@@ -252,6 +276,7 @@ class PortfolioSupervisor:
         async with self._lock:
             self._loops[loop_id] = rt
             rt.task = asyncio.create_task(self._run_loop(rt), name=f"portfolio-loop:{loop_id}")
+        await self._persist_snapshot(rt, status="running")
         return rt
 
     async def stop(self, loop_id: str) -> bool:
@@ -274,6 +299,7 @@ class PortfolioSupervisor:
 
         rt.stopped_at = _utc_now_iso()
         self._append_log(rt, "warn", "포트폴리오 루프 중지")
+        await self._persist_snapshot(rt, status="stopped")
         return True
 
     async def status(self, loop_id: str) -> dict | None:
@@ -414,6 +440,10 @@ class PortfolioSupervisor:
         finally:
             rt.cycle_running = False
             rt.last_run_at = _utc_now_iso()
+            try:
+                await self._persist_snapshot(rt)
+            except Exception:
+                pass
 
     def _build_universe(self, settings: PortfolioLoopSettings) -> list[dict]:
         universe_map: dict[str, dict] = {}
@@ -867,7 +897,7 @@ class PortfolioSupervisor:
                 continue
 
             if gap_value < 0:
-                sell_qty = normalize_share_qty(min(float(pos.shares), abs(gap_value) / price), lot_size=1)
+                sell_qty = normalize_share_qty(min(float(pos.shares), abs(gap_value) / price), lot_size=get_lot_size(ticker))
                 if sell_qty > 0:
                     sells.append({
                         "ticker": ticker,
@@ -877,7 +907,7 @@ class PortfolioSupervisor:
                         "reason": f"리밸런싱 축소 {gap_pct:.2f}%",
                     })
             else:
-                buy_qty = normalize_share_qty(abs(gap_value) / price, lot_size=1)
+                buy_qty = normalize_share_qty(abs(gap_value) / price, lot_size=get_lot_size(ticker))
                 if buy_qty > 0:
                     buys.append({
                         "ticker": ticker,
@@ -960,6 +990,14 @@ class PortfolioSupervisor:
         if halt_yn == "Y":
             return "거래정지 상태"
 
+        # Critical M1: VI(변동성완화장치) 발동 종목 차단
+        try:
+            from data.market.market_meta import is_vi_engaged
+            if is_vi_engaged(quote):
+                return "VI 발동 종목"
+        except Exception:
+            pass
+
         warning_code = str(quote.get("warning_code", "") or "").strip()
         if warning_code not in {"", "0", "00"}:
             return f"시장경고코드({warning_code})"
@@ -985,9 +1023,24 @@ class PortfolioSupervisor:
         reason: str,
         status: Literal["simulated", "executed"],
     ) -> bool:
-        qty = normalize_share_qty(qty, lot_size=1)
+        qty = normalize_share_qty(qty, lot_size=get_lot_size(ticker))
         if qty <= 0:
             return False
+
+        # Critical M4: 결제 도래분 회수
+        try:
+            from data.market.krx_holidays import now_kst
+            rt.account.settle_due(now_kst().date().isoformat())
+        except Exception:
+            pass
+
+        # Critical M5: 부분체결 시뮬레이션
+        if getattr(rt.settings, "simulate_partial_fills", False):
+            try:
+                from data.market.market_meta import simulate_partial_fill
+                qty = simulate_partial_fill(qty, enable=True)
+            except Exception:
+                pass
 
         session = get_krx_session()
         slippage_bps = rt.settings.slippage_bps * session_slippage_multiplier(session)
@@ -1006,8 +1059,8 @@ class PortfolioSupervisor:
 
         if side == "buy":
             total_cost = gross + fee
-            if total_cost > rt.account.cash + 1e-6:
-                affordable_qty = normalize_share_qty(rt.account.cash / max(1.0, fill_price * (1 + rt.settings.fee_bps / 10000.0)), lot_size=1)
+            if total_cost > rt.account.available_cash() + 1e-6:
+                affordable_qty = normalize_share_qty(rt.account.available_cash() / max(1.0, fill_price * (1 + rt.settings.fee_bps / 10000.0)), lot_size=get_lot_size(ticker))
                 qty = int(affordable_qty)
                 if qty <= 0:
                     return False
@@ -1032,7 +1085,7 @@ class PortfolioSupervisor:
                 return False
 
             sell_qty = min(int(position.shares), int(qty))
-            sell_qty = normalize_share_qty(sell_qty, lot_size=1)
+            sell_qty = normalize_share_qty(sell_qty, lot_size=get_lot_size(ticker))
             if sell_qty <= 0:
                 return False
 
@@ -1048,6 +1101,16 @@ class PortfolioSupervisor:
             if position.shares <= 0:
                 rt.account.positions.pop(ticker, None)
             rt.account.cash += net
+            # Critical M4: 매도 대금 T+2 결제 등록
+            try:
+                from data.market.krx_holidays import now_kst
+                from data.market.market_meta import settlement_trade_date
+                today = now_kst().date()
+                settle_days = int(getattr(rt.settings, "settlement_days", 2))
+                settle = settlement_trade_date(today, days=settle_days)
+                rt.account.pending_settlements.append({"amount": float(net), "settle_date": settle.isoformat()})
+            except Exception:
+                pass
 
         rt.account.total_fees += fee
         rt.account.total_taxes += tax
@@ -1095,6 +1158,29 @@ class PortfolioSupervisor:
             ),
         )
         rt.trade_history = rt.trade_history[:240]
+
+    async def _persist_snapshot(self, rt: PortfolioRuntime, *, status: str | None = None) -> None:
+        """Critical C1: 포트폴리오 루프 상태를 trading_loops 컬렉션에 upsert."""
+        try:
+            from backend.core.mongodb import get_mongo_database
+            db = get_mongo_database()
+        except Exception:
+            return
+        try:
+            snap = self._serialize_runtime(rt)
+        except Exception:
+            return
+        snap["kind"] = "portfolio"
+        snap["status"] = status or ("running" if rt.running else "stopped")
+        snap["updated_at"] = datetime.utcnow()
+        try:
+            await db.trading_loops.update_one(
+                {"loop_id": rt.loop_id},
+                {"$set": snap},
+                upsert=True,
+            )
+        except Exception:
+            pass
 
     def _append_log(self, rt: PortfolioRuntime, level: Literal["info", "success", "warn", "error"], message: str) -> None:
         rt.logs.append(

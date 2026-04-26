@@ -162,7 +162,7 @@ app.add_middleware(
     allow_origins=_allowed,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-CSRF-Token", "X-Idempotency-Key"],
 )
 
 # ── 보안 헤더 + 본문 크기 제한 ──────────────────────────────

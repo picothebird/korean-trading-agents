@@ -99,6 +99,56 @@ def install_security_middlewares(app: FastAPI) -> None:
     """앱에 보안 미들웨어 일괄 설치."""
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(MaxBodySizeMiddleware, max_bytes=settings.max_request_body_bytes)
+    app.add_middleware(CsrfMiddleware)
+
+
+# ─────────────────────────────────────────────────────────
+# Critical A5: CSRF (double-submit cookie)
+# ─────────────────────────────────────────────────────────
+
+# 쿠키 인증 사용 시 unsafe HTTP 메서드는 X-CSRF-Token 헤더와 kta_csrf 쿠키 일치 강제.
+# Authorization: Bearer 헤더 인증은 CSRF 영향이 없으므로 면제.
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+_CSRF_EXEMPT_PATH_PREFIXES = (
+    "/api/auth/login",
+    "/api/auth/register",
+    # SSE 스트림은 GET이지만 명시
+    "/api/agents/thoughts/stream",
+)
+
+
+class CsrfMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        method = request.method.upper()
+        if method in _CSRF_SAFE_METHODS:
+            return await call_next(request)
+
+        path = request.url.path or ""
+        for prefix in _CSRF_EXEMPT_PATH_PREFIXES:
+            if path.startswith(prefix):
+                return await call_next(request)
+
+        # Bearer 헤더 인증이면 CSRF 면제 (브라우저 자동 첨부 대상이 아님)
+        auth_header = str(request.headers.get("authorization", "") or "").strip()
+        if auth_header.lower().startswith("bearer "):
+            return await call_next(request)
+
+        # 쿠키 기반 인증인 경우만 CSRF 검사
+        cookie_token = str(request.cookies.get("kta_session", "") or "").strip()
+        if not cookie_token:
+            # 인증 자체가 없으면 라우트의 require_user 가 401 처리. 여기선 통과.
+            return await call_next(request)
+
+        csrf_cookie = str(request.cookies.get("kta_csrf", "") or "").strip()
+        csrf_header = str(request.headers.get("x-csrf-token", "") or "").strip()
+        if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "CSRF 토큰 검증 실패"},
+            )
+
+        return await call_next(request)
+
 
 
 def boot_security_check_or_warn() -> None:

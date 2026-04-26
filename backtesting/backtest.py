@@ -16,6 +16,7 @@ import pandas as pd
 import numpy as np
 import FinanceDataReader as fdr
 from data.market.krx_rules import normalize_share_qty, round_to_tick
+from data.market.market_meta import cap_price_to_limit, get_lot_size
 
 
 @dataclass
@@ -88,8 +89,10 @@ def run_simple_backtest(
         if pending_signal is not None:
             executed_signal = current_signal
             if pending_signal == "BUY" and not in_position and cash > 0:
-                buy_price = float(round_to_tick(price * (1 + transaction_cost / 2), direction="up"))
-                buy_qty = normalize_share_qty(cash / max(1.0, buy_price), lot_size=1)
+                _prev_close = float(close.iloc[i - 1]) if i > 0 else float(price)
+                _raw_buy = price * (1 + transaction_cost / 2)
+                buy_price = float(round_to_tick(cap_price_to_limit(_raw_buy, _prev_close), direction="up"))
+                buy_qty = normalize_share_qty(cash / max(1.0, buy_price), lot_size=get_lot_size(ticker))
                 if buy_qty > 0:
                     shares = float(buy_qty)
                     cash -= buy_qty * buy_price
@@ -98,9 +101,11 @@ def run_simple_backtest(
                     entry_date = date_idx
                     executed_signal = "BUY"
             elif pending_signal in ("SELL", "HOLD") and in_position and shares > 0:
-                sell_qty = normalize_share_qty(shares, lot_size=1)
+                sell_qty = normalize_share_qty(shares, lot_size=get_lot_size(ticker))
                 if sell_qty > 0:
-                    sell_price = float(round_to_tick(price * (1 - transaction_cost / 2), direction="down"))
+                    _prev_close = float(close.iloc[i - 1]) if i > 0 else float(price)
+                    _raw_sell = price * (1 - transaction_cost / 2)
+                    sell_price = float(round_to_tick(cap_price_to_limit(_raw_sell, _prev_close), direction="down"))
                     proceeds = sell_qty * sell_price
                     ret_pct = (sell_price / entry_price - 1) * 100
                     trades.append({
@@ -307,8 +312,9 @@ async def run_agent_backtest(
             executed_signal = current_signal
 
             if new_sig == "BUY" and current_signal != "BUY" and cash > 0:
-                buy_price = float(round_to_tick(price * (1 + transaction_cost / 2), direction="up"))
-                buy_qty = normalize_share_qty(cash / max(1.0, buy_price), lot_size=1)
+                _prev_close = float(close.iloc[i - 1]) if i > 0 else float(price)
+                buy_price = float(round_to_tick(cap_price_to_limit(price * (1 + transaction_cost / 2), _prev_close), direction="up"))
+                buy_qty = normalize_share_qty(cash / max(1.0, buy_price), lot_size=get_lot_size(ticker))
                 if buy_qty > 0:
                     shares = float(buy_qty)
                     cash -= buy_qty * buy_price
@@ -317,9 +323,10 @@ async def run_agent_backtest(
                     executed_signal = "BUY"
 
             elif new_sig in ("SELL", "HOLD") and current_signal == "BUY" and shares > 0:
-                sell_qty = normalize_share_qty(shares, lot_size=1)
+                sell_qty = normalize_share_qty(shares, lot_size=get_lot_size(ticker))
                 if sell_qty > 0:
-                    sell_price = float(round_to_tick(price * (1 - transaction_cost / 2), direction="down"))
+                    _prev_close = float(close.iloc[i - 1]) if i > 0 else float(price)
+                    sell_price = float(round_to_tick(cap_price_to_limit(price * (1 - transaction_cost / 2), _prev_close), direction="down"))
                     ret_pct = (sell_price / entry_price - 1) * 100
                     trades.append({
                         "entry_date": str(entry_date.date()) if entry_date else date_str,
@@ -434,9 +441,10 @@ async def run_agent_backtest(
     # 마지막 날 포지션 강제 청산
     if shares > 0:
         price = float(close.iloc[-1])
-        sell_qty = normalize_share_qty(shares, lot_size=1)
+        sell_qty = normalize_share_qty(shares, lot_size=get_lot_size(ticker))
         if sell_qty > 0:
-            sell_price = float(round_to_tick(price * (1 - transaction_cost / 2), direction="down"))
+            _prev_close = float(close.iloc[-2]) if len(close) > 1 else float(price)
+            sell_price = float(round_to_tick(cap_price_to_limit(price * (1 - transaction_cost / 2), _prev_close), direction="down"))
             ret_pct = (sell_price / entry_price - 1) * 100
             trades.append({
                 "entry_date": str(entry_date.date()) if entry_date else end_date,
