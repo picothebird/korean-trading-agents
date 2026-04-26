@@ -2,1009 +2,243 @@
 
 # Korean Trading Agents (KTA)
 
-**한국 주식 시장(KOSPI · KOSDAQ)을 위한 멀티 AI 에이전트 자동매매 플랫폼**
+**한국 주식 시장(KOSPI · KOSDAQ)을 위한 멀티 에이전트 AI 트레이딩 플랫폼**
 
-> 8명의 LLM 에이전트가 분석·토론·검증·승인 절차를 거쳐 매매 결정을 내리고,
-> 사용자 정책(GURU), 리스크 통제, 사용자 승인 절차를 통과한 주문만 KIS OpenAPI로 실행합니다.
+LLM 분석가 5명 + 리서처 토론 + 리스크/포트폴리오 매니저가 협업해
+실시간 시세, OpenDART 공시, 뉴스 RSS, 내부자 시그널까지 종합한 매매 의견을 만들어 냅니다.
 
-[![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.119-009688?logo=fastapi&logoColor=white)](#)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](#)
-[![LangGraph](https://img.shields.io/badge/LangGraph-1.x-1C3C3C)](#)
-[![KIS OpenAPI](https://img.shields.io/badge/KIS-OpenAPI-1E40AF)](#)
-[![License](https://img.shields.io/badge/license-MIT-green)](#-라이선스)
+[빠른 시작](#-빠른-시작) ·
+[주요 기능](#-주요-기능) ·
+[화면 구성](#-화면-구성) ·
+[자주 묻는 질문](#-자주-묻는-질문) ·
+**[개발자 가이드 →](docs/DEVELOPER_GUIDE.md)**
 
 </div>
 
 ---
 
-## 🎯 핵심 요약
+## 한눈에 보는 KTA
 
-> **"한국 주식 자동매매를 보다 신중하게 운용하기 위해, GPT-5 기반 멀티 에이전트가 공동 분석을 수행하고 Kelly Criterion으로 비중을 산정한 뒤, GURU 정책과 사용자 승인 절차를 통과한 주문만 한국투자증권 OpenAPI로 집행합니다."**
+- **왜 만들었나** — 한국 시장 데이터(가격·재무·공시·뉴스)를 LLM 에이전트들이
+  **각자의 전문 영역에서 분석한 뒤 토론**하도록 만들어, 한 명의 모델이 내놓는 결정보다
+  편향이 적고 근거가 풍부한 의견을 받기 위해서입니다.
+- **무엇을 하는가** — 종목 하나를 입력하면
+  ① 5인 분석가 패널(기술/재무/감성/매크로/백테스트) →
+  ② 강세·약세 리서처 토론 →
+  ③ 리스크·포트폴리오 매니저 최종 판단 순으로 의사결정이 흐릅니다.
+- **무엇이 다른가** — 단순 LLM 호출이 아니라
+  **한국 거래소 규칙(상하한가·VI·T+2·휴장일·호가 단위)** 을 데이터 레이어가 강제하고,
+  **OpenDART 내부자 시그널**(자사주 매입·소각, 5%룰, 임원 거래 등)을
+  10단계 폴라리티로 분류해 감성 분석가 프롬프트에 별도 블록으로 주입합니다.
 
-### 어떤 프로젝트인가
-- **로컬에서 실행하는 풀스택 트레이딩 시스템**입니다. 백엔드(FastAPI), 프론트엔드(Next.js 16), MongoDB, 8명의 LLM 에이전트, KIS API 연동, 백테스터, 다크 모드 UI를 하나의 흐름으로 묶었습니다.
-- **단순 신호형 매매 봇이 아닙니다.** 4명의 분석가 → 강세/약세 토론 → 리스크 매니저(Kelly) → 포트폴리오 매니저 → GURU 정책 레이어로 이어지는 **5단계 의사결정 파이프라인**으로 움직입니다.
-- **모의투자와 실전투자를 모두 지원합니다.** KIS 모의투자 서버(`openapivts`)와 실전 서버(`openapi`)를 설정값에 따라 자동으로 분기합니다.
+> ⚠️ **투자 자문이 아닙니다.** 본 프로젝트는 연구 및 교육 목적의 데모입니다.
+> 실거래 연동(KIS Open API)은 모의투자·실전 모두 가능하지만, 모든 손익은 사용자 책임입니다.
 
-### 누가 쓰면 좋은가
-- **AI/퀀트에 관심 있는 국내 개인 투자자**. 자신의 투자 원칙(`GURU 원칙`)을 LLM 판단에 반영해 자동매매에 녹여 넣고 싶은 사람.
-- **트레이딩 시스템 개발자**. 멀티 에이전트 의사결정, KIS 주문 승인 절차, 한국 시장 특수 규칙(서킷브레이커, 호가단위, 정규장/시간외 세션) 구현 예시를 참고하려는 사람.
-- **연구·학습 목적 사용자**. TradingAgents 논문 아키텍처를 한국 시장 데이터(`pykrx`, `FinanceDataReader`)와 결합해 실전형으로 구현한 예제를 보고 싶은 사람.
+---
 
-### 무엇이 다른가
-| 일반적인 자동매매 봇 | Korean Trading Agents |
+## ⚡ 빠른 시작
+
+### 1. 사전 준비
+
+| 항목 | 버전 / 비고 |
 |---|---|
-| 단일 신호 기반 주문 | **5단계 합의 구조** (분석 → 토론 → 리스크 → PM → GURU) |
-| 고정 비중 | **Kelly Criterion (Half-Kelly)** 기반 동적 비중 산정 |
-| 일부 조건만 점검 | **상한가/하한가/거래정지/시장경고/서킷브레이커**까지 다중 점검 |
-| LLM 내부 판단이 보이지 않음 | **에이전트별 추론 과정을 SSE로 실시간 스트리밍** |
-| 사용자 원칙 반영이 어려움 | **GURU 정책**으로 투자 철학, 신뢰도, 리스크, 포지션 상한을 함께 강제 |
-| KIS를 바로 호출 | **UI 2단계 확인 → MongoDB 승인 기록 → 만료 처리 → 실주문** |
-| 모의/실전 전환이 번거로움 | 환경 변수 1개(`KIS_MOCK`)로 URL/TR_ID 자동 분기 |
-
----
-
-## 📑 목차
-
-1. [30초 데모](#-30초-데모)
-2. [핵심 기능](#-핵심-기능)
-3. [시스템 아키텍처](#-시스템-아키텍처)
-4. [투자 로직 상세 (가장 중요)](#-투자-로직-상세-가장-중요)
-   - [4.1 멀티에이전트 5단계 파이프라인](#41-멀티에이전트-5단계-파이프라인)
-   - [4.2 Kelly Criterion 포지션 사이징](#42-kelly-criterion-포지션-사이징)
-   - [4.3 GURU 정책 레이어](#43-guru-정책-레이어)
-   - [4.4 단일 종목 AutoLoop](#44-단일-종목-autoloop)
-   - [4.5 포트폴리오 PortfolioLoop](#45-포트폴리오-portfolioloop)
-    - [4.6 KIS 주문 + 사용자 승인 플로우](#46-kis-주문--사용자-승인-플로우)
-   - [4.7 한국 시장 안전장치](#47-한국-시장-안전장치)
-   - [4.8 백테스트](#48-백테스트)
-5. [설치 및 실행](#-설치-및-실행)
-6. [환경 변수](#-환경-변수)
-7. [API 레퍼런스](#-api-레퍼런스)
-8. [프론트엔드 가이드](#-프론트엔드-가이드)
-9. [디자인 시스템](#-디자인-시스템)
-10. [개발 가이드](#-개발-가이드)
-11. [트러블슈팅](#-트러블슈팅)
-12. [보안 · 면책](#-보안--면책)
-13. [로드맵 · 기여 · 라이선스](#-로드맵)
-
----
-
-## ⚡ 30초 데모
-
-```powershell
-# 1. 클론 + 가상환경
-git clone https://github.com/picothebird/korean-trading-agents.git
-cd korean-trading-agents
-python setup.py                           # .venv 생성 + requirements 설치
-
-# 2. .env 작성 (.env.example 참고)
-copy .env.example .env
-notepad .env                              # OPENAI_API_KEY, KIS_*, MONGODB_URI 입력
-
-# 3. 백엔드 + 프론트 한 번에 실행
-.\start.bat                               # Windows
-# ./start.sh                              # macOS / Linux
-```
-
-브라우저에서 **http://localhost:3000**에 접속한 뒤 로그인하고, 종목 검색(예: `005930`) 후 `분석 시작`을 누르면 8명의 에이전트 추론 과정이 실시간으로 표시됩니다.
-
-> 처음에는 반드시 **모의투자(`KIS_MOCK=true`) + paper_trade 모드**로 시작하세요. 실전 전환은 [4.6](#46-kis-주문--사용자-승인-플로우) 참고.
-
----
-
-## 🌟 핵심 기능
-
-### 분석
-- **8명의 LLM 에이전트**. `technical_analyst`, `fundamental_analyst`, `sentiment_analyst`, `macro_analyst`, `bull_researcher`, `bear_researcher`, `risk_manager`, `portfolio_manager`에 더해 최종 정책 레이어 `guru_agent`가 동작합니다.
-- **실시간 SSE 스트리밍**. 각 에이전트의 상태(`THINKING`/`ANALYZING`/`DEBATING`/`DONE`)와 추론 로그가 실시간으로 흘러가는 "에이전트 오피스" 뷰를 제공합니다.
-- **JSON 형식 강제 + 안전 파서**. 코드 블록 제거, 첫 `{`부터 마지막 `}`까지 추출하고, 실패 시 안전한 기본 경로로 복구합니다.
-
-### 의사결정
-- **Kelly Criterion (Half-Kelly)** 기반 포지션 사이징 + 0.05 ~ 0.25 범위 제한
-- **사용자 승인 필요 조건**. 신뢰도 ≥ 85%, 포지션 ≥ 20%, 리스크 = CRITICAL 중 하나에 해당하면 승인 플래그를 세웁니다.
-- **GURU 사용자 정책**. 자유 서술 투자 철학과 5가지 정량 룰을 LLM 검토와 결정론적 게이트에 함께 적용합니다.
-
-### 실행
-- **단일 종목 AutoLoop**. 1분 이상 원하는 주기로 자동 사이클을 돌리며, 신뢰도/감독 레벨/시장 상태 등 여러 게이트를 통과한 경우에만 주문합니다.
-- **포트폴리오 PortfolioLoop**. 시장 스캔 → 후보 랭킹 → 병렬 분석 → 목표 비중 계산 → 리밸런싱 순서로 움직입니다.
-- **KIS 주문 승인 사이클**. 인앱 2단계 확인 → MongoDB pending 기록(만료 포함) → 사용자 승인 → 실주문 → 결과 반환 순서로 처리합니다.
-- **모의 ↔ 실전 자동 라우팅**. 환경 변수 1개로 URL과 TR_ID(`T`→`V`)를 자동 전환합니다.
-
-### 부가
-- **백테스트**. `FinanceDataReader` 기반 데이터에 한국 거래세 0.18%, 수수료 0.015%를 반영하고, 일별 의사결정 기반 백테스트와 AI 에이전트 백테스트를 모두 지원합니다.
-- **다크/라이트/시스템 테마**. FOUC를 막는 인라인 스크립트와 Linear/Vercel/Toss 계열 팔레트를 함께 적용했습니다.
-- **한국 시장 색상 규칙 유지**. 빨강=상승, 파랑=하락을 테마와 무관하게 유지합니다.
-- **per-user 런타임 설정**. 사용자별로 LLM 모델, GURU 정책, KIS 자격증명을 독립 저장하며 KIS 관련 정보는 `Fernet`으로 암호화합니다.
-
----
-
-## 🏛️ 시스템 아키텍처
-
-```
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                                Frontend (Next.js 16)                            │
-│   AgentOffice · KisPanel · AutoLoopPanel · PortfolioLoopPanel · BacktestPanel  │
-│                       SettingsPanel · ThemeProvider · ToastProvider             │
-└──────────────┬───────────────────────────────────────────────┬─────────────────┘
-               │ REST + SSE (EventSource)                       │ WebSocket(선택)
-               ▼                                                 ▼
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                          FastAPI Backend (uvicorn :8000)                        │
-│                                                                                 │
-│  ┌──────────────┐   ┌─────────────────┐   ┌──────────────────────────────────┐ │
-│  │ user_system  │   │ AutoTradingSup  │   │  Order Approvals (Mongo+Fernet)  │ │
-│  │ /auth /me    │   │ PortfolioSup    │   │  pending → approved/rejected     │ │
-│  └──────┬───────┘   └────────┬────────┘   └─────────────┬────────────────────┘ │
-│         │                    │                          │                       │
-│         ▼                    ▼                          ▼                       │
-│  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │           agents.orchestrator.run_analysis()  ←  핵심 파이프라인           │  │
-│  │   ┌────────────────────────────────────────────────────────────────────┐ │  │
-│  │   │ 1. DATA   : 4 analysts (parallel asyncio.gather)                  │ │  │
-│  │   │ 2. DEBATE : bull ↔ bear (N rounds, 라운드별 시세/뉴스 재조회)      │ │  │
-│  │   │ 3. RISK   : risk_manager + Kelly Criterion                        │ │  │
-│  │   │ 4. PM     : portfolio_manager 최종 액션 결정                       │ │  │
-│  │   │ 5. GURU   : 사용자 정책 LLM 검토 + 결정론적 룰 게이트                │ │  │
-│  │   └────────────────────────────────────────────────────────────────────┘ │  │
-│  └──────────────────────────────────────────────────────────────────────────┘  │
-└──────┬─────────────────────────┬──────────────────────────┬────────────────────┘
-       │                         │                          │
-       ▼                         ▼                          ▼
-┌─────────────┐      ┌─────────────────────┐      ┌────────────────────────┐
-│  MongoDB    │      │  Market Data        │      │  KIS OpenAPI           │
-│  Atlas      │      │  pykrx · FDR · RSS  │      │  실전 / 모의 자동 분기   │
-│  - users    │      │  yfinance · ta      │      │  토큰 캐시 + tr_id 변환 │
-│  - settings │      │  technical_indicat. │      │  잔고/시세/주문         │
-│  - approvals│      │  news_async         │      │  매수/매도 · 시장/지정가│
-│  - sessions │      └─────────────────────┘      └────────────────────────┘
-└─────────────┘
-```
-
-### 디렉토리 구조
-
-```
-korean-trading-agents/
-├── agents/
-│   ├── analyst/analysts.py           # 4명의 분석 에이전트 (Layer 1)
-│   ├── researcher/                   # 강세/약세 토론 로직 (orchestrator 내부 구현)
-│   └── orchestrator/orchestrator.py  # 5단계 파이프라인 + GURU
-├── backend/
-│   ├── main.py                       # FastAPI 엔트리, 32개 엔드포인트
-│   ├── api/user_system.py            # 회원/세션/권한
-│   ├── core/
-│   │   ├── config.py                 # pydantic-settings
-│   │   ├── events.py                 # SSE pub/sub, AgentThought
-│   │   ├── llm.py                    # OpenAI/Anthropic 추상화 (gpt-5 reasoning)
-│   │   ├── mongodb.py                # Motor async 클라이언트
-│   │   ├── order_approvals.py        # 주문 승인 기록 + Fernet 암호화
-│   │   ├── runtime_sessions.py       # 분석/백테스트 세션 추적
-│   │   ├── user_access.py            # 권한, 활동 미들웨어
-│   │   └── user_runtime_settings.py  # per-user 설정 + 컨텍스트 스왑
-│   └── services/
-│       ├── auto_trading.py           # 단일 종목 AutoTradingSupervisor
-│       └── portfolio_trading.py      # 포트폴리오 PortfolioSupervisor
-├── backtesting/backtest.py           # 단순/AI 에이전트 백테스트
-├── data/
-│   ├── kis/
-│   │   ├── client.py                 # 토큰 캐시 + 모의/실전 URL
-│   │   └── trading.py                # 시세/잔고/주문
-│   └── market/
-│       ├── fetcher.py                # 종목 정보, 지표, 뉴스
-│       └── krx_rules.py              # 호가단위, 세션, 슬리피지 멀티플라이어
-├── frontend/                         # Next.js 16 (Turbopack) + React 19
-│   └── src/
-│       ├── app/                      # /, /login, /master, /activity
-│       └── components/
-│           ├── AgentOffice.tsx       # 실시간 에이전트 추론 뷰
-│           ├── AutoLoopPanel.tsx     # 단일 종목 자동 루프 컨트롤
-│           ├── PortfolioLoopPanel.tsx
-│           ├── KisPanel.tsx          # 주문 입력 + 2단계 확인
-│           ├── BacktestPanel.tsx
-│           ├── SettingsPanel.tsx     # 6개 탭 (overview/appearance/llm/analysis/guru/kis)
-│           └── ui/ThemeProvider.tsx  # 라이트/다크/시스템 + FOUC 방지
-├── docs/                             # 11개 설계/감사 문서
-├── requirements.txt                  # Python 3.12+
-├── run_server.py                     # uvicorn 래퍼
-├── start.bat / start.sh
-└── setup.py                          # .venv 생성 + 의존성 설치
-```
-
-### 기술 스택
-
-| 레이어 | 기술 |
-|---|---|
-| Backend | **FastAPI 0.119**, uvicorn 0.37, httpx 0.28, pydantic 2.12 |
-| Agent | **LangGraph 1.x**, LangChain 1.2, **OpenAI gpt-5 / gpt-5-mini** (reasoning_effort=high) |
-| DB | **MongoDB Atlas** + motor 3.7 (async) |
-| Encryption | **cryptography (Fernet)** — 주문 페이로드 + 사용자 시크릿 |
-| Market Data | **pykrx 1.2**, **FinanceDataReader**, yfinance, feedparser, ta 0.11 |
-| Broker | **한국투자증권 KIS OpenAPI** (실전 + 모의투자) |
-| Frontend | **Next.js 16.2.3 (Turbopack)**, React 19, Tailwind 4, Pretendard, Recharts, Framer Motion |
-| Auth | 자체 사용자 시스템 (Mongo) + 미들웨어 |
-
----
-
-## 💎 투자 로직 상세 (가장 중요)
-
-### 4.1 멀티에이전트 5단계 파이프라인
-
-`agents/orchestrator/orchestrator.py::run_analysis(ticker, session_id)`는 **모든 분석의 시작점**입니다. 한 번의 호출로 5단계를 순차/병렬 실행하고 최종 `TradeDecision` 객체를 반환합니다.
-
-```
-                           run_analysis(ticker)
-                                   │
-       ┌───────────────────────────┴──────────────────────────────┐
-       ▼ 1단계: DATA (asyncio.gather, 병렬)                        │
-   ┌───────────────┬────────────────┬────────────────┬───────────┐│
-   │ Technical     │ Fundamental    │ Sentiment      │ Macro     ││
-   │ RSI/MACD/BB   │ 재무·섹터       │ 뉴스 감성       │ 환율/금리  ││
-   │ MA5/MA20/52w  │ (LLM 추론)     │ feedparser+LLM │ 지수 흐름  ││
-   └───────┬───────┴────────┬───────┴────────┬───────┴─────┬─────┘│
-           └────────────────┴────────────────┴─────────────┘      │
-                              │ {signal, confidence, risk_level}   │
-                              ▼ 2단계: DEBATE (rounds=2, 기본)      │
-                    ┌──────────────────────────┐                    │
-                    │ bull_researcher  ⇄  bear │   ← 매 라운드마다  │
-                    │ (강세 ⇄ 약세 토론)         │   시세 + 뉴스 재조회│
-                    └────────────┬─────────────┘                    │
-                                 ▼ 3단계: RISK                       │
-                    ┌──────────────────────────┐                    │
-                    │ risk_manager + Kelly     │                    │
-                    │ {risk_level, kelly_pct,  │                    │
-                    │  stop_loss, requires_    │                    │
-                    │  human_approval}         │                    │
-                    └────────────┬─────────────┘                    │
-                                 ▼ 4단계: PORTFOLIO MANAGER          │
-                    ┌──────────────────────────┐                    │
-                    │ {action, confidence,     │                    │
-                    │  position_size_pct,      │                    │
-                    │  entry/exit strategy}    │                    │
-                    └────────────┬─────────────┘                    │
-                                 ▼ 5단계: GURU (선택, 사용자 정책)    │
-                    ┌──────────────────────────┐                    │
-                    │ LLM 정책 검토            │                    │
-                    │ + 결정론적 룰 게이트      │                    │
-                    │ (신뢰도/리스크/포지션 상한)│                    │
-                    └────────────┬─────────────┘                    │
-                                 ▼                                   │
-                          TradeDecision ───────────────────────────►│
-```
-
-#### 1단계 — DATA: 4명의 분석가
-
-`agents/analyst/analysts.py`. 모두 `asyncio.gather`로 병렬 실행되며, 특정 분석가에서 예외가 나더라도 전체 파이프라인이 멈추지 않도록 격리됩니다.
-
-| 에이전트 | 입력 | 출력 (JSON) |
-|---|---|---|
-| `technical_analyst` | RSI(14), MACD/Signal/Hist, 볼린저(20,2), MA5/MA20, 52주 H/L | `{signal, confidence, key_signals, risk_level, summary}` |
-| `fundamental_analyst` | 섹터/시총/PER/PBR (가능 시) + 가격 구조 | 동일 스키마 |
-| `sentiment_analyst` | 최근 뉴스 헤드라인 + 본문 (feedparser) | 동일 스키마 |
-| `macro_analyst` | KOSPI/KOSDAQ 지수, 환율, 금리 환경 | 동일 스키마 |
-
-> 모든 분석가는 **JSON 전용 응답을 강제**하고, 실패 시 `{signal: "HOLD", confidence: 0.3}` 기본값으로 안전하게 복구합니다.
-
-#### 2단계 — DEBATE: 강세 ⇄ 약세 연구원 토론
-
-`researcher_debate(ticker, analyst_results, session_id, rounds)`. 기본값은 2라운드이며, 사용자 설정으로 1~8라운드까지 조정할 수 있습니다.
-
-각 라운드는 **반드시 시세와 뉴스를 다시 조회**합니다. 토론이 길어질수록 시장 상황이 달라질 수 있기 때문입니다.
-
-```python
-# orchestrator.py:108-150 발췌
-for round_num in range(1, rounds + 1):
-    indicators = get_technical_indicators(ticker, days=45)   # 라운드별 재조회
-    latest_news = await get_news_async(ticker, company_name) # 라운드별 재조회
-    
-    # 직전 라운드 대비 가격 변화량도 프롬프트에 주입
-    intraround_change_pct = (latest_price - previous_round_price) / previous_round_price * 100
-    
-    # bull_researcher가 먼저 논리를 제시하고 bear가 반박
-    # 다음 라운드에는 직전 약세 주장을 강세 프롬프트에 다시 반영 (양방향 반박)
-```
-
-#### 3단계 — RISK: Kelly 기반 리스크 매니저
-
-신뢰도 평균을 바탕으로 Half-Kelly를 계산하고, 한국 시장 제약(서킷브레이커, 공매도 제한, 25% 포지션 상한)을 추가로 반영합니다.
-
-```python
-# orchestrator.py:71-90
-def _kelly_position_size(confidences, avg_win_pct=5.0, avg_loss_pct=3.0, max_fraction=0.25):
-    p = mean(confidences)              # 승률 추정
-    b = avg_win_pct / avg_loss_pct     # 손익비
-    kelly = (b * p - (1-p)) / b
-    return clamp(kelly * 0.5, 0.05, 0.25)   # Half-Kelly + 클리핑
-```
-
-리스크 매니저는 다음 정보를 반환하고 **`requires_human_approval`** 플래그도 함께 결정합니다.
-```json
-{ "risk_level": "LOW|MEDIUM|HIGH|CRITICAL", "max_position_pct": 0~25,
-  "kelly_position_pct": 12.3, "stop_loss_pct": 3~15, "approval": true/false,
-  "requires_human_approval": true/false, "summary": "..." }
-```
-조건: `confidence ≥ 0.80 AND position > 20%` 또는 `risk_level = CRITICAL`.
-
-#### 4단계 — PORTFOLIO MANAGER: 최종 액션
-
-```python
-# orchestrator.py:357-372
-position_pct = min(risk_result["max_position_pct"], kelly_pct)
-# LLM에게 BUY/SELL/HOLD + entry/exit_strategy를 받음
-
-requires_human = (
-    risk_result["requires_human_approval"]
-    or pm_result["confidence"] >= 0.85
-    or pm_result["position_size_pct"] >= 20
-)
-```
-
-#### 5단계 — GURU: 사용자 정책 레이어 (선택)
-
-→ [4.3 GURU 정책 레이어](#43-guru-정책-레이어) 참고.
-
----
-
-### 4.2 Kelly Criterion 포지션 사이징
-
-**왜 Kelly를 쓰나?** 신뢰도가 높을수록 비중을 늘리고, 낮을수록 줄이되 상한과 하한을 둬 과도한 베팅을 막기 좋기 때문입니다. KTA는 변동성을 낮추기 위해 **Half-Kelly**(0.5 × Full Kelly)를 사용합니다.
-
-| 파라미터 | 기본값 | 의미 |
-|---|---|---|
-| `agent_confidences` | 4명 평균 | 승률 추정 `p` |
-| `avg_win_pct` | 5.0 | 평균 익절률 (5%) |
-| `avg_loss_pct` | 3.0 | 평균 손절률 (3%) → 손익비 `b = 5/3 ≈ 1.67` |
-| `max_fraction` | 0.25 | 단일 종목 최대 25% (한국 시장 보수치) |
-| 하한 | 0.05 | 진입 시 최소 5% (너무 작은 진입으로 전략 의미가 흐려지는 것 방지) |
-
-> Kelly 결과는 **risk_manager의 `max_position_pct`와 `min`**을 취해 과도한 LLM 판단을 방어합니다. PM/GURU 단계에서도 같은 원칙으로 한 번 더 제한합니다.
-
----
-
-### 4.3 GURU 정책 레이어
-
-`guru_manager()` (orchestrator.py:391~). **사용자가 설정한 투자 철학을 LLM 판단에 반영하고, 동시에 결정론적 룰로 한 번 더 강제하는** 메타 의사결정자입니다.
-
-#### 사용자가 설정하는 5가지 정량 룰 + 1개 자유 서술
-
-| 키 | 타입 | 설명 |
-|---|---|---|
-| `guru_enabled` | bool | GURU 자체 ON/OFF |
-| `guru_debate_enabled` | bool | LLM 검토 단계 ON/OFF (룰 게이트는 항상 동작) |
-| `guru_risk_profile` | `defensive`\|`balanced`\|`aggressive` | 프롬프트 톤 |
-| `guru_investment_principles` | string | "10% 이상 손실 금지, 반도체 30% 이하" 같은 자유 서술 원칙 |
-| `guru_min_confidence_to_act` | float (0~1) | 이 미만이면 BUY/SELL → HOLD 강제 |
-| `guru_max_risk_level` | LOW\|MEDIUM\|HIGH\|CRITICAL | 이 초과면 BUY 차단 |
-| `guru_max_position_pct` | float (1~100) | 포지션 최종 클리핑 |
-| `guru_require_user_confirmation` | bool | true면 모든 BUY/SELL에 사용자 승인 필요 |
-
-#### 처리 순서
-
-```
-PM 초안 → GURU LLM 토론 (debate_enabled 시)
-       ↓
-       ├── 룰 1: confidence < min_confidence_to_act → HOLD
-       ├── 룰 2: BUY + risk_level > max_risk_level → HOLD
-       ├── 룰 3: position_pct > max_position_pct → 클리핑
-       └── 룰 4: require_user_confirmation + BUY/SELL → requires_human_approval = true
-       ↓
-    최종 TradeDecision (적용된 룰을 reasoning과 metadata에 기록)
-```
-
-> **결정론적 룰이 LLM 출력보다 항상 우선 적용**됩니다. LLM이 "BUY"라고 판단해도 신뢰도가 70%인데 최소 기준이 75%라면 최종 결과는 무조건 HOLD입니다.
-
----
-
-### 4.4 단일 종목 AutoLoop
-
-`backend/services/auto_trading.py::AutoTradingSupervisor`. 브라우저 탭이 닫혀 있어도 서버 프로세스가 계속 동작하면서 N분마다 한 종목을 자동 분석하고 주문합니다.
-
-#### 사이클 흐름 (12개 단계)
-
-```
-       ┌─────────────────────────────────────────┐
-   ┌──►│  1. asyncio.wait_for(stop_event, N분)   │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-   │   │  2. run_analysis(ticker)  → decision     │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-   │   │  3. 결정 기록 (decision_history, last 80) │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-   │   │  GATE A: confidence < min_confidence?    │ → skip
-   │   │  GATE B: action == HOLD?                 │ → skip
-   │   │  GATE C: KRX 세션 비거래시간?            │ → skip
-   │   │  GATE D: 감독 레벨이 차단?               │ → skip
-   │   │     (STRICT: requires_human OR HIGH+)    │
-   │   │     (BALANCED: requires_human AND HIGH+) │
-   │   │     (AGGRESSIVE: 모두 통과)               │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-   │   │  4. KIS get_current_price(ticker)        │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-   │   │  GATE E: price <= 0 → skip               │
-    │   │  GATE F: 미래 시각으로 보이는 비정상 시세 → skip │
-   │   │  GATE G: halt_yn=Y (거래정지) → skip     │
-   │   │  GATE H: 시장경고코드 → skip              │
-   │   │  GATE I: 상한가 BUY / 하한가 SELL → skip │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-   │   │  5. _plan_trade()                        │
-   │   │   - confidence_weight × supervision_w    │
-    │   │   - 목표 비중 - 현재 비중 = 델타          │
-    │   │   - 수수료/슬리피지 반영 effective_price │
-    │   │   - 정수 주식 수로 normalize             │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-    │   │  6. paper_trade=true → _apply_paper_*    │
-    │   │     paper_trade=false → _execute_live_*  │
-   │   │       └─→ KIS place_order() (시장가)      │
-   │   └────────────────────┬────────────────────┘
-   │                        ▼
-   │   ┌─────────────────────────────────────────┐
-   │   │  7. trade_history 기록 + log emit        │
-   └───┤  8. 다음 next_run_at 계산                │
-       └─────────────────────────────────────────┘
-```
-
-#### AutoLoopSettings (사용자 조정 가능)
-
-| 필드 | 기본값 | 설명 |
-|---|---|---|
-| `interval_min` | 15 | 사이클 주기(분) |
-| `min_confidence` | 0.72 | 이 미만이면 주문 보류 |
-| `paper_trade` | true | 모의 시뮬레이션 ↔ 실전 KIS 주문 |
-| `fee_bps` / `slippage_bps` / `tax_bps` | 1.5 / 3.0 / 18.0 | 수수료·슬리피지·거래세 |
-| `max_position_pct` | 25.0 | 단일 종목 최대 비중 |
-| `supervision_level` | `balanced` | strict/balanced/aggressive |
-| `execution_session_mode` | `regular_only` | 정규장 전용 vs 정규+시간외 |
-| `initial_cash` | 10,000,000 | 모의투자 초기 자본 |
-
-#### 감독 레벨 (Supervision Level)
-
-| 레벨 | 차단 조건 | 사이즈 멀티 |
-|---|---|---|
-| `strict` | `requires_human_approval` OR risk ∈ {HIGH, CRITICAL} | × 0.6 |
-| `balanced` | `requires_human_approval` AND risk ∈ {HIGH, CRITICAL} | × 1.0 |
-| `aggressive` | 차단 없음 | × 1.4 |
-
-#### 모의투자 (paper) vs 실전투자 (live)
-
-- **paper**. `PaperPortfolio(cash, shares, avg_buy_price, realized_pnl, total_fees, total_taxes)`를 사용합니다. 매수 시 수수료와 슬리피지를 `effective_price`에 반영하고, 매도 시 거래세 0.18%를 적용합니다. 부분 체결은 고려하지 않습니다.
-- **live**. `data.kis.trading.place_order()`를 호출합니다. 잔고 조회로 실제 `cash/shares`를 확인하고, 예외 상황에 대비한 보수적 보정 로직도 함께 둡니다.
-
-> 실전 모드에서도 **시간외 주문 라우팅은 아직 지원하지 않습니다.** 정규장 외 시간에는 자동으로 보류하고 다음 정규장에 다시 진행합니다.
-
----
-
-### 4.5 포트폴리오 PortfolioLoop
-
-`backend/services/portfolio_trading.py::PortfolioSupervisor`. 여러 종목을 포트폴리오 단위로 운용.
-
-```
-매 사이클:
-  1. 시장 스캔 (universe_market: ALL/KOSPI/KOSDAQ, 상위 60개 기본)
-  2. 후보 랭킹 (모니터링 프로파일: balanced / momentum / defensive)
-  3. 키워드/관심종목/제외종목 필터
-  4. 상위 candidate_count(기본 8) 종목 병렬 분석
-     - max_parallel_analyses=3 으로 동시 LLM 호출 제한
-  5. 포트폴리오 목표 비중 계산
-     - max_positions=5 (포지션 수 한도)
-     - max_single_position_pct=25%
-  6. rebalance_threshold_pct=1.5% 이상 차이 나는 것만 주문
-  7. 모의/실전 분기 + KIS 주문 (AutoLoop와 동일 게이트 통과)
-```
-
-핵심 차이는 **현금과 리스크 예산을 종목들이 함께 나눠 쓴다**는 점입니다. 한 종목이 자금을 많이 사용하면 다른 종목 주문 규모는 자동으로 줄어듭니다.
-
-#### PortfolioLoopSettings (주요)
-
-| 필드 | 기본값 | 설명 |
-|---|---|---|
-| `monitoring_profile` | balanced | 종목 랭킹 가중치 (모멘텀/방어 등) |
-| `universe_market` | ALL | KOSPI/KOSDAQ/ALL |
-| `universe_limit` | 60 | 시장 스캔 상한 |
-| `candidate_count` | 8 | 매 사이클 분석 후보 수 |
-| `max_positions` | 5 | 동시 보유 종목 수 |
-| `cycle_interval_min` | 20 | 사이클 주기 |
-| `rebalance_threshold_pct` | 1.5 | 이 이하 차이는 무시 |
-| `seed_tickers` | [] | 항상 분석 대상 |
-| `preferred_tickers` | [] | 랭킹 가산점 |
-| `excluded_tickers` | [] | 절대 제외 |
-| `interest_keywords` | [] | 섹터/테마 가중 |
-
----
-
-### 4.6 KIS 주문 + 사용자 승인 플로우
-
-> **이 시스템에서 가장 보수적으로 설계한 구간입니다.** 주문 오류는 바로 손실로 이어질 수 있기 때문입니다.
-
-#### 모의 ↔ 실전 자동 라우팅
-
-`data/kis/client.py`:
-- `KIS_MOCK=true` → `https://openapivts.koreainvestment.com:29443` + tr_id `T*` → `V*` 자동 변환
-- `KIS_MOCK=false` → `https://openapi.koreainvestment.com:9443`
-
-토큰은 메모리 캐시(`_token_cache`), **만료 10분 전 자동 재발급**.
-
-#### 주문 4단계 승인 플로우 (실전 모드)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  STEP 1 — UI 입력 (frontend/KisPanel.tsx)                        │
-│   - ticker, 매수/매도, 수량, 시장가/지정가 입력                   │
-│   - "주문 검토" 버튼                                              │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  STEP 2 — 인앱 2단계 확인 다이얼로그                              │
-│   - 종목/가격/예상 금액 명시                                      │
-│   - 사용자가 "확인" 클릭해야 다음 단계                             │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  STEP 3 — 백엔드 승인 요청 기록 생성                              │
-│   POST /api/kis/order/approval/request                           │
-│   → MongoDB order_approvals 컬렉션                               │
-│     { _id, status: "pending", payload: <Fernet 암호화>,          │
-│       expires_at: now + 60s, user_id }                           │
-│   → Frontend 카드에 승인/거절 버튼 표시                           │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  STEP 4 — 사용자 최종 승인                                        │
-│   POST /api/kis/order/approval/{id}/approve                      │
-│   - status check (만료 여부, 요청한 사용자 본인인지 확인)         │
-│   - payload 복호화                                                │
-│   - kis.place_order() 호출                                        │
-│   - 결과를 status="approved" + execution_result와 함께 저장        │
-│                                                                  │
-│   POST /api/kis/order/approval/{id}/reject  → 즉시 폐기            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### 핵심 안전장치
-
-| 장치 | 위치 | 설명 |
-|---|---|---|
-| **Fernet 암호화** | `order_approvals.py` | payload 자체를 `DATA_ENCRYPTION_KEY`로 암호화 (DB 유출 시에도 평문 노출 방지) |
-| **만료** | `expires_at` | 기본 60초, 만료 시 자동 거절 |
-| **본인 검증** | `require_user` 미들웨어 | 다른 사용자의 승인 ID 접근 차단 |
-| **상태 머신** | `pending → approved/rejected/expired` | 한 번만 전이 가능 (멱등성) |
-| **2단계 인앱 확인** | KisPanel.tsx | 백엔드 호출 전에 UI에서 한 번 더 확인 |
-
-#### AutoLoop의 사용자 승인 처리 (별도)
-
-AutoLoop는 위 4단계를 거치지 않습니다. 서버가 자동 실행되기 때문입니다. 대신 **GURU/리스크 매니저의 `requires_human_approval=true`가 나오면 주문 자체를 보류**하고, UI 알림으로 표시합니다. `guru_require_user_confirmation=true`로 설정하면 모든 BUY/SELL이 자동으로 보류됩니다.
-
----
-
-### 4.7 한국 시장 안전장치
-
-`data/market/krx_rules.py`와 상위 게이트가 함께 **한국 거래소 고유 규칙**을 강제합니다.
-
-| 규칙 | 구현 |
-|---|---|
-| **호가 단위(틱 사이즈)** | `round_to_tick(price)` — 가격대별 1/5/10/50/100/500/1000 |
-| **정수 주식수** | `normalize_share_qty(qty, lot_size=1)` |
-| **정규장 시간** | 09:00~15:30 KST (월~금), `is_tradable_session()` |
-| **시간외 모드** | `regular_only` vs `regular_and_after_hours` (실전은 정규장만 지원) |
-| **세션별 슬리피지** | `session_slippage_multiplier()` — 동시호가/시간외는 슬리피지 배수 |
-| **거래정지** | `halt_yn=Y` 즉시 차단 |
-| **시장경고** | warning_code 검사 (STRICT는 모든 경고, BALANCED는 02/03만) |
-| **상한가/하한가** | 매수 상한가 차단 / 매도 하한가 차단 |
-| **공매도 제한** | 롱 전용 (SELL은 보유 수량 한도 내) |
-| **거래세 0.18%** | 매도 시에만 적용 |
-| **수수료 0.015%** | 매수/매도 양쪽 |
-| **미래 시각 시세** | `_looks_like_future_quote_time()` — KIS API 비정상 시세 방어 |
-
----
-
-### 4.8 백테스트
-
-`backtesting/backtest.py`. 두 가지 모드를 제공합니다.
-
-#### A. 단순 백테스트 — `run_simple_backtest()`
-- 전략: MA5 × MA20 골든/데드크로스 (롱 전용)
-- 데이터: `FinanceDataReader`
-- 비용: 수수료 0.015% + 거래세 0.18% = 0.28%
-- 수량 단위: 1주, 호가 단위 적용
-- 출력: `total_return, annualized_return, sharpe, max_drawdown, win_rate, total_trades, profit_factor, calmar_ratio, benchmark_return(KOSPI), alpha`
-
-#### B. AI 에이전트 백테스트 — `run_agent_backtest()`
-- 전략: **`run_analysis()`를 일별로 호출**해 실제 에이전트 결정 흐름대로 시뮬레이션
-- 매 거래일마다 LLM을 호출하므로 비용이 크게 늘 수 있어 짧은 기간부터 돌리는 것을 권장
-- API: `POST /api/backtest/agent/start` + SSE 스트림
-
-UI에서는 `BacktestPanel.tsx`를 통해 결과를 Recharts 그래프, 거래 타임라인, KPI 카드로 시각화합니다.
-
----
-
-## 🚀 설치 및 실행
-
-### 사전 요구사항
-
-| 항목 | 버전 |
-|---|---|
-| Python | 3.12+ (3.14 테스트 완료) |
-| Node.js | 20 LTS+ |
-| MongoDB Atlas | 무료 티어 가능 |
-| KIS OpenAPI | [신청 링크](https://apiportal.koreainvestment.com/) (모의투자 가입 후 App Key 발급) |
-| OpenAI API | [platform.openai.com](https://platform.openai.com) (gpt-5 권장) |
-
-### 자동 설치 (Windows)
+| Python | 3.12+ (3.14에서 검증됨) |
+| Node.js | 20+ (프론트엔드용) |
+| MongoDB | 로컬 또는 Atlas |
+| OpenAI API Key | 필수 — 분석가/리서처 LLM 호출 |
+| OpenDART API Key | 무료 발급 — 공시·재무 데이터 |
+| KIS Open API | 선택 — 실거래·잔고 조회용 |
+
+### 2. 설치
 
 ```powershell
 git clone https://github.com/picothebird/korean-trading-agents.git
 cd korean-trading-agents
-python setup.py             # .venv + pip install
-copy .env.example .env
-notepad .env                # 환경 변수 입력
-.\start.bat                 # 백엔드 + 프론트 동시 시작
-```
 
-### 자동 설치 (macOS / Linux)
-
-```bash
-git clone https://github.com/picothebird/korean-trading-agents.git
-cd korean-trading-agents
-python3 setup.py
-cp .env.example .env
-nano .env
-chmod +x start.sh && ./start.sh
-```
-
-### 수동 설치
-
-```bash
-# 1. Python 가상환경
+# Python 가상환경
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 pip install git+https://github.com/FinanceData/FinanceDataReader.git
 
-# 2. 프론트엔드
+# 프론트엔드
 cd frontend
 npm install
 cd ..
+```
 
-# 3. 백엔드 (포트 8000)
-python run_server.py
-# 또는: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+### 3. 환경 변수 (`.env`)
 
-# 4. 프론트엔드 (포트 3000, 다른 터미널)
+루트에 `.env` 파일을 만들고 다음을 채웁니다(필수만 우선).
+
+```env
+# 필수
+OPENAI_API_KEY=sk-...
+DART_API_KEY=...                 # https://opendart.fss.or.kr 무료 발급
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB=kta
+
+# 선택 (실거래 연동 시)
+KIS_APP_KEY=...
+KIS_APP_SECRET=...
+KIS_ACCOUNT_NUMBER=12345678-01
+KIS_ENV=virtual                  # virtual | real
+
+# 보안
+JWT_SECRET=local-dev-secret-change-me
+CORS_ORIGINS=http://localhost:3000
+```
+
+### 4. 실행
+
+터미널 두 개를 띄워 백엔드 · 프론트엔드를 동시에 실행합니다.
+
+```powershell
+# 터미널 1 — 백엔드 (FastAPI + SSE)
+.\.venv\Scripts\python.exe run_server.py
+# → http://localhost:8000
+
+# 터미널 2 — 프론트엔드 (Next.js)
 cd frontend
 npm run dev
+# → http://localhost:3000
 ```
 
-### 접속
+> Windows 파워셸에서는 `&&` 대신 `;` 로 명령을 연결하세요.
 
-| 주소 | 용도 |
+---
+
+## 🎯 주요 기능
+
+### 멀티 에이전트 분석 파이프라인
+
+| 단계 | 에이전트 | 역할 |
+|---|---|---|
+| 1 | **Technical Analyst** | RSI · MACD · 볼린저 · 이동평균 · 거래량 — 차트 신호 |
+| 1 | **Fundamental Analyst** | OpenDART 재무제표(매출·영업이익·ROE 등) · 밸류에이션 |
+| 1 | **Sentiment Analyst** | 뉴스 4개 매체 RSS + DART 공시 + **내부자 폴라리티** |
+| 1 | **Macro Analyst** | KOSPI/KOSDAQ 지수, 환율, 금리, 외국인·기관 수급 |
+| 1 | **Backtest Analyst** | 동일 종목·동일 신호로 과거 6개월 시뮬레이션 |
+| 2 | **Bull / Bear Researcher** | 5인 분석을 근거로 **강세 vs 약세 토론** |
+| 3 | **Risk Manager** | 리스크 등급(LOW/MED/HIGH) · 손절/익절 가이드 |
+| 3 | **Portfolio Manager** | 켈리 공식 기반 포지션 사이즈 + 최종 BUY/SELL/HOLD |
+| 3 | **Guru Manager** | 워런 버핏 / 피터 린치 / 레이 달리오 스타일의 메타 코멘트 |
+
+### DART 내부자 시그널 (10단계 폴라리티)
+
+뉴스보다 신호 가치가 높은 **회사 내부자의 행동**을 자동 분류합니다.
+
+| 폴라리티 | 의미 | 트레이딩 시사점 |
+|---|---|---|
+| `BULLISH_STRONG` | 자사주 매입 결정/결과 · 소각 | **강한 매수** — 경영진의 저평가 인식 |
+| `BULLISH_WEAK` | 자사주 신탁계약 등 | 약한 매수 |
+| `BEARISH_WEAK` | 자사주 처분 | 약한 매도 |
+| `BEARISH_ISSUE_PAID` | 유상증자 | 단기 희석 → 약세 |
+| `BEARISH_CB` | 전환사채 / BW / EB | 단기 희석 → 약세 |
+| `BULLISH_ISSUE_FREE` | 무상증자 | 긍정 |
+| `EVENT_INSIDER` | 임원 · 주요주주 거래 | 빈도 = 관심도 대리지표 |
+| `EVENT_5PCT` | 5%룰 대량보유 보고 | 빈도 = 변동성 대리지표 |
+| `EVENT_OWNERSHIP` | 최대주주 변동 | 지배구조 이벤트 (변동성↑) |
+| `NEUTRAL` | 정기공시 등 | 중립 |
+
+### 한국 시장 사실주의
+
+- **거래소 규칙 강제** — 호가 단위(lot size), 가격 제한폭, VI 발동, 휴장일,
+  T+2 결제, 부분 체결을 데이터 레이어에서 처리.
+- **모의투자 우선** — KIS 환경 변수 `KIS_ENV=virtual` 로 실수 없이 시뮬레이션.
+- **승인 큐** — 실거래 주문은 승인 단계(`/api/kis/order/approval/...`)를 거쳐
+  사람이 최종 확인한 뒤 전송.
+
+### 자동 루프 & 포트폴리오
+
+- **Auto Loop** — 단일 종목을 N분 간격으로 자동 분석·보고.
+- **Portfolio Loop** — 다수 종목 스캔 → 점수 상위만 자동 분석 → 알림.
+- 둘 다 휴장일·중복 시작 차단·재시작 시 영속화 처리됨.
+
+---
+
+## 🖥 화면 구성
+
+| 화면 | 설명 |
 |---|---|
-| http://localhost:3000 | 프론트엔드 (메인 UI) |
-| http://localhost:3000/login | 로그인 |
-| http://localhost:3000/master | 관리자(마스터) 콘솔 |
-| http://localhost:3000/activity | 활동 로그 |
-| http://localhost:8000 | 백엔드 헬스 체크 |
-| http://localhost:8000/docs | FastAPI 자동 생성 Swagger |
-| http://localhost:8000/redoc | ReDoc |
+| **Stock Chart Pro** | TradingView 스타일 차트 + 지표 가이드 모달 |
+| **Agent Stage** | 분석 파이프라인을 실시간 SSE 로 시각화 (회의실 메타포) |
+| **Decision Card** | 최종 BUY/SELL/HOLD 카드 + 근거 요약 + 리스크 등급 |
+| **Meeting Minutes** | 분석가 5명·리서처 토론 회의록 (인스펙터 포함) |
+| **Backtest Panel** | 단발 백테스트 + 에이전트 백테스트(과거 시점 재현) |
+| **Auto / Portfolio Loop Panel** | 자동화 시작·중지·로그 |
+| **KIS Panel** | 잔고·주문·승인 큐 |
+| **Settings** | LLM 모델·키·테마·임계값 조정 |
 
 ---
 
-## 🔐 환경 변수
+## ❓ 자주 묻는 질문
 
-`.env.example`을 복사해 `.env` 파일을 만드세요. **`.env`는 절대 커밋하지 마세요**(`.gitignore`에 포함).
+<details>
+<summary><b>OpenAI 키만으로 돌아가나요?</b></summary>
 
-```dotenv
-# ── KIS 한국투자증권 ──────────────────────────────
-KIS_APP_KEY=발급받은_app_key
-KIS_APP_SECRET=발급받은_app_secret
-KIS_ACCOUNT_NO=계좌번호-상품코드  # 예: 50012345-01
-KIS_MOCK=true                      # true=모의, false=실전(주의!)
+분석은 가능합니다. 단, OpenDART 키가 없으면 재무·공시·내부자 시그널 블록이
+"정보 부족"으로 표시됩니다. **둘 다 무료**이므로 같이 발급받으시는 걸 권장합니다.
+</details>
 
-# ── LLM ──────────────────────────────────────────
-OPENAI_API_KEY=sk-...              # 필수 (gpt-5 권장)
-ANTHROPIC_API_KEY=                 # 선택
+<details>
+<summary><b>왜 강세/약세 점수가 50:50 근처에서 시작하나요?</b></summary>
 
-# ── 보안 ──────────────────────────────────────────
-APP_SECRET_KEY=긴_랜덤_문자열_32자_이상
-DATA_ENCRYPTION_KEY=               # 비우면 APP_SECRET_KEY에서 파생
+리서처 토론 결과를 **HOLD = 50, BUY = 50+50·confidence, SELL = 50−50·confidence**
+로 매핑하기 때문입니다. `bull_score + bear_score = 100` 으로 항상 정렬되어
+"한쪽 0점" 같은 직관과 어긋나는 표시가 나오지 않습니다.
+</details>
 
-# ── MongoDB Atlas ────────────────────────────────
-MONGODB_URI=mongodb+srv://user:pass@cluster0.xxx.mongodb.net/?retryWrites=true&w=majority
-MONGODB_DB_NAME=korean_trading_agents
-MONGODB_CONNECT_TIMEOUT_MS=5000
+<details>
+<summary><b>실거래는 안전한가요?</b></summary>
 
-# ── 부가 ─────────────────────────────────────────
-ALPHA_VANTAGE_API_KEY=             # 선택
-```
+기본값은 `KIS_ENV=virtual` (모의투자)입니다. 실전으로 바꾸더라도 모든 주문은
+승인 큐를 거치며, 휴장일·호가 단위·가격 제한폭 위반은 데이터 레이어에서 거부됩니다.
+그럼에도 **실거래 손익은 전적으로 사용자 책임**입니다.
+</details>
 
-### 주요 옵션 의미
+<details>
+<summary><b>분석이 너무 느립니다.</b></summary>
 
-| 키 | 영향 |
-|---|---|
-| `KIS_MOCK=true` | 가상 자금으로 모의투자 (강력 권장 시작점) |
-| `KIS_MOCK=false` | **실제 돈**으로 주문 — 본인 책임 |
-| `APP_SECRET_KEY` | 세션 + Fernet 키 파생용. 변경 시 기존 암호화 데이터 복호화 불가 |
-| `DATA_ENCRYPTION_KEY` | 직접 지정 시 Fernet 32-byte urlsafe-base64 키 |
-| `MONGODB_URI` | 비우면 일부 기능(승인 기록 저장, per-user 설정) 비활성 |
+분석가 5명을 병렬 호출하지만 LLM 응답 시간 자체가 변수입니다.
+`SettingsPanel` 에서 모델을 `gpt-5-mini` 등 빠른 모델로 바꾸면 체감 속도가 개선됩니다.
+</details>
 
----
+<details>
+<summary><b>토론·리서처 결과가 분석가와 어긋나요.</b></summary>
 
-## 📡 API 레퍼런스
+리서처는 분석가 5명의 **요약본**을 받아 다시 토론합니다.
+분석가 raw output 은 `Agent Inspector` 에서 항상 확인 가능하며,
+어긋남이 잦다면 LLM 모델 등급을 한 단계 올려보세요.
+</details>
 
-`backend/main.py` 기준 **32개 엔드포인트**. 자동 문서: `http://localhost:8000/docs`.
+<details>
+<summary><b>네이버 종목토론방·다른 커뮤니티 데이터도 들어가나요?</b></summary>
 
-### 헬스 / 종목
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| GET | `/health` | 서버 헬스 체크 |
-| GET | `/api/health/mongo` | MongoDB 연결 상태 |
-| GET | `/api/stock/search?q=` | 종목명/티커 검색 |
-| GET | `/api/stock/{ticker}` | 종목 기본 정보 |
-| GET | `/api/stock/{ticker}/chart` | 가격 히스토리 |
-| GET | `/api/market/indices` | KOSPI/KOSDAQ 지수 |
-
-### 분석 (멀티에이전트)
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| POST | `/api/analyze/start` | 분석 시작 → `session_id` 반환 |
-| GET | `/api/analyze/stream/{session_id}` | **SSE 스트림** (에이전트 추론 실시간 전송) |
-| GET | `/api/analyze/result/{session_id}` | 최종 `TradeDecision` |
-
-### 백테스트
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| POST | `/api/backtest` | 단순 백테스트 (MA 교차) |
-| POST | `/api/backtest/agent/start` | AI 에이전트 백테스트 시작 |
-| GET | `/api/backtest/agent/stream/{id}` | SSE 진행 상황 |
-| GET | `/api/backtest/agent/result/{id}` | 최종 결과 |
-
-### 자동 루프 (단일 종목)
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| POST | `/api/auto-loop/start` | AutoLoop 시작 |
-| POST | `/api/auto-loop/stop/{loop_id}` | 정지 |
-| GET | `/api/auto-loop/status/{loop_id}` | 상태/로그/거래 |
-| GET | `/api/auto-loop/list` | 내 모든 루프 |
-
-### 자동 루프 (포트폴리오)
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| POST | `/api/portfolio-loop/start` | PortfolioLoop 시작 |
-| POST | `/api/portfolio-loop/stop/{loop_id}` | 정지 |
-| GET | `/api/portfolio-loop/status/{loop_id}` | 상태/포지션/리밸런스 로그 |
-| GET | `/api/portfolio-loop/list` | 내 모든 루프 |
-| POST | `/api/portfolio-loop/scan/{loop_id}` | 즉시 시장 스캔 |
-
-### KIS
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| GET | `/api/kis/status` | 자격증명/토큰 상태 |
-| GET | `/api/kis/balance` | 계좌 잔고 + 보유 종목 |
-| GET | `/api/kis/price/{ticker}` | 실시간 시세 |
-| POST | `/api/kis/order` | 주문 (자동 루프 내부에서만 사용) |
-
-### KIS 주문 승인 사이클
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| POST | `/api/kis/order/approval/request` | 승인 요청 기록 생성 (pending) |
-| GET | `/api/kis/order/approval/{id}` | 상세 조회 |
-| POST | `/api/kis/order/approval/{id}/approve` | 승인 → 실주문 |
-| POST | `/api/kis/order/approval/{id}/reject` | 거절 |
-
-### 설정 / 인증
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| GET | `/api/settings` | per-user 런타임 설정 조회 |
-| POST | `/api/settings` | 설정 저장 (KIS 키는 자동 암호화) |
-| `/api/auth/*`, `/api/users/*` | (in `backend/api/user_system.py`) |
+**들어가지 않습니다.** 네이버는 robots.txt 와 ToS 모두에서 크롤링을 금지합니다
+(yeti 봇 외 차단). Paxnet 등 다른 게시판은 정치 스팸 비중이 80%를 넘어
+신호 대비 잡음이 너무 커 의도적으로 제외했습니다. 대신 OpenDART 내부자 시그널을
+강화했습니다.
+</details>
 
 ---
 
-## 🖼️ 프론트엔드 가이드
+## 📚 더 알아보기
 
-### 라우트
-
-| 경로 | 컴포넌트 | 용도 |
-|---|---|---|
-| `/` | `page.tsx` | 메인 — 종목 검색, 분석, 모든 패널 |
-| `/login` | `app/login/` | 로그인 |
-| `/master` | `app/master/` | 관리자 콘솔 (사용자 관리) |
-| `/activity` | `app/activity/` | 거래 활동 로그 |
-
-### 주요 컴포넌트
-
-| 컴포넌트 | 역할 |
-|---|---|
-| `AgentOffice.tsx` | 에이전트별 추론 실시간 뷰 (터미널 스타일) |
-| `KisPanel.tsx` | 주문 입력 + 2단계 확인 + 승인 카드 |
-| `AutoLoopPanel.tsx` | 단일 종목 루프 (settings/activity/trades 탭) |
-| `PortfolioLoopPanel.tsx` | 포트폴리오 루프 + 리밸런스 시각화 |
-| `BacktestPanel.tsx` | 백테스트 입력 + Recharts 결과 차트 |
-| `StockChartPanel.tsx` | 실시간 시세 차트 |
-| `DecisionCard.tsx` | 최종 의사결정 카드 (Action/신뢰도/사유) |
-| `SettingsPanel.tsx` | 6탭: overview · appearance · llm · analysis · guru · kis |
-| `PixelOffice.tsx` | (선택) 픽셀아트 HUD 모드 |
-
-### 사용 흐름 (권장)
-
-1. `/login` 가입 → 메인 진입
-2. `SettingsPanel` → `kis` 탭에서 KIS 자격증명 저장 (Fernet 암호화로 DB)
-3. `SettingsPanel` → `guru` 탭에서 본인 투자 철학/룰 설정 후 `guru_enabled` ON
-4. 메인 검색창에서 종목 검색 → 분석 시작 → `AgentOffice`에서 실시간 토론과 추론 로그 확인
-5. 결과가 만족스러우면 `KisPanel`에서 직접 주문 (2단계 확인 + 승인 카드)
-6. 자동화하려면 `AutoLoopPanel`에서 `paper_trade=true`로 시작하고, 충분히 검증한 뒤 실전으로 전환
+- **개발자 / 기여자**: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — 아키텍처,
+  데이터 플로우, API 레퍼런스, 디렉터리 구조, 테스트, 보안 가이드(영문)
+- **아키텍처 다이어그램**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Pre-production 체크리스트**: [docs/PRE_PRODUCTION_CHECKLIST.md](docs/PRE_PRODUCTION_CHECKLIST.md)
+- **한국 시장 사실주의 감사 로그**: [docs/KOREAN_MARKET_REALISM_AUDIT.md](docs/KOREAN_MARKET_REALISM_AUDIT.md)
+- **포트폴리오 오케스트레이션 청사진**: [docs/PORTFOLIO_ORCHESTRATION_BLUEPRINT.md](docs/PORTFOLIO_ORCHESTRATION_BLUEPRINT.md)
 
 ---
-
-## 🎨 디자인 시스템
-
-### 테마
-
-| 모드 | 키 | 동작 |
-|---|---|---|
-| Light | `data-theme="light"` | 흰 캔버스, 진한 텍스트 |
-| Dark | `data-theme="dark"` | Linear/Vercel/Toss 계열 무드의 `#0B0D11` 캔버스, 4단계 elevation |
-| System | `data-theme="system"` | `prefers-color-scheme` 미디어 쿼리를 따라감 |
-
-저장 위치: `localStorage["kta:theme"]`. FOUC 방지를 위해 `<head>` 안의 인라인 스크립트로 첫 렌더 전에 적용합니다.
-
-### 한국 시장 색 컨벤션
-
-| 토큰 | 의미 | 라이트 | 다크 |
-|---|---|---|---|
-| `--bull` | 상승 | 빨강 | `#FF5A6B` (덜 채도) |
-| `--bear` | 하락 | 파랑 | `#4D8DEF` |
-| `--brand` | 브랜드 | 파랑 | `#4D8DEF` |
-| `--warning` | 경고 | 호박 | 호박 |
-
-### 폰트
-
-- 본문: **Pretendard Variable** (한국어 최적)
-- 모노: **JetBrains Mono** (가격, 티커)
-
----
-
-## 🛠️ 개발 가이드
-
-### Python
-
-```bash
-.venv\Scripts\activate
-python run_server.py                 # 개발 서버
-python test_comprehensive.py         # 통합 테스트
-python test_backtest.py              # 백테스트 단위 테스트
-python test_final.py                 # 최종 시나리오 테스트
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm run dev                          # Turbopack 개발 (http://localhost:3000)
-npm run lint                         # ESLint
-npm run build                        # 프로덕션 빌드
-npm start                            # 프로덕션 서버
-```
-
-### 주요 코드 규칙
-
-- 백엔드: 비동기 우선 (`async/await`), pydantic 모델로 모든 요청/응답 타입화
-- LLM: `backend/core/llm.py::create_response(system, user, fast=False)` 한 함수로 추상화 (`fast=True`는 `gpt-5-mini`)
-- LLM 출력은 **항상 JSON 형식을 강제하고 `_safe_parse_json`으로 안전하게 복구**
-- 프론트: 클라이언트 컴포넌트는 `"use client"`, 토큰만 색 사용 (`var(--bull)`, `var(--bear)` 등 — 하드코딩 금지)
-
-### 추가 문서
-
-`docs/` 폴더:
-- `ARCHITECTURE.md` — 전체 시스템 설계
-- `AUTO_TRADING_SUPERVISOR.md` — AutoLoop 상세
-- `PORTFOLIO_ORCHESTRATION_BLUEPRINT.md` — 포트폴리오 로직
-- `KOREAN_MARKET_REALISM_AUDIT.md` — 한국 시장 현실성 감사
-- `USER_LEVEL_DB_SCHEMA.md` — Mongo 스키마
-- `BACKEND_AUDIT.md` / `FRONTEND_AUDIT.md` — 코드 감사
-- `UI_REDESIGN_LIGHT.md` / `UI_REDESIGN_PLAN.md` — 디자인 결정
-
----
-
-## 🩺 트러블슈팅
-
-| 증상 | 원인 / 해결 |
-|---|---|
-| `MongoDB 미설정` 로그 | `.env`에 `MONGODB_URI` 입력. 무료 Atlas로 충분. |
-| 분석은 되는데 SSE가 끊김 | 브라우저 Dev Tools → Network → EventStream 확인. CORS 설정 또는 프록시(특히 회사 망) 의심. |
-| `KIS 토큰 발급 실패` | App Key/Secret 오타, 또는 모의/실전 환경 값 불일치. `KIS_MOCK` 값을 다시 확인하세요. |
-| `상한가 근처/도달` 로그 후 주문 안됨 | 정상. 안전장치 작동 중. |
-| LLM 응답이 너무 느림 | `default_llm_model`을 `gpt-5-mini`로, `reasoning_effort=low`로 낮추기 (`config.py`) |
-| `FinanceDataReader` 설치 실패 | PyPI 휠 미존재 시 `pip install git+https://github.com/FinanceData/FinanceDataReader.git` |
-| Windows에서 `pykrx` 깨짐 | Python 3.12+로 업그레이드, VS Build Tools 설치 |
-| 다크모드가 깜빡임 | `<head>`에 `THEME_INIT_SCRIPT`가 있는지 확인 (`layout.tsx`) |
-
----
-
-## 🛡️ 보안 · 면책
-
-### 보안
-
-- **자격증명 암호화** — KIS App Key/Secret, 주문 페이로드는 모두 `cryptography.Fernet`로 암호화하여 MongoDB 저장.
-- **승인 사이클** — 모든 실전 주문은 인앱 2단계 확인, 승인 요청 기록, 만료 시간을 거칩니다.
-- **권한 미들웨어** — `require_user`로 다른 사용자의 리소스 접근 차단.
-- **`.env`는 git에 절대 커밋 금지** — `.gitignore` 포함.
-- **`APP_SECRET_KEY`는 충분히 길고 무작위로** — 최소 32자 권장.
-
-### 면책
-
-> ⚠️ **이 프로젝트는 연구 · 학습 · 개인 사용 목적입니다.**
-> 
-> 본 시스템을 사용한 모든 매매에 대한 손실은 사용자 본인의 책임입니다. 저자/기여자는 어떤 종류의 손실에 대해서도 책임지지 않습니다.
-> 
-> - 실전 사용 전 **반드시 모의투자(`KIS_MOCK=true`)로 충분히 검증**하세요.
-> - LLM은 환각을 일으킬 수 있으며, 모든 안전장치에도 불구하고 **잘못된 주문 가능성**이 있습니다.
-> - 한국 시장의 모든 규칙(서킷브레이커, 변동성 완화장치 등)을 100% 모사하지는 못합니다.
-> - 본 코드를 상업적/투자자문 용도로 배포할 때는 **자본시장법** 등 관련 법규를 직접 확인해야 합니다.
-
----
-
-## 🗺️ 로드맵
-
-- [ ] WebSocket 기반 실시간 호가 (`KIS H0STCNT0`)
-- [ ] 시간외 주문 라우팅 (실전)
-- [ ] 부분 체결 처리
-- [ ] 다중 LLM 앙상블 (Claude + GPT 동시 토론)
-- [ ] 모바일 PWA 모드
-- [ ] 백테스트 워크포워드 분석 (과적합 방지)
-- [ ] 알림 (텔레그램/Discord 웹훅)
-- [ ] 옵션·ETF 지원
 
 ## 🤝 기여
 
-PR 환영합니다. 큰 변경은 먼저 Issue로 논의해 주세요.
-
-```bash
-git checkout -b feat/내기능
-# ... 작업 ...
-git commit -m "feat: ..."
-git push origin feat/내기능
-```
-
-코드 스타일: **Black** (Python), **ESLint** (TypeScript), 테스트 통과 필수.
-
-## 📚 참고 자료
-
-- [TradingAgents](https://github.com/TauricResearch/TradingAgents) — 멀티에이전트 LLM 트레이딩 논문
-- [KIS OpenAPI 공식](https://github.com/koreainvestment/open-trading-api)
-- [pykrx](https://github.com/sharebook-kr/pykrx) — 한국거래소 데이터
-- [FinanceDataReader](https://github.com/FinanceData/FinanceDataReader)
-- Kelly, J. L. (1956). *A New Interpretation of Information Rate*
+이슈와 PR 환영합니다. 큰 변경은 먼저 [DEVELOPER_GUIDE](docs/DEVELOPER_GUIDE.md)
+의 *Contribution* 섹션을 확인해 주세요.
 
 ## 📄 라이선스
 
-MIT License. 자세한 내용은 [LICENSE](LICENSE) 참고.
-
----
-
-<div align="center">
-
-**Made with care for Korean retail traders.**
-
-문제 · 제안 · 토론은 [Issues](https://github.com/picothebird/korean-trading-agents/issues)에 남겨 주세요.
-
-</div>
+MIT — `LICENSE` 파일 참고.
