@@ -3,9 +3,8 @@
  *
  * 30×20 그리드. 단일 레이어. Tiny Town 프레임 인덱스로 작성.
  *
- * @deprecated v2 plan §C Phase 4부터 `layout/tradingOfficePreset.ts`의
- *   `TRADING_OFFICE_LAYOUT` (ktt-office-layout@2)이 SSOT. 이 파일은 v1 grid
- *   폴백 + Minimap 타일 시각화 호환용으로만 잔존. 새 코드는 layout v2 사용.
+ * MS9 LDtk 임포트가 도착하면 이 파일은 폴백/오프라인 데모용으로 유지하거나 제거.
+ * §0-sexies.18 (MS2 실행 기록) 참조.
  *
  * 좌표계: [row][col]. 0,0 = 좌상단.
  */

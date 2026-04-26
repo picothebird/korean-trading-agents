@@ -58,8 +58,6 @@ function isOfficeMapData(v: unknown): v is OfficeMapData {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   if (typeof o.cols !== "number" || typeof o.rows !== "number") return false;
-  // v2 plan §C polish: 비현실적 작은 크기 차단 (cols/rows ≥ 4).
-  if (o.cols < 4 || o.rows < 4) return false;
   if (typeof o.tileSize !== "number") return false;
   if (typeof o.tileset !== "string") return false;
   if (!Array.isArray(o.layers) || o.layers.length === 0) return false;

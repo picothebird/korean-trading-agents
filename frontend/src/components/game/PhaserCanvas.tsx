@@ -17,7 +17,6 @@ import type { OfficeSceneController } from "./OfficeSceneController";
 import { HudControls } from "./HudControls";
 import { Minimap } from "./Minimap";
 import { AgentCounter } from "./AgentCounter";
-import { AgentLabelOverlay } from "./AgentLabelOverlay";
 
 // Phaser는 동적 로드만 사용. 컴포넌트 자체는 client-only.
 const PhaserCanvasInner = dynamic(() => import("./PhaserCanvasInner"), {
@@ -86,7 +85,6 @@ export function PhaserCanvas({ thoughts, onAgentClick, visibleRoles, showHud = t
         visibleRoles={activeRoles}
         onReady={setController}
       />
-      <AgentLabelOverlay controller={controller} roles={activeRoles} />
       {showHud && (
         <>
           <AgentCounter thoughts={thoughts} totalRoles={activeRoles.length} />

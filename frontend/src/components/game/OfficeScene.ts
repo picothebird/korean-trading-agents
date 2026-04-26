@@ -22,61 +22,20 @@ import {
   MAP_TILE,
 } from "./defaultOfficeMap";
 import { AgentActor } from "./AgentActor";
-import type { IAgentActor } from "./actors/IAgentActor";
-import { SpriteAgentActor } from "./actors/SpriteAgentActor";
 import { DESK_POSITIONS } from "./deskPositions";
 import { createDeskProps, type DeskPropsHandle } from "./DeskProps";
 import { createRoomLabels, type RoomLabelsHandle } from "./RoomLabels";
 import { validateOfficeMap, type OfficeMapData } from "./mapLoader";
 import { playSfx } from "./sfx";
-import { getWorldMetrics, type WorldMetrics } from "./systems/WorldMetrics";
-import { CameraSystem, type CameraMode } from "./systems/CameraSystem";
-import { diffFocusTarget } from "./systems/FocusSystem";
-import { CHARACTER_SHEETS } from "./assets/assetCatalog";
-import {
-  FURNITURE_CATALOG,
-  FLOOR_CATALOG,
-  WALL_CATALOG,
-} from "./assets/furnitureCatalog";
-import {
-  renderLayout,
-  renderZoneOverlays,
-  type LayoutRenderHandle,
-} from "./systems/LayoutSystem";
-import { AgentStateSystem } from "./systems/AgentStateSystem";
-import { TRADING_OFFICE_LAYOUT } from "./layout/tradingOfficePreset";
-import type {
-  OfficeLayoutV2,
-  LayoutSeat,
-  LayoutZone,
-} from "./layout/OfficeLayoutTypes";
 
 export const OFFICE_SCENE_KEY = "OfficeScene";
 
-const TILE_SCALE = 4; // 16px → 64px on screen (장면 확대 + 제일 넓은 가독성)
+const TILE_SCALE = 2; // 16px → 32px on screen
 const SCREEN_TILE = MAP_TILE * TILE_SCALE;
 
 const CAMERA_ZOOM_MIN = 0.5;
 const CAMERA_ZOOM_MAX = 2.0;
 const CAMERA_ZOOM_STEP = 0.1;
-
-// Phase 1 토글 — 문제 발생 시 v1 동작으로 즉시 롤백 (v2 plan §C / E-3).
-const USE_FIT_ZOOM = true;
-const USE_FOCUS_SYSTEM = true;
-// Phase 4 토글 — Pixel Agents 가구/바닥/벽으로 layout v2 렌더. 끄면 v1 grid 폴백.
-const USE_LAYOUT_V2 = true;
-// Phase 3 토글 — SpriteAgentActor로 교체할 role 집합. 비워두면 전 role이 도형 AgentActor.
-const USE_SPRITE_ROLES: ReadonlySet<AgentRole> = new Set<AgentRole>([
-  "technical_analyst",
-  "fundamental_analyst",
-  "sentiment_analyst",
-  "macro_analyst",
-  "bull_researcher",
-  "bear_researcher",
-  "risk_manager",
-  "portfolio_manager",
-  "guru_agent",
-]);
 
 const ACTIVE_STATUSES_FOR_BUBBLE = new Set<AgentStatus>([
   "thinking",
@@ -92,10 +51,11 @@ interface ThoughtSnapshot {
 }
 
 export class OfficeScene extends Phaser.Scene {
-  private visibleRoles: AgentRole[];
+  private readonly visibleRoles: AgentRole[];
+  private bootText?: Phaser.GameObjects.Text;
   private mapLayer?: Phaser.GameObjects.Container;
   private bgRect?: Phaser.GameObjects.Rectangle;
-  private actors: Map<AgentRole, IAgentActor> = new Map();
+  private actors: Map<AgentRole, AgentActor> = new Map();
   private deskProps: DeskPropsHandle[] = [];
   private roomLabels: RoomLabelsHandle | null = null;
   /** MS9 외부 로드된 맵 데이터 (null = 폴백 필요) */
@@ -106,14 +66,6 @@ export class OfficeScene extends Phaser.Scene {
   private clickHandler: ((role: AgentRole) => void) | null = null;
   private dragStart: { x: number; y: number; scrollX: number; scrollY: number } | null = null;
   private pendingBgColor: number | null = null;
-  // Phase 1 systems
-  private cameraSystem: CameraSystem | null = null;
-  private lastThoughts: ReadonlyArray<AgentThought> = [];
-  // Phase 4: layout v2 핸들 + 활성 layout 참조.
-  private layoutHandle: LayoutRenderHandle | null = null;
-  private zoneOverlayHandle: LayoutRenderHandle | null = null;
-  private activeLayout: OfficeLayoutV2 | null = null;
-  private stateSystem: AgentStateSystem | null = null;
 
   constructor(visibleRoles: ReadonlyArray<AgentRole> = ALL_AGENT_ROLES) {
     super({ key: OFFICE_SCENE_KEY });
@@ -131,20 +83,6 @@ export class OfficeScene extends Phaser.Scene {
     }
     // MS9 외부 맵 JSON. 실패 시 Phaser가 'loaderror'를 발사하며 cache에 없으므로 create()에서 폴백됨.
     this.load.json("office-map", "/game/maps/office.json");
-
-    // Phase 2: Pixel Agents 캐릭터 시트 (112×96 = 7 frames × 16w, 3 rows × 32h).
-    for (const sheet of CHARACTER_SHEETS) {
-      this.load.spritesheet(sheet.key, sheet.url, {
-        frameWidth: sheet.frameWidth,
-        frameHeight: sheet.frameHeight,
-      });
-    }
-    // Phase 4: floor/wall/furniture sprite 로드.
-    if (USE_LAYOUT_V2) {
-      for (const f of FLOOR_CATALOG) this.load.image(f.id, f.url);
-      for (const w of WALL_CATALOG) this.load.image(w.id, w.url);
-      for (const item of FURNITURE_CATALOG) this.load.image(item.id, item.url);
-    }
   }
 
   create(): void {
@@ -172,18 +110,9 @@ export class OfficeScene extends Phaser.Scene {
       }
     }
     this.drawDefaultOffice();
-    // v3: 색박스 룸 라벨 제거 (LayoutSystem nameplate가 대체).
-    // this.roomLabels = createRoomLabels(this);
+    this.roomLabels = createRoomLabels(this);
     this.spawnActors();
-    this.stateSystem = new AgentStateSystem(this);
-
-    // Phase 1: WorldMetrics + CameraSystem 일원화. fit zoom으로 첫 진입.
-    this.cameraSystem = new CameraSystem(this, () => this.getMetrics());
-    if (USE_FIT_ZOOM) {
-      this.cameraSystem.applyFit();
-    } else {
-      this.centerCameraOnMap();
-    }
+    this.centerCameraOnMap();
     this.setupCameraControls();
 
     if (this.pendingSnapshots) {
@@ -193,6 +122,19 @@ export class OfficeScene extends Phaser.Scene {
       this.pendingSnapshots = null;
     }
 
+    this.bootText = this.add.text(
+      width / 2,
+      height - 24,
+      `MS9 외부 맵 ${this.mapDataSource === "external" ? "✓" : "(폴백)"} · MS10 사운드 · 룸 라벨 · 휠 줌 / 드래그 팬`,
+      {
+        fontFamily: "Pretendard, system-ui, sans-serif",
+        fontSize: "12px",
+        color: "#5a5d66",
+      },
+    );
+    this.bootText.setOrigin(0.5);
+    this.bootText.setScrollFactor(0);
+
     this.scale.on("resize", this.onResize, this);
   }
 
@@ -200,31 +142,13 @@ export class OfficeScene extends Phaser.Scene {
     for (const actor of this.actors.values()) {
       actor.pulse(time);
     }
-    this.cameraSystem?.update();
-    this.stateSystem?.sync(this.actors);
   }
 
-  /** 오피스를 그린다. v2가 활성이면 LayoutSystem, 아니면 v1 grid 폴백. */
+  /** 30×20 오피스를 좌상단 (0,0) 기준 절대 좌표로 그림. 외부 맵 우선, 실패 시 DEFAULT_OFFICE_LAYOUT 폴백. */
   private drawDefaultOffice(): void {
     if (!this.mapLayer) return;
     this.mapLayer.removeAll(true);
-    this.layoutHandle?.destroy();
-    this.layoutHandle = null;
-    this.zoneOverlayHandle?.destroy();
-    this.zoneOverlayHandle = null;
 
-    if (USE_LAYOUT_V2 && this.textures.exists(FLOOR_CATALOG[0].id)) {
-      this.activeLayout = TRADING_OFFICE_LAYOUT;
-      // v3: zone overlay 제거 — nameplate로 대체.
-      this.layoutHandle = renderLayout(this, TRADING_OFFICE_LAYOUT, {
-        tileScale: TILE_SCALE,
-        container: this.mapLayer,
-      });
-      this.mapDataSource = "external";
-      return;
-    }
-
-    // v1 폴백 — 기존 Tiny Town grid.
     const grid: ReadonlyArray<ReadonlyArray<number>> =
       this.externalMap?.layers[0]?.data ?? DEFAULT_OFFICE_LAYOUT;
     const rows = this.externalMap?.rows ?? MAP_ROWS;
@@ -249,20 +173,12 @@ export class OfficeScene extends Phaser.Scene {
   /** 표시 대상 AgentRole에 대해 책상 위치에 AgentActor 인스턴스화 + 클릭 핸들러. */
   private spawnActors(): void {
     for (const role of this.visibleRoles) {
-      // Phase 4: layout v2의 seats 우선 사용. 없으면 v1 DESK_POSITIONS.
-      const seat: LayoutSeat = this.activeLayout?.seats[role] ?? DESK_POSITIONS[role];
-      const x = seat.col * SCREEN_TILE + SCREEN_TILE / 2;
-      const y = seat.row * SCREEN_TILE + SCREEN_TILE / 2;
-      // v1 grid 모드에서만 도형 책상 prop을 그림. v2는 furniture 자체가 책상.
-      if (!this.activeLayout) {
-        this.deskProps.push(createDeskProps(this, x, y));
-      }
-      // Phase 3: USE_SPRITE_ROLES에 포함된 role은 SpriteAgentActor, 아닌 되면 도형 폴백.
-      const useSprite =
-        USE_SPRITE_ROLES.has(role) && this.textures.exists("pa-char-0");
-      const actor: IAgentActor = useSprite
-        ? new SpriteAgentActor(this, x, y, role)
-        : new AgentActor(this, x, y, role);
+      const desk = DESK_POSITIONS[role];
+      const x = desk.col * SCREEN_TILE + SCREEN_TILE / 2;
+      const y = desk.row * SCREEN_TILE + SCREEN_TILE / 2;
+      // MS7 디오라마 — 책상/모니터/화분 prop을 캐릭터보다 먼저 배치 (depth -1/-2)
+      this.deskProps.push(createDeskProps(this, x, y));
+      const actor = new AgentActor(this, x, y, role);
       actor.onPointerDown(() => {
         playSfx("click");
         if (this.clickHandler) this.clickHandler(role);
@@ -297,10 +213,6 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   resetCamera(): void {
-    if (this.cameraSystem) {
-      this.cameraSystem.reset();
-      return;
-    }
     const cam = this.cameras.main;
     cam.setZoom(1);
     this.centerCameraOnMap();
@@ -308,37 +220,7 @@ export class OfficeScene extends Phaser.Scene {
 
   /** 미니맵에서 클릭 시 카메라를 월드 좌표로 이동 (액터 추적 X). */
   panCameraTo(worldX: number, worldY: number): void {
-    if (this.cameraSystem) {
-      this.cameraSystem.panTo(worldX, worldY);
-      return;
-    }
     this.cameras.main.centerOn(worldX, worldY);
-  }
-
-  /** Phase 1: 월드 전체를 화면에 담는다. */
-  fitToWorld(): void {
-    this.cameraSystem?.applyFit();
-  }
-
-  /** Phase 1: 카메라 모드 전환. */
-  setCameraMode(mode: CameraMode): void {
-    this.cameraSystem?.setMode(mode);
-  }
-
-  getCameraMode(): CameraMode {
-    return this.cameraSystem?.getMode() ?? "fit";
-  }
-
-  /** Phase 1: 특정 role의 책상으로 카메라 follow. */
-  focusAgent(role: AgentRole, opts?: { instant?: boolean }): void {
-    if (!this.cameraSystem) return;
-    const actor = this.actors.get(role);
-    if (!actor) return;
-    this.cameraSystem.focus(actor.x, actor.y, opts);
-  }
-
-  focusZone(worldX: number, worldY: number, opts?: { instant?: boolean }): void {
-    this.cameraSystem?.focus(worldX, worldY, opts);
   }
 
   getCameraInfo(): {
@@ -349,114 +231,16 @@ export class OfficeScene extends Phaser.Scene {
     viewHeight: number;
     worldWidth: number;
     worldHeight: number;
-  } | null {
-    // scene 이 destroy 되었거나 create 이전이면 cameras.main 이 undefined
-    const cam = this.cameras?.main;
-    if (!cam) return null;
-    const m = this.getMetrics();
+  } {
+    const cam = this.cameras.main;
     return {
       scrollX: cam.scrollX,
       scrollY: cam.scrollY,
       zoom: cam.zoom,
       viewWidth: cam.width / cam.zoom,
       viewHeight: cam.height / cam.zoom,
-      worldWidth: m.worldWidth,
-      worldHeight: m.worldHeight,
-    };
-  }
-
-  /** Phase 1 SSOT: WorldMetrics 기반 월드 크기. v2 layout 우선. */
-  private getMetrics(): WorldMetrics {
-    if (this.activeLayout) {
-      return getWorldMetrics({
-        externalMap: { cols: this.activeLayout.cols, rows: this.activeLayout.rows },
-        fallbackCols: MAP_COLS,
-        fallbackRows: MAP_ROWS,
-        tilePx: SCREEN_TILE,
-      });
-    }
-    return getWorldMetrics({
-      externalMap: this.externalMap
-        ? { cols: this.externalMap.cols, rows: this.externalMap.rows }
-        : null,
-      fallbackCols: MAP_COLS,
-      fallbackRows: MAP_ROWS,
-      tilePx: SCREEN_TILE,
-    });
-  }
-
-  /** Phase 4: 컨트롤러/미니맵용 좌석 정보 (월드 좌표). */
-  getSeats(): Array<{ role: AgentRole; x: number; y: number; label?: string }> {
-    if (!this.activeLayout) {
-      return this.visibleRoles.map((role) => {
-        const d = DESK_POSITIONS[role];
-        return {
-          role,
-          x: d.col * SCREEN_TILE + SCREEN_TILE / 2,
-          y: d.row * SCREEN_TILE + SCREEN_TILE / 2,
-        };
-      });
-    }
-    return this.visibleRoles.map((role) => {
-      const s = this.activeLayout!.seats[role];
-      return {
-        role,
-        x: s.col * SCREEN_TILE + SCREEN_TILE / 2,
-        y: s.row * SCREEN_TILE + SCREEN_TILE / 2,
-        label: s.label,
-      };
-    });
-  }
-
-  /** Phase 4: 룸 존 정보 (월드 좌표). */
-  getZones(): Array<{ name: string; color: number; x: number; y: number; w: number; h: number }> {
-    const zones: ReadonlyArray<LayoutZone> = this.activeLayout?.zones ?? [];
-    return zones.map((z) => {
-      const x = z.col0 * SCREEN_TILE;
-      const y = z.row0 * SCREEN_TILE;
-      return {
-        name: z.name,
-        color: z.color,
-        x,
-        y,
-        w: (z.col1 - z.col0 + 1) * SCREEN_TILE,
-        h: (z.row1 - z.row0 + 1) * SCREEN_TILE,
-      };
-    });
-  }
-
-  /** v3 DOM overlay: 카메라 변환 + 액터/존 라벨 anchor 스냅샷. */
-  getOverlaySnapshot(): {
-    cam: { scrollX: number; scrollY: number; zoom: number; viewW: number; viewH: number };
-    agents: Array<{ role: AgentRole; nameX: number; nameY: number; bubbleX: number; bubbleY: number; bubbleText: string; bubbleVisible: boolean }>;
-    zones: Array<{ name: string; x: number; y: number }>;
-  } | null {
-    const cam = this.cameras?.main;
-    if (!cam) return null;
-    const agents: Array<{ role: AgentRole; nameX: number; nameY: number; bubbleX: number; bubbleY: number; bubbleText: string; bubbleVisible: boolean }> = [];
-    for (const actor of this.actors.values()) {
-      try {
-        const name = actor.getNameAnchor?.() ?? { x: actor.x, y: actor.y + 44 };
-        const label = actor.getLabelAnchor?.() ?? { x: actor.x, y: actor.y - 50 };
-        const bubble = actor.getBubble?.() ?? { text: "", visible: false };
-        agents.push({
-          role: actor.role,
-          nameX: name.x,
-          nameY: name.y,
-          bubbleX: label.x,
-          bubbleY: label.y,
-          bubbleText: bubble.text,
-          bubbleVisible: bubble.visible,
-        });
-      } catch {
-        // actor may be mid-destroy; skip this frame for it.
-      }
-    }
-    const zonesArr = this.getZones().map((z) => ({ name: z.name, x: z.x + z.w / 2, y: z.y + 8 }));
-    return {
-      cam: { scrollX: cam.scrollX, scrollY: cam.scrollY, zoom: cam.zoom, viewW: cam.width, viewH: cam.height },
-      agents,
-      zones: zonesArr,
+      worldWidth: MAP_COLS * SCREEN_TILE,
+      worldHeight: MAP_ROWS * SCREEN_TILE,
     };
   }
 
@@ -473,29 +257,17 @@ export class OfficeScene extends Phaser.Scene {
     }
     if (this.actors.size === 0) {
       this.pendingSnapshots = latest;
-      this.lastThoughts = thoughts;
       return;
     }
     for (const [role, snap] of latest) {
       this.applySnapshot(role, snap);
     }
-
-    // Phase 1: 새 thought에 대해 자동 카메라 포커스 (manual hold 시 무시).
-    if (USE_FOCUS_SYSTEM && this.cameraSystem) {
-      const target = diffFocusTarget(this.lastThoughts, thoughts);
-      if (target) {
-        const actor = this.actors.get(target.role);
-        if (actor) this.cameraSystem.focus(actor.x, actor.y);
-      }
-    }
-    this.lastThoughts = thoughts;
   }
 
   private applySnapshot(role: AgentRole, snap: ThoughtSnapshot): void {
     const actor = this.actors.get(role);
     if (!actor) return;
     actor.setStatus(snap.status);
-    this.stateSystem?.setStatus(role, snap.status);
 
     // 말풍선: 활성 상태 + content 존재 + 새 timestamp일 때만
     const seen = this.lastSeen.get(role);
@@ -509,19 +281,20 @@ export class OfficeScene extends Phaser.Scene {
     this.lastSeen.set(role, snap.timestamp);
   }
 
-  /** 맵 중앙이 화면 중앙에 오도록 카메라 정렬 (Phase 1 fallback / Phase 0 호환용). */
+  /** 맵 중앙이 화면 중앙에 오도록 카메라 정렬. */
   private centerCameraOnMap(): void {
     const cam = this.cameras.main;
-    const m = this.getMetrics();
-    cam.setBounds(0, 0, m.worldWidth, m.worldHeight);
-    cam.centerOn(m.centerX, m.centerY);
+    const mapW = MAP_COLS * SCREEN_TILE;
+    const mapH = MAP_ROWS * SCREEN_TILE;
+    cam.setBounds(0, 0, mapW, mapH);
+    cam.centerOn(mapW / 2, mapH / 2);
   }
 
   /** MS4 카메라 컨트롤: 마우스 휠 줌 + 드래그 팬. */
   private setupCameraControls(): void {
     const cam = this.cameras.main;
 
-    // 휠 줌 — Phase 1: CameraSystem이 manual hold/fit 강등 처리.
+    // 휠 줌
     this.input.on(
       "wheel",
       (
@@ -530,14 +303,6 @@ export class OfficeScene extends Phaser.Scene {
         _dx: number,
         dy: number,
       ) => {
-        if (this.cameraSystem) {
-          this.cameraSystem.zoomBy(
-            dy > 0 ? -CAMERA_ZOOM_STEP : CAMERA_ZOOM_STEP,
-            CAMERA_ZOOM_MIN,
-            CAMERA_ZOOM_MAX,
-          );
-          return;
-        }
         const next =
           dy > 0
             ? Math.max(CAMERA_ZOOM_MIN, cam.zoom - CAMERA_ZOOM_STEP)
@@ -568,8 +333,6 @@ export class OfficeScene extends Phaser.Scene {
         this.dragStart.scrollX - dx / cam.zoom,
         this.dragStart.scrollY - dy / cam.zoom,
       );
-      // Phase 1: 사용자 드래그 시 자동 카메라 일시 정지.
-      this.cameraSystem?.notifyManualInput();
     });
     const endDrag = () => {
       this.dragStart = null;
@@ -580,27 +343,17 @@ export class OfficeScene extends Phaser.Scene {
 
   private onResize(gameSize: Phaser.Structs.Size): void {
     const { width, height } = gameSize;
+    if (this.bootText) {
+      this.bootText.setPosition(width / 2, height - 24);
+    }
     if (this.bgRect) {
       this.bgRect.setPosition(width / 2, height / 2);
       this.bgRect.setSize(width, height);
     }
-    // Phase 1: fit 모드일 때만 카메라 재계산. free/follow에서는 사용자 시점 보존.
-    // (v2 plan §I — Live/Story/Report 모드 토글이 만들던 카메라 튐 근본 차단.)
-    if (this.cameraSystem) {
-      this.cameraSystem.onResize();
-    } else {
-      this.centerCameraOnMap();
-    }
+    this.centerCameraOnMap();
   }
 
   shutdown(): void {
     this.scale.off("resize", this.onResize, this);
-    this.layoutHandle?.destroy();
-    this.zoneOverlayHandle?.destroy();
-    this.stateSystem?.destroy();
-    this.layoutHandle = null;
-    this.zoneOverlayHandle = null;
-    this.stateSystem = null;
-    this.activeLayout = null;
   }
 }

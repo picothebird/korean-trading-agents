@@ -8,13 +8,6 @@ interface HintProps {
   label?: string;                   // visible label next to icon
 }
 
-// 안내 문구 자동 줄바꿈: 문장 끝/구분자(`·`) 뒤에 줄바꿈 삽입
-function formatHintText(s: string): string {
-  return s
-    .replace(/([.!?])\s+(?=[가-힣A-Za-z(])/g, "$1\n")
-    .replace(/\s+·\s+/g, "\n· ");
-}
-
 /** Inline help tip. Hover shows tooltip; aria-describedby on focus. */
 export function Hint({ children, size = 14, inline = true, label }: HintProps) {
   const id = useId();
@@ -66,15 +59,14 @@ export function Hint({ children, size = 14, inline = true, label }: HintProps) {
             background: "var(--text-primary)",
             color: "var(--text-inverse)",
             fontSize: 12,
-            lineHeight: 1.55,
+            lineHeight: 1.45,
             borderRadius: "var(--radius-sm)",
             boxShadow: "var(--shadow-lg)",
-            whiteSpace: "pre-line",
-            wordBreak: "keep-all",
+            whiteSpace: "normal",
             pointerEvents: "none",
           }}
         >
-          {typeof children === "string" ? formatHintText(children) : children}
+          {children}
         </span>
       )}
     </span>

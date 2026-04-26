@@ -281,21 +281,21 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
           label="총 수익률"
           value={`${m.total_return >= 0 ? "+" : ""}${m.total_return.toFixed(1)}%`}
           positive={m.total_return > 0}
-          hint="시뮬레이션 종료 시점의 평가금액이 초기 자본(1,000만원) 대비 증감된 비율입니다. 수수료·세금은 반영되지 않은 이론값입니다."
+          hint="시뮬레이션 종료 시점의 평가금액이 초기 자본(1,000만원) 대비 몇 % 늘고 줄었는지를 보여줘요. 수수료와 세금은 고려하지 않은 이론값이에요."
         />
         <Metric
           label="초과수익 α (알파)"
           value={`${m.alpha >= 0 ? "+" : ""}${m.alpha.toFixed(1)}%p`}
           positive={m.alpha > 0}
           sub="vs 단순보유(벤치마크)"
-          hint={`이 ${strategyShort} 전략이 같은 기간 같은 종목을 단순 보유했을 때의 수익률보다 얼마나 초과했는지를 퍼센트포인트(%p)로 표시합니다. 양수이면 전략이 단순보유를 앍서는 수익, 음수이면 미팔한 수익을 의미합니다.`}
+          hint={`이 ${strategyShort} 전략이 같은 기간 이 종목을 '사서 계속 보유'만 했을 때보다 얼마나 더 벌었는지를 퍼센트포인트로 표시해요. 양수면 ${strategyShort}이 단순보유보다 높은 수익을 낸 거고, 음수면 오히려 더 못 번 거예요. (α·알파는 투자 교과서의 표준 용어예요)`}
         />
         <Metric
           label="샤프 비율"
           value={m.sharpe_ratio.toFixed(2)}
           positive={m.sharpe_ratio > 1 ? true : m.sharpe_ratio < 0 ? false : null}
           sub="1.0 이상이면 우수"
-          hint="수익을 변동성(위험)으로 나눈 값입니다. 같은 수익률이어도 등락폭이 클수록 값이 낮아집니다. 1.0 이상은 양호, 2.0 이상은 우수한 편에 속합니다."
+          hint="수익을 변동성(위험)으로 나눈 값이에요. 같은 수익이라도 장중 출렁임이 크면 샤프는 낮아져요. 1은 괜찮음, 2 이상이면 매우 우수해요."
         />
       </div>
 
@@ -305,38 +305,38 @@ export function BacktestPanel({ result, mode = "agent", decisionIntervalDays }: 
           label="연간 수익률"
           value={`${m.annualized_return >= 0 ? "+" : ""}${m.annualized_return.toFixed(1)}%`}
           positive={m.annualized_return > 0}
-          hint="총 수익률을 1년 단위로 환산한 값입니다. 서로 다른 기간의 전략을 동일 기준으로 비교할 때 사용합니다."
+          hint="총 수익률을 1년 단위로 환산한 값이에요. 기간이 6개월이면 2배, 2년이면 절반으로 계산해요. 서로 다른 기간의 전략을 비교할 때 써요."
         />
         <Metric
           label="최대 낙폭 (MDD)"
           value={`${m.max_drawdown.toFixed(1)}%`}
           positive={m.max_drawdown > -10}
           sub="작을수록 안전"
-          hint="시뮬레이션 기간 중 평가금액의 고점대비 최대 하락폭입니다. 계좌의 일시적인 평가 손실 최댓값을 의미하며, 운용 안정성 지표로 사용됩니다. 일반적으로 -20% 이내가 양호한 수준으로 평가됩니다."
+          hint="시뮬레이션 동안 평가금액의 최고점에서 최저점까지 일시적으로 얼마나 떨어졌는지를 보여줘요. 임의의 순간 계좌가 그만큼 줄어들 수 있다는 뜻이에요. -20% 이내면 권장할 만해요."
         />
         <Metric
           label="승률"
           value={`${m.win_rate.toFixed(1)}%`}
           positive={m.win_rate > 55 ? true : m.win_rate < 45 ? false : null}
-          hint="전체 거래 중 수익이 발생한 거래의 비율입니다. 승률이 높아도 단 한 번의 큰 손실로 전체 성과가 랜수 있으므로 손익비와 함께 해석합니다."
+          hint="전체 거래 중 수익을 낸 거래의 비율이에요. 단, 승률이 높다고 수익이 큰 건 아니에요. 한 번의 큰 손실이 수십 번의 소액 수익을 지울 수도 있으니 손익비와 함께 보세요."
         />
         <Metric
           label="칼마 비율"
           value={m.calmar_ratio.toFixed(2)}
           positive={null}
-          hint="연간 수익률을 최대낙폭의 절대값으로 나눈 값입니다. 위험 대비 수익 효율을 의미하며, 1.0 이상이면 양호, 3.0 이상은 매우 우수한 수준입니다."
+          hint="연간 수익률 ÷ 최대낙폭이에요. '일시적 고통 대비 얼마나 벌었니'를 보여줘요. 1 이상이면 양호, 3 이상이면 매우 우수해요."
         />
         <Metric
           label="손익비"
           value={m.profit_factor.toFixed(2)}
           positive={m.profit_factor > 1.5 ? true : m.profit_factor < 1 ? false : null}
-          hint="총 이익 ÷ 총 손실의 비율입니다. 1.0을 초과하면 이익이 손실을 상쇄했음을, 2.0은 손실의 2배에 해당하는 이익이 발생했음을 의미합니다."
+          hint="총 이익 ÷ 총 손실이에요. 1보다 크면 돈을 번 거고, 2면 손실의 2배만큼 이익을 거뒀다는 뜻이에요."
         />
         <Metric
           label="총 거래"
           value={`${m.total_trades}회`}
           positive={null}
-          hint="시뮬레이션 기간 중 실제 매수·매도가 체결된 횟수입니다. 거래 횟수가 너무 많으면 수수료·세금 부담이 커지고, 너무 적으면 표본 부족으로 성과 신뢰도가 낮아집니다."
+          hint="시뮬레이션 동안 실제로 매수·매도한 횟수예요. 너무 적으면 추세를 놓칠 수 있고, 너무 많으면 수수료와 세금이 늘어나니 균형을 보세요."
         />
       </div>
 

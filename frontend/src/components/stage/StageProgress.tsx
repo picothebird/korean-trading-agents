@@ -40,33 +40,9 @@ function summarizeLayer(thoughts: AgentThought[], roles: AgentRole[]): LayerSumm
 
 export function StageProgress({ thoughts, visibleRoles }: StageProgressProps) {
   const visibleRoleSet = new Set<AgentRole>(visibleRoles ?? LAYER_ROLES.flat());
-  const allLayers = LAYER_ROLES
+  const visibleLayers = LAYER_ROLES
     .map((roles, idx) => ({ idx, roles: roles.filter((role) => visibleRoleSet.has(role)) }))
     .filter((layer) => layer.roles.length > 0);
-
-  // v3 polish: 동시에 진행 중(active)인 레이어만 노출. 모두 idle이면 첫 미완료
-  // 레이어 1개만, 모두 done이면 마지막 레이어 1개만 노출.
-  const layerSummaries = allLayers.map((layer) => ({
-    layer,
-    summary: summarizeLayer(thoughts, layer.roles),
-  }));
-  const activeLayers = layerSummaries.filter(
-    (l) => l.summary.active > 0 || (l.summary.done > 0 && l.summary.done < l.summary.total),
-  );
-  const visibleLayers = (activeLayers.length > 0
-    ? activeLayers
-    : [
-        layerSummaries.find((l) => l.summary.done < l.summary.total) ??
-          layerSummaries[layerSummaries.length - 1],
-      ]
-  )
-    .filter(Boolean)
-    .map((l) => l!.layer);
-  const allDone =
-    layerSummaries.length > 0 &&
-    layerSummaries.every((l) => l.summary.done === l.summary.total);
-
-  if (allDone) return null;
 
   return (
     <div
@@ -74,7 +50,6 @@ export function StageProgress({ thoughts, visibleRoles }: StageProgressProps) {
         display: "flex",
         flexDirection: "column",
         gap: 8,
-        opacity: 0.92,
       }}
       aria-label="단계별 진행률"
     >

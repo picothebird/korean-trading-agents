@@ -9,7 +9,6 @@ import {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -20,15 +19,6 @@ import {
 // - Hover + focus reveal, ESC to dismiss.
 // - Auto-positions above the trigger; collapses to bottom near top edge.
 // - Uses CSS variables so it adapts to light/dark themes.
-
-// 안내 문구가 한 줄로 길어지지 않도록, 문장 끝/구분자(`·`) 뒤에 자동 줄바꿈을
-// 삽입한다. 숫자 소수점(0.18, 1.5bps 등)은 영향 받지 않도록 공백+한글/영문
-// 시작 문자만 매칭한다.
-function formatTooltipText(s: string): string {
-  return s
-    .replace(/([.!?])\s+(?=[가-힣A-Za-z(])/g, "$1\n")
-    .replace(/\s+·\s+/g, "\n· ");
-}
 
 export type TooltipProps = {
   /** Tooltip body. Plain string or rich content. */
@@ -67,13 +57,10 @@ export function Tooltip({
     const margin = 8;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    // 실제 버블 크기를 알 수 있으면 그것으로, 아니면 보수적으로 추정 (≈180px 높이까지 가능).
-    const bubble = bubbleRef.current;
-    const estH = bubble?.offsetHeight ?? 180;
     let place: "top" | "bottom" = placement;
-    // 위쪽 공간이 추정 높이보다 모자라면 아래로 뒤집는다.
-    if (placement === "top" && rect.top - margin < estH + 8) place = "bottom";
-    if (placement === "bottom" && vh - rect.bottom - margin < estH + 8) place = "top";
+    // Flip if not enough room above; or for bottom if not enough below
+    if (placement === "top" && rect.top < 56) place = "bottom";
+    if (placement === "bottom" && vh - rect.bottom < 80) place = "top";
     const top = place === "top" ? rect.top - margin : rect.bottom + margin;
     // Estimate bubble width using maxWidth as upper bound; clamp center to viewport
     const halfW = Math.min(maxWidth, 320) / 2;
@@ -113,15 +100,6 @@ export function Tooltip({
       window.removeEventListener("resize", onScroll);
     };
   }, [open, compute, hide]);
-
-  // 버블이 마운트된 직후 실제 크기로 다시 위치 계산해서 뷰포트 상단/하단 잘림 방지.
-  useLayoutEffect(() => {
-    if (!open) return;
-    compute();
-    // 한 번 더 — 첫 compute 결과로 transform 이 적용된 뒤에 실측이 정확해진다.
-    const raf = requestAnimationFrame(() => compute());
-    return () => cancelAnimationFrame(raf);
-  }, [open, compute]);
 
   if (!isValidElement(children)) return children;
 
@@ -175,11 +153,11 @@ export function Tooltip({
         padding: "9px 12px",
         borderRadius: 10,
         fontSize: 13,
-        lineHeight: 1.55,
+        lineHeight: 1.5,
         fontWeight: 500,
         letterSpacing: "-0.005em",
         pointerEvents: "none",
-        whiteSpace: "pre-line",
+        whiteSpace: "normal",
         wordBreak: "keep-all",
         zIndex: 1000,
       }
@@ -190,7 +168,7 @@ export function Tooltip({
       {trigger}
       {open && coords && (
         <div ref={bubbleRef} id={id} role="tooltip" style={bubbleStyle}>
-          {typeof content === "string" ? formatTooltipText(content) : content}
+          {content}
         </div>
       )}
     </>

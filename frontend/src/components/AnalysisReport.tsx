@@ -10,7 +10,6 @@ import { motion } from "framer-motion";
 import type { TradeDecision } from "@/types";
 import { Tooltip, Icon } from "@/components/ui";
 import { AgreementDonut, ConfidenceGauge } from "@/components/viz/Primitives";
-import { breakLongText, PRE_LINE_STYLE } from "@/lib/text";
 
 const ANALYST_LABEL: Record<string, { ko: string; what: string }> = {
   technical: {
@@ -442,10 +441,9 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
                       color: "var(--text-secondary)",
                       lineHeight: 1.6,
                       margin: 0,
-                      ...PRE_LINE_STYLE,
                     }}
                   >
-                    {breakLongText(d.summary)}
+                    {d.summary}
                   </p>
                 )}
                 {d.key_signals && d.key_signals.length > 0 && (
@@ -532,8 +530,8 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
               >
                 <Icon name="trend-up" size={12} decorative /> 강세론 (매수)
               </p>
-              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, ...PRE_LINE_STYLE }}>
-                {breakLongText(debate.bull_stance ?? "")}
+              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                {debate.bull_stance}
               </p>
               {debate.bull_key_points?.length > 0 && (
                 <ul
@@ -572,8 +570,8 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
               >
                 <Icon name="trend-down" size={12} decorative /> 약세론 (매도/관망)
               </p>
-              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, ...PRE_LINE_STYLE }}>
-                {breakLongText(debate.bear_stance ?? "")}
+              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                {debate.bear_stance}
               </p>
               {debate.bear_key_points?.length > 0 && (
                 <ul
@@ -697,10 +695,9 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
                 marginTop: 8,
                 lineHeight: 1.6,
                 fontStyle: "italic",
-                ...PRE_LINE_STYLE,
               }}
             >
-              요약: {breakLongText(risk.summary)}
+              요약: {risk.summary}
             </p>
           )}
         </Section>
@@ -724,8 +721,8 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
               <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 700, marginBottom: 3 }}>
                 진입 전략
               </p>
-              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, ...PRE_LINE_STYLE }}>
-                {breakLongText(s.entry_strategy)}
+              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                {s.entry_strategy}
               </p>
             </div>
           )}
@@ -740,8 +737,8 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
               <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 700, marginBottom: 3 }}>
                 청산 전략
               </p>
-              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, ...PRE_LINE_STYLE }}>
-                {breakLongText(s.exit_strategy)}
+              <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                {s.exit_strategy}
               </p>
             </div>
           )}

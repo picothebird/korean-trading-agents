@@ -81,7 +81,7 @@ export async function getStockChart(
       // ignore parse error
     }
     const suffix = detail ? ` — ${detail}` : "";
-    throw new Error(`차트를 불러오지 못했습니다 (${ticker} / ${timeframe}, HTTP ${res.status})${suffix}`);
+    throw new Error(`차트를 불러오지 못했어요 (${ticker} / ${timeframe}, HTTP ${res.status})${suffix}`);
   }
   return res.json();
 }

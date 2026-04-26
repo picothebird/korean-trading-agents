@@ -64,72 +64,18 @@ interface Viewport {
   h: number;
 }
 
-interface SeatDot {
-  role: AgentRole;
-  /** SVG 좌표. */
-  x: number;
-  y: number;
-}
-
-interface ZoneRect {
-  name: string;
-  color: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-/** Phase 4: world픽셀을 minimap SVG 픽셀로 환산. SCREEN_TILE=32 → CELL=4, ratio=1/8. */
-const WORLD_TO_SVG = CELL / 32;
-
 export function Minimap({ controller, thoughts, visibleRoles }: Props) {
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  const [seatDots, setSeatDots] = useState<SeatDot[]>([]);
-  const [zoneRects, setZoneRects] = useState<ZoneRect[]>([]);
-  const [pulse, setPulse] = useState(0);
   const rafRef = useRef<number | null>(null);
-
-  // 컬트롤러 준비 시 좌석/존 스냅샷 (1회).
-  useEffect(() => {
-    if (!controller) {
-      setSeatDots([]);
-      setZoneRects([]);
-      return;
-    }
-    const seats = controller.getSeats();
-    setSeatDots(
-      seats.map((s) => ({
-        role: s.role,
-        x: s.x * WORLD_TO_SVG,
-        y: s.y * WORLD_TO_SVG,
-      })),
-    );
-    const zones = controller.getZones();
-    setZoneRects(
-      zones.map((z) => ({
-        name: z.name,
-        color: `#${z.color.toString(16).padStart(6, "0")}`,
-        x: z.x * WORLD_TO_SVG,
-        y: z.y * WORLD_TO_SVG,
-        w: z.w * WORLD_TO_SVG,
-        h: z.h * WORLD_TO_SVG,
-      })),
-    );
-  }, [controller]);
 
   // 카메라 정보 폴링 (60fps requestAnimationFrame, 컨트롤러 변경 시 정리)
   useEffect(() => {
     if (!controller) return;
     let cancelled = false;
-    let pulseTick = 0;
     const tick = () => {
       if (cancelled) return;
-      pulseTick = (pulseTick + 1) % 60;
-      // 1초에 ~1회 펄스 레임 시그널.
-      if (pulseTick === 0) setPulse((p) => (p + 1) % 1000);
       const info = controller.getCameraInfo();
-      if (info && info.worldWidth > 0 && info.worldHeight > 0) {
+      if (info.worldWidth > 0 && info.worldHeight > 0) {
         setViewport({
           x: (info.scrollX / info.worldWidth) * VIEW_W,
           y: (info.scrollY / info.worldHeight) * VIEW_H,
@@ -164,7 +110,6 @@ export function Minimap({ controller, thoughts, visibleRoles }: Props) {
     const sx = ((e.clientX - rect.left) / rect.width) * VIEW_W;
     const sy = ((e.clientY - rect.top) / rect.height) * VIEW_H;
     const info = controller.getCameraInfo();
-    if (!info) return;
     const worldX = (sx / VIEW_W) * info.worldWidth;
     const worldY = (sy / VIEW_H) * info.worldHeight;
     controller.panCameraTo(worldX, worldY);
@@ -206,77 +151,36 @@ export function Minimap({ controller, thoughts, visibleRoles }: Props) {
             />
           )),
         )}
-        {/* 룸 구획 — v2 layout 좌잔 우선, 폴백으로 ROOM_ZONES. */}
-        {(zoneRects.length > 0
-          ? zoneRects.map((z) => (
-              <rect
-                key={z.name}
-                x={z.x}
-                y={z.y}
-                width={z.w}
-                height={z.h}
-                fill={z.color}
-                opacity={0.18}
-              />
-            ))
-          : ROOM_ZONES.map((zone) => (
-              <rect
-                key={zone.name}
-                x={zone.col0 * CELL}
-                y={zone.row0 * CELL}
-                width={(zone.col1 - zone.col0 + 1) * CELL}
-                height={(zone.row1 - zone.row0 + 1) * CELL}
-                fill={`#${zone.color.toString(16).padStart(6, "0")}`}
-                opacity={0.18}
-              />
-            )))}
-        {/* 책상 도트 — v2 seats 우선, 폴백으로 DESK_POSITIONS. */}
-        {seatDots.length > 0
-          ? seatDots
-              .filter((s) =>
-                rolesToDraw.length === 0 ? true : rolesToDraw.includes(s.role),
-              )
-              .map((seat) => {
-                const status = statusByRole[seat.role] ?? "idle";
-                const isActive =
-                  status === "thinking" ||
-                  status === "analyzing" ||
-                  status === "debating" ||
-                  status === "deciding";
-                // 60-frame 주기에서 sin 펄스. r 폭: 0.55~0.95 사이.
-                const phase = (pulse % 12) / 12;
-                const r = isActive
-                  ? CELL * (0.7 + 0.25 * Math.sin(phase * Math.PI * 2))
-                  : CELL * 0.7;
-                return (
-                  <circle
-                    key={seat.role}
-                    cx={seat.x}
-                    cy={seat.y}
-                    r={r}
-                    fill={AGENT_COLOR[seat.role]}
-                    stroke={ACTIVE_STATUS_BORDER[status]}
-                    strokeWidth={isActive ? 1.5 : 1}
-                  />
-                );
-              })
-          : rolesToDraw.map((role) => {
-              const pos = DESK_POSITIONS[role];
-              const status = statusByRole[role] ?? "idle";
-              const cx = pos.col * CELL + CELL / 2;
-              const cy = pos.row * CELL + CELL / 2;
-              return (
-                <circle
-                  key={role}
-                  cx={cx}
-                  cy={cy}
-                  r={CELL * 0.7}
-                  fill={AGENT_COLOR[role]}
-                  stroke={ACTIVE_STATUS_BORDER[status]}
-                  strokeWidth={1}
-                />
-              );
-            })}
+        {/* 룸 구획 (옥상의 회색 + 룸 컬러) */}
+        {ROOM_ZONES.map((zone) => (
+          <rect
+            key={zone.name}
+            x={zone.col0 * CELL}
+            y={zone.row0 * CELL}
+            width={(zone.col1 - zone.col0 + 1) * CELL}
+            height={(zone.row1 - zone.row0 + 1) * CELL}
+            fill={`#${zone.color.toString(16).padStart(6, "0")}`}
+            opacity={0.18}
+          />
+        ))}
+        {/* 책상 도트 */}
+        {rolesToDraw.map((role) => {
+          const pos = DESK_POSITIONS[role];
+          const status = statusByRole[role] ?? "idle";
+          const cx = pos.col * CELL + CELL / 2;
+          const cy = pos.row * CELL + CELL / 2;
+          return (
+            <circle
+              key={role}
+              cx={cx}
+              cy={cy}
+              r={CELL * 0.7}
+              fill={AGENT_COLOR[role]}
+              stroke={ACTIVE_STATUS_BORDER[status]}
+              strokeWidth={1}
+            />
+          );
+        })}
         {/* 카메라 뷰포트 */}
         {viewport && (
           <rect

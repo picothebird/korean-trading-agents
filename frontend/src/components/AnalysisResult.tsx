@@ -14,7 +14,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { TradeDecision } from "@/types";
 import { Tooltip, Icon } from "@/components/ui";
 import { AgreementDonut, ConfidenceGauge } from "@/components/viz/Primitives";
-import { breakLongText, PRE_LINE_STYLE } from "@/lib/text";
 
 const ACTION_CFG = {
   BUY: { label: "매수", color: "var(--bull)", bg: "var(--bull-subtle)", border: "var(--bull-border)", hex: "#F04452" },
@@ -271,7 +270,15 @@ export function AnalysisResult({
                   </motion.span>
                   <span style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{decision.ticker}</span>
                 </div>
-                {/* 비중/금액 안내는 노이즈가 커서 헤더에서 제거. 상세 카드(L3)에서 확인 가능. */}
+                <p style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 10, lineHeight: 1.65 }}>
+                  자산의 <b style={{ color: cfg.color }}>{kelly.toFixed(1)}%</b> {decision.action === "BUY" ? "매수" : decision.action === "SELL" ? "매도" : "보류"} 권장
+                  {kelly > 0 && (
+                    <>
+                      <br />
+                      <span style={{ color: "var(--text-tertiary)", fontSize: 13 }}>1,000만원 기준 ≈ {positionWon.toLocaleString("ko-KR")}원</span>
+                    </>
+                  )}
+                </p>
               </div>
 
               {/* 신뢰도 도넛 */}
@@ -380,8 +387,8 @@ export function AnalysisResult({
         {/* ─────────────────────────── [2] 핵심 근거 ─────────────────────────── */}
         <Card index={1}>
           <CardTitle>핵심 근거</CardTitle>
-          <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.7, marginBottom: 12, ...PRE_LINE_STYLE }}>
-            {breakLongText(decision.reasoning ?? "")}
+          <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.7, marginBottom: 12 }}>
+            {decision.reasoning}
           </p>
           <ul style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.75, paddingLeft: 18, margin: 0 }}>
             <li><b>L1 분석</b> — {l1Line}</li>
@@ -411,7 +418,7 @@ export function AnalysisResult({
 
         {/* ─────────────────────────── [3] 액션 플랜 ─────────────────────────── */}
         <Card index={2} emphasis>
-          <CardTitle hint="실제 매매에 참고할 수 있는 진입·청산 전략과 안전 한도 제안입니다. 실제 실행 여부는 사용자 판단에 따릅니다.">
+          <CardTitle hint="실제 매매에 옮길 때 참고할 진입/청산 전략과 안전 한도. 최종 실행 여부는 사용자가 결정합니다.">
             액션 플랜
           </CardTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 }}>
@@ -464,13 +471,13 @@ export function AnalysisResult({
               {s.entry_strategy && (
                 <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-md)", padding: "10px 14px" }}>
                   <p style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 700, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>진입 전략</p>
-                  <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.65, ...PRE_LINE_STYLE }}>{breakLongText(s.entry_strategy)}</p>
+                  <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.65 }}>{s.entry_strategy}</p>
                 </div>
               )}
               {s.exit_strategy && (
                 <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-md)", padding: "10px 14px" }}>
                   <p style={{ fontSize: 12, color: "var(--text-tertiary)", fontWeight: 700, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>청산 전략</p>
-                  <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.65, ...PRE_LINE_STYLE }}>{breakLongText(s.exit_strategy)}</p>
+                  <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.65 }}>{s.exit_strategy}</p>
                 </div>
               )}
             </div>
@@ -560,7 +567,7 @@ export function AnalysisResult({
         {/* ─────────────────────────── [4] 합의도 & 반대 의견 ─────────────────────────── */}
         {(reported > 0 || missing > 0) && (
           <Card index={3}>
-            <CardTitle hint="기술·펀더멘탈·감성·거시 4명의 분석가 중 최종 결정과 같은 방향으로 신호를 제출한 분석가의 비율입니다. 보고가 누락된 분석가는 함께 표시됩니다.">
+            <CardTitle hint="기술·펀더멘털·감성·거시 4명의 분석가 중 최종 결정과 같은 방향으로 신호를 낸 비율. 보고가 누락된 분석가가 있으면 함께 표시돼요.">
               분석가 합의도 (보고 {reported} / {expectedTotal}명)
             </CardTitle>
             <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
@@ -716,8 +723,8 @@ export function AnalysisResult({
                           </span>
                         </div>
                         {d.summary && (
-                          <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.65, margin: 0, ...PRE_LINE_STYLE }}>
-                            {breakLongText(d.summary)}
+                          <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.65, margin: 0 }}>
+                            {d.summary}
                           </p>
                         )}
                         {d.key_signals && d.key_signals.length > 0 && (
@@ -779,7 +786,7 @@ export function AnalysisResult({
                       <p style={{ fontSize: 13, fontWeight: 800, color: "var(--bull)", marginBottom: 7, display: "inline-flex", alignItems: "center", gap: 5 }}>
                         <Icon name="bull" size={14} decorative /> 강세 (매수)
                       </p>
-                      <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.65, ...PRE_LINE_STYLE }}>{breakLongText(debate.bull_stance ?? "")}</p>
+                      <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.65 }}>{debate.bull_stance}</p>
                       {debate.bull_key_points?.length > 0 && (
                         <ul style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 7, paddingLeft: 18, lineHeight: 1.6 }}>
                           {debate.bull_key_points.slice(0, 3).map((p, i) => <li key={i}>{p}</li>)}
@@ -790,7 +797,7 @@ export function AnalysisResult({
                       <p style={{ fontSize: 13, fontWeight: 800, color: "var(--bear)", marginBottom: 7, display: "inline-flex", alignItems: "center", gap: 5 }}>
                         <Icon name="bear" size={14} decorative /> 약세 (매도/관망)
                       </p>
-                      <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.65, ...PRE_LINE_STYLE }}>{breakLongText(debate.bear_stance ?? "")}</p>
+                      <p style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.65 }}>{debate.bear_stance}</p>
                       {debate.bear_key_points?.length > 0 && (
                         <ul style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 7, paddingLeft: 18, lineHeight: 1.6 }}>
                           {debate.bear_key_points.slice(0, 3).map((p, i) => <li key={i}>{p}</li>)}

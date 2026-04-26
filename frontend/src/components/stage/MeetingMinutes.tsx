@@ -1,19 +1,21 @@
 "use client";
 
 /**
- * MeetingMinutes — 분석 종료 시 무대 하단에 표시되는 "닫는 카드".
+ * MeetingMinutes — 회의실(AgentStage) 안에서 분석 종료 시 보여주는 "닫는 카드".
  *
- * (분석 결과 본문은 분석 탭의 `AnalysisResult`로 일원화. 여기서는 무대가 끝났음을 알리고
- *  본문 결과로 시선을 유도하는 역할만 함. 2026-04-26 모드 토글 제거 후 항상 표시.)
+ * (분석 결과 본문은 분석 탭의 `AnalysisResult`로 일원화되었음.
+ *  여기서는 라이브 무대가 끝났음을 알리고 본문 결과로 시선을 유도하는 역할만 함.)
  */
 
 import { motion } from "framer-motion";
 import type { TradeDecision } from "@/types";
 import { Icon } from "@/components/ui";
+import { useAgentStage, type StageMode } from "@/stores/useAgentStage";
 
 interface MeetingMinutesProps {
   decision: TradeDecision;
   totalAgents?: number;
+  mode: Exclude<StageMode, "live">;
   onTryPaper?: () => void;
 }
 
@@ -26,6 +28,7 @@ const ACTION_CFG: Record<string, { label: string; color: string; bg: string; bor
 export function MeetingMinutes({ decision, onTryPaper }: MeetingMinutesProps) {
   const cfg = ACTION_CFG[decision.action] ?? ACTION_CFG.HOLD;
   const score = Math.round(decision.confidence * 100);
+  const goLive = () => useAgentStage.getState().setMode("live", true);
 
   return (
     <motion.div
@@ -58,29 +61,47 @@ export function MeetingMinutes({ decision, onTryPaper }: MeetingMinutesProps) {
             신뢰도 {score}%
           </span>
         </div>
-        {onTryPaper && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {onTryPaper && (
+            <button
+              type="button"
+              onClick={onTryPaper}
+              style={{
+                padding: "8px 14px",
+                background: "var(--brand)",
+                color: "var(--text-inverse)",
+                border: "1px solid var(--brand)",
+                borderRadius: "var(--stage-radius)",
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="edit" size={13} decorative /> 모의 1주 시도</span>
+            </button>
+          )}
           <button
             type="button"
-            onClick={onTryPaper}
+            onClick={goLive}
             style={{
               padding: "8px 14px",
-              background: "var(--brand)",
-              color: "var(--text-inverse)",
-              border: "1px solid var(--brand)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--stage-border)",
               borderRadius: "var(--stage-radius)",
-              fontWeight: 700,
+              fontWeight: 600,
               fontSize: 12,
               cursor: "pointer",
             }}
           >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="edit" size={13} decorative /> 모의 1주 시도</span>
+            라이브로 돌아가기
           </button>
-        )}
+        </div>
       </div>
       <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>
         9개 에이전트의 회의가 끝났어요.
         <b> 자세한 분석가 의견 · 강세/약세 토론 · 리스크 · GURU 정책</b>은
-        화면 위쪽 <b>"상세 회의록"</b> 카드에서 펼쳐 볼 수 있습니다.
+        화면 위쪽 <b>“상세 회의록”</b> 카드에서 펼쳐 볼 수 있습니다.
       </p>
     </motion.div>
   );

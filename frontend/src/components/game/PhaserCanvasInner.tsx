@@ -145,14 +145,6 @@ export default function PhaserCanvasInner({
           panCameraTo: (x, y) => sceneInstance.panCameraTo(x, y),
           getCameraInfo: () => sceneInstance.getCameraInfo(),
           setAgentClickHandler: (h) => sceneInstance.setAgentClickHandler(h),
-          fitToWorld: () => sceneInstance.fitToWorld(),
-          setCameraMode: (m) => sceneInstance.setCameraMode(m),
-          getCameraMode: () => sceneInstance.getCameraMode(),
-          focusAgent: (role, opts) => sceneInstance.focusAgent(role, opts),
-          focusZone: (x, y, opts) => sceneInstance.focusZone(x, y, opts),
-          getSeats: () => sceneInstance.getSeats(),
-          getZones: () => sceneInstance.getZones(),
-          getOverlaySnapshot: () => sceneInstance.getOverlaySnapshot(),
         };
         onReady(controller);
       }
