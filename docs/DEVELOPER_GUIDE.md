@@ -517,7 +517,15 @@ Not yet implemented / known limitations:
 
 ## 13. Contribution Guide
 
-1. Fork & branch from `main`.
+This project is **proprietary, all rights reserved** (see [`LICENSE`](../LICENSE)).
+Unsolicited pull requests, forks, and re-implementations are not accepted by
+default. If you have a collaboration, research, or licensing proposal, contact
+**summust135@gmail.com** in advance and wait for written confirmation before
+submitting any code or documentation.
+
+If a contribution has been pre-authorized in writing:
+
+1. Branch from `main` in a fork created with explicit permission.
 2. For agent/data changes, include a `_verify_*.py` script result in the PR
    description that proves the new signal is non-trivial on real tickers.
 3. For UI changes, attach screenshots (light + dark theme).
@@ -528,6 +536,8 @@ Not yet implemented / known limitations:
    not stiff). When in doubt, mirror nearby phrases.
 7. Do **not** add scrapers for sites whose robots.txt or ToS prohibit it
    (Naver in particular).
+8. By submitting a contribution you assign all rights in it to the copyright
+   holder, as set out in §4 of [`LICENSE`](../LICENSE).
 
 ---
 

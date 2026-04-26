@@ -1,0 +1,126 @@
+Korean Trading Agents — Proprietary Software License
+Copyright (c) 2026 picothebird. All Rights Reserved.
+
+Contact: summust135@gmail.com
+
+
+1. Ownership
+
+This software, including all source code, compiled artifacts, documentation,
+designs, assets, and any derivative materials contained in this repository
+(collectively, the "Software"), is the exclusive property of the copyright
+holder identified above. All rights are reserved.
+
+
+2. No License Granted
+
+Publication of the Software (including via GitHub or any other public
+repository hosting service) does NOT constitute a grant of any license
+or other right to the Software. No part of the Software may be used,
+copied, modified, merged, published, distributed, sublicensed, sold,
+incorporated into other products, exposed as a service, or otherwise
+exploited in any form, in whole or in part, without the prior written
+permission of the copyright holder.
+
+The following are expressly prohibited without prior written permission:
+
+  (a) Production, commercial, or for-profit use of the Software, including
+      hosting it as a service or selling access to it.
+  (b) Redistribution of the Software, whether in source or binary form,
+      modified or unmodified, for free or for a fee.
+  (c) Creation of derivative works based on the Software, including but
+      not limited to forks, ports, and re-implementations.
+  (d) Use of the Software, in whole or in part, to train, fine-tune,
+      evaluate, or generate inputs for any machine-learning model,
+      large language model, or other automated system.
+  (e) Removal, alteration, or obscuring of any copyright notice, license
+      notice, or attribution contained in the Software.
+
+
+3. Limited Permission for Personal Review
+
+You are permitted to view the source code on the public hosting service
+on which it is published, solely for the purpose of personal, non-commercial
+inspection and evaluation. This permission does not extend to copying the
+Software outside the hosting service's standard browsing interface, nor to
+any of the activities prohibited in Section 2.
+
+
+4. No Contributions Accepted by Default
+
+Unsolicited pull requests, patches, or other contributions are not accepted
+unless an explicit written agreement is reached in advance with the copyright
+holder. Any contribution accepted by the copyright holder is, by acceptance,
+assigned to the copyright holder with all attendant rights, unless a separate
+agreement specifies otherwise.
+
+
+5. Trademarks
+
+The names "Korean Trading Agents", "KTA", and any associated logos, marks,
+or visual identity are trademarks of the copyright holder and may not be
+used without prior written permission.
+
+
+6. Third-Party Components
+
+The Software may incorporate third-party libraries, datasets, or assets
+that are governed by their own licenses. Those licenses apply only to the
+specific third-party components and do not grant any rights to the Software
+as a whole. The list of third-party components and their respective
+licenses is available in the project documentation and dependency
+manifests.
+
+
+7. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND ACCURACY OF DATA.
+THE SOFTWARE PERFORMS RESEARCH AND TRADING-RELATED COMPUTATIONS; IT IS NOT
+INVESTMENT ADVICE AND MUST NOT BE TREATED AS SUCH.
+
+
+8. Limitation of Liability
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, WITHOUT
+LIMITATION, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+OR PROFITS; TRADING LOSSES; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+OR INABILITY TO USE THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGE.
+
+
+9. Termination
+
+Any unauthorized use of the Software automatically terminates any
+permissions granted under this license. Upon termination, you must
+immediately cease all use of the Software and destroy any copies in
+your possession or control.
+
+
+10. Governing Law
+
+This license shall be governed by and construed in accordance with the
+laws of the Republic of Korea, without regard to its conflict-of-laws
+principles.
+
+
+11. Licensing Inquiries
+
+To request a commercial, evaluation, academic, or other written license,
+or to report unauthorized use, contact:
+
+    summust135@gmail.com
+
+Please include in your inquiry:
+
+  - Your name and (if applicable) organization
+  - The intended use case
+  - The scope (region, duration, distribution)
+  - Whether the use is commercial or non-commercial
+
+
+END OF LICENSE
