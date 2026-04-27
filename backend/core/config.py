@@ -140,7 +140,7 @@ def validate_for_production() -> list[str]:
             "ALLOWED_ORIGINS에 localhost/127.0.0.1 이 포함되어 있습니다 (운영 환경 부적합)."
         )
 
-    if not settings.openai_api_key.strip():
-        problems.append("OPENAI_API_KEY가 비어 있습니다.")
+    # OPENAI_API_KEY 는 본 배포에서 사용자별 키 모델(MongoDB user_settings)을 사용하므로
+    # 서버 전역 키가 비어 있는 것을 정상으로 본다. (frontend 설정 화면에서 각 사용자가 입력)
 
     return problems

@@ -18,7 +18,7 @@ export const AGENT_LABEL: Record<AgentRole, string> = {
   technical_analyst: "기술적 분석",
   fundamental_analyst: "펀더멘털 분석",
   sentiment_analyst: "감성 분석",
-  macro_analyst: "거시 분석",
+  macro_analyst: "거시경제 분석",
   bull_researcher: "강세 리서처",
   bear_researcher: "약세 리서처",
   risk_manager: "리스크 매니저",

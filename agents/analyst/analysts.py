@@ -3,7 +3,7 @@
 - 기술적 분석가: 차트, 기술지표 기반
 - 펀더멘털 분석가: 재무 기반
 - 감성 분석가: 뉴스/여론 기반
-- 매크로 분석가: 환율/금리/시장 환경
+- 거시경제 분석가: 환율/금리/시장 환경
 """
 import sys
 import os
@@ -518,7 +518,7 @@ JSON만 출력:
 
 
 async def macro_analyst(session_id: str) -> dict:
-    """매크로 분석 에이전트: 한국·미국 지수, 환율, 금리, 변동성, 외국인·기관 수급."""
+    """거시경제 분석 에이전트: 한국·미국 지수, 환율, 금리, 변동성, 외국인·기관 수급."""
     await emit_thought(session_id, AgentThought(
         agent_id="macro_analyst",
         role=AgentRole.MACRO_ANALYST,
@@ -684,7 +684,7 @@ async def macro_analyst(session_id: str) -> dict:
 [글로벌 지수·환율·변동성 — 1일/5일/20일 모멘텀 (Yahoo/FDR)]
 {market_block}
 
-[한국 매크로 — 한국은행 ECOS 공식 통계]
+[한국 거시경제 — 한국은행 ECOS 공식 통계]
 {rates_block}
 
 [외국인·기관 수급]
@@ -735,7 +735,7 @@ JSON으로만 답하세요:
         agent_id="macro_analyst",
         role=AgentRole.MACRO_ANALYST,
         status=AgentStatus.DONE,
-        content=f"매크로 분석 완료: {result.get('market_condition', 'NEUTRAL')} ({result.get('recommendation', 'CAUTION')})",
+        content=f"거시경제 분석 완료: {result.get('market_condition', 'NEUTRAL')} ({result.get('recommendation', 'CAUTION')})",
         metadata=result,
     ))
     return result

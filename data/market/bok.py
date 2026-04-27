@@ -1,7 +1,7 @@
 """한국은행 ECOS Open API 클라이언트.
 
 ECOS (Economic Statistics System) 는 한국은행이 무료로 제공하는 거시·금융·시장 통계 API.
-이 모듈은 매크로 분석가와 수급 분석에 필요한 핵심 시리즈를 fetch 한다.
+이 모듈은 거시경제 분석가와 수급 분석에 필요한 핵심 시리즈를 fetch 한다.
 
 API 문서: https://ecos.bok.or.kr/api/
 
@@ -299,7 +299,7 @@ def get_key_indicators(top: int = 100) -> list[dict[str, Any]]:
 
 
 def get_macro_snapshot() -> dict[str, Any]:
-    """매크로 분석용 100대 지표 중 핵심만 추출.
+    """거시경제 분석용 100대 지표 중 핵심만 추출.
 
     Returns:
         {
@@ -313,7 +313,7 @@ def get_macro_snapshot() -> dict[str, Any]:
     if not rows:
         return {"enabled": True, "items": []}
 
-    # 매크로 분석에 의미 있는 키워드만 필터
+    # 거시경제 분석에 의미 있는 키워드만 필터
     KEEP_KEYWORDS = (
         "기준금리", "콜금리", "KORIBOR", "CD", "국고채", "회사채",
         "원/달러", "원/엔", "원/유로", "원/위안",

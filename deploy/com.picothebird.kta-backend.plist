@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Korean Trading Agents — 백엔드 자동 시작 LaunchAgent
+  설치:
+    cp deploy/com.picothebird.kta-backend.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.picothebird.kta-backend.plist
+    launchctl kickstart -k gui/$(id -u)/com.picothebird.kta-backend
+  중지:
+    launchctl bootout gui/$(id -u)/com.picothebird.kta-backend
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.picothebird.kta-backend</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/leesewang/korean-trading-agents/deploy/start_backend.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/leesewang/korean-trading-agents</string>
+
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key><false/>
+    <key>Crashed</key><true/>
+  </dict>
+
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/leesewang/korean-trading-agents/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/leesewang/korean-trading-agents/logs/launchd.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>LANG</key><string>en_US.UTF-8</string>
+    <key>LC_ALL</key><string>en_US.UTF-8</string>
+    <key>TZ</key><string>Asia/Seoul</string>
+  </dict>
+</dict>
+</plist>

@@ -56,7 +56,12 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTr
   const cfg = ACTION_CFG[decision.action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
   const confidencePct = Math.round(decision.confidence * 100);
   const circumference = 2 * Math.PI * 30;
-  const kelly = decision.agents_summary?.kelly_position_pct ?? decision.agents_summary?.position_size_pct ?? 0;
+  // 일관성 원칙: 실제 권장 = position_size_pct (entry_strategy와 일치).
+  // Half-Kelly 원천값은 한도 적용된 경우에만 보조 표시한다.
+  const positionPct = (decision.agents_summary?.position_size_pct ?? decision.agents_summary?.kelly_position_pct ?? 0) as number;
+  const rawKellyPct = (decision.agents_summary?.kelly_position_pct ?? positionPct) as number;
+  const kellyConstrained = Math.abs(rawKellyPct - positionPct) >= 0.5;
+  const kelly = positionPct;
   const stopLossPct = decision.agents_summary?.stop_loss_pct;
   const needsApproval = decision.agents_summary?.requires_human_approval;
   const guru = decision.agents_summary?.guru;
@@ -290,7 +295,7 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTr
                 <b>신뢰도 = 합의 정도 × 데이터 명확함</b>
               </p>
               <ol style={{ paddingLeft: 18, margin: 0 }}>
-                <li><b>합의 정도</b>: 9개 에이전트(기술/기본/심리/매크로/리스크 등)의 BUY/SELL/HOLD 표가 한쪽으로 얼마나 쏠렸는지</li>
+                <li><b>합의 정도</b>: 9개 에이전트(기술/기본/심리/거시경제/리스크 등)의 BUY/SELL/HOLD 표가 한쪽으로 얼마나 쏠렸는지</li>
                 <li><b>데이터 명확함</b>: 각 에이전트의 자체 신뢰도(데이터 충분성·노이즈)의 평균</li>
                 <li>토론(Bull vs Bear) 단계 점수가 가산</li>
                 <li>리스크 매니저의 위험 등급에 따라 감산</li>
@@ -385,12 +390,19 @@ export function DecisionCard({ decision, onHumanApproval, onOpenSettings, onGoTr
             {kelly > 0 && (
               <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "12px 14px" }}>
                 <Tooltip
-                  content="켈리 공식(Kelly Criterion)으로 계산한 자본 대비 권장 투자 비율. 한 번에 자본의 이 비율만 투자하면 장기 기대수익이 최대화되고 파산 확률은 최소화됩니다. 안전을 위해 공식 결과의 절반(Half-Kelly)만 적용합니다."
-                  maxWidth={320}
+                  content={kellyConstrained
+                    ? `Half-Kelly 산식 결과는 ${rawKellyPct.toFixed(1)}%이지만, 리스크 한도/Guru 정책 적용 후 실제 권장은 ${kelly.toFixed(1)}%로 조정되었습니다. 진입 전략의 분할 합계도 이 값과 일치합니다.`
+                    : "켈리 공식(Kelly Criterion)으로 계산한 자본 대비 권장 투자 비율. 안전을 위해 공식 결과의 절반(Half-Kelly)을 적용합니다."}
+                  maxWidth={340}
                 >
-                  <p style={{ fontSize: 12, color: "var(--text-tertiary)", borderBottom: "1px dotted var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 3, cursor: "help" }}><Icon name="info" size={11} decorative /> Kelly 포지션</p>
+                  <p style={{ fontSize: 12, color: "var(--text-tertiary)", borderBottom: "1px dotted var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 3, cursor: "help" }}><Icon name="info" size={11} decorative /> {kellyConstrained ? "권장 비중 (한도 적용)" : "Half-Kelly 포지션"}</p>
                 </Tooltip>
-                <p style={{ fontSize: 20, fontWeight: 800, color: cfg.color, marginTop: 4 }}>{kelly}%</p>
+                <p style={{ fontSize: 20, fontWeight: 800, color: cfg.color, marginTop: 4 }}>{kelly.toFixed(1)}%</p>
+                {kellyConstrained && (
+                  <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
+                    산식 Half-Kelly {rawKellyPct.toFixed(1)}% → 한도 적용
+                  </p>
+                )}
                 {/* Kelly 산식 공개 (D3) */}
                 <details style={{ marginTop: 6 }}>
                   <summary style={{ fontSize: 11, color: "var(--text-tertiary)", cursor: "pointer", listStyle: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>

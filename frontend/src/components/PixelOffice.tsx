@@ -27,7 +27,7 @@ const AGENTS: Record<AgentRole, AgentMeta> = {
   technical_analyst:   { x: 90,  y: 150, label: "기술분석가",       layer: 1, accent: "#3182F6", hair: "#3c1e0e", shirt: "#1a3d7c", pants: "#18203a", desk: true },
   fundamental_analyst: { x: 250, y: 150, label: "펀더멘털",         layer: 1, accent: "#A855F7", hair: "#0e0e0e", shirt: "#5a1e7c", pants: "#10102a", desk: true },
   sentiment_analyst:   { x: 90,  y: 300, label: "감성분석가",       layer: 1, accent: "#F5A623", hair: "#7a5800", shirt: "#882e00", pants: "#18101e", desk: true },
-  macro_analyst:       { x: 250, y: 300, label: "매크로",           layer: 1, accent: "#2FCA73", hair: "#b4b4b4", shirt: "#0a5e28", pants: "#121212", desk: true },
+  macro_analyst:       { x: 250, y: 300, label: "거시경제",           layer: 1, accent: "#2FCA73", hair: "#b4b4b4", shirt: "#0a5e28", pants: "#121212", desk: true },
   bull_researcher:     { x: 430, y: 320, label: "강세 연구원",      layer: 2, accent: "#F04452", hair: "#3e2008", shirt: "#6e0c0c", pants: "#080a12", desk: false },
   bear_researcher:     { x: 510, y: 320, label: "약세 연구원",      layer: 2, accent: "#2B7EF5", hair: "#060606", shirt: "#0c1e56", pants: "#04040c", desk: false },
   risk_manager:        { x: 430, y: 250, label: "리스크 매니저",    layer: 3, accent: "#F5A623", hair: "#140808", shirt: "#6e4e00", pants: "#0c0c0c", desk: true },

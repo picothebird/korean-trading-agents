@@ -104,10 +104,12 @@ function ArticleBlock({ heading, body }: { heading: string; body: string }) {
           color: "var(--text-secondary)",
           lineHeight: 1.85,
           margin: 0,
-          ...PRE_LINE_STYLE,
+          // 아티클은 흐르는 산문 — 명시적 줄바꿈만 존중하고 문장마다 끊지 않는다.
+          whiteSpace: "pre-line" as const,
+          wordBreak: "keep-all" as const,
         }}
       >
-        {breakLongText(body)}
+        {body}
       </p>
     </div>
   );
@@ -175,7 +177,12 @@ export function AnalysisResult({
   const s = decision.agents_summary;
   const cfg = ACTION_CFG[decision.action as keyof typeof ACTION_CFG] ?? ACTION_CFG.HOLD;
   const confidencePct = Math.round(decision.confidence * 100);
-  const kelly = s.kelly_position_pct ?? s.position_size_pct ?? 0;
+  // 일관성 원칙: 표시되는 '권장 비중'은 항상 실제 엔트리 전략과 일치하는 position_size_pct 로 통일.
+  // 원천 Half-Kelly (kelly_position_pct) 는 투명성을 위해 툴팁에만 노출 — 두 값이 다르면 "산식 X% → 한도 적용 N%" 표시.
+  const positionPct = (s.position_size_pct ?? s.kelly_position_pct ?? 0) as number;
+  const rawKellyPct = (s.kelly_position_pct ?? positionPct) as number;
+  const kellyConstrained = Math.abs(rawKellyPct - positionPct) >= 0.5;
+  const kelly = positionPct;
   const positionWon = Math.round((INITIAL_CAPITAL * kelly) / 100);
   const stopLossPct = s.stop_loss_pct ?? s.risk?.stop_loss_pct ?? null;
   const riskLevel = s.risk?.risk_level ?? s.risk_level;
@@ -258,7 +265,7 @@ export function AnalysisResult({
         return `토론 ${debate.rounds || 0}라운드: 강세 ${bp}점 vs 약세 ${xp}점`;
       })()
     : "토론 단계 스킵 (의견 일치도 높음)";
-  const l3Line = `위험 ${riskLevel ?? "—"} · Kelly ${kelly.toFixed(1)}%${stopLossPct != null ? ` · 손절 −${Math.abs(stopLossPct).toFixed(1)}%` : ""}`;
+  const l3Line = `위험 ${riskLevel ?? "—"} · 권장 ${kelly.toFixed(1)}%${kellyConstrained ? ` (Half-Kelly ${rawKellyPct.toFixed(1)}% → 한도)` : ""}${stopLossPct != null ? ` · 손절 −${Math.abs(stopLossPct).toFixed(1)}%` : ""}`;
 
   return (
     <AnimatePresence>
@@ -447,16 +454,23 @@ export function AnalysisResult({
             {kelly > 0 && (
               <div style={{ background: "var(--bg-elevated)", borderRadius: "var(--radius-lg)", padding: "12px 14px" }}>
                 <Tooltip
-                  content={`켈리 공식 f* = (b·p − q) ÷ b 의 절반(Half-Kelly). p=평균 신뢰도(${s.risk?.avg_confidence_pct ?? Math.round(decision.confidence * 100)}%), b=평균 기대수익/손실비, q=1−p. “자본의 ${kelly.toFixed(1)}%만 투자”의 의미.`}
-                  maxWidth={340}
+                  content={kellyConstrained
+                    ? `Half-Kelly 산식 결과는 ${rawKellyPct.toFixed(1)}% 이지만, 리스크 한도(최대 포지션)·Guru 정책을 적용해 실제 권장은 ${kelly.toFixed(1)}%로 조정되었습니다. 아래 진입 전략 또한 이 권장치와 일치합니다.`
+                    : `켈리 공식 f* = (b·p − q) ÷ b 의 절반(Half-Kelly). p=평균 신뢰도(${s.risk?.avg_confidence_pct ?? Math.round(decision.confidence * 100)}%), b=평균 기대수익/손실비, q=1−p. “자본의 ${kelly.toFixed(1)}%만 투자”의 의미.`}
+                  maxWidth={360}
                 >
                   <p style={{ fontSize: 12, color: "var(--text-tertiary)", borderBottom: "1px dotted var(--text-tertiary)", display: "inline-flex", alignItems: "center", gap: 3, cursor: "help" }}>
-                    <Icon name="info" size={11} decorative /> Kelly 권장
+                    <Icon name="info" size={11} decorative /> {kellyConstrained ? "권장 비중 (한도 적용)" : "Half-Kelly 권장"}
                   </p>
                 </Tooltip>
                 <p style={{ fontSize: 22, fontWeight: 800, color: cfg.color, marginTop: 4, letterSpacing: "-0.02em" }}>{kelly.toFixed(1)}%</p>
                 <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 3 }}>
                   1,000만원 기준 ≈ {positionWon.toLocaleString("ko-KR")}원
+                  {kellyConstrained && (
+                    <span style={{ display: "block", fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
+                      산식 Half-Kelly {rawKellyPct.toFixed(1)}% → 한도 적용 {kelly.toFixed(1)}%
+                    </span>
+                  )}
                 </p>
               </div>
             )}
@@ -597,7 +611,7 @@ export function AnalysisResult({
               <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <Legend color="var(--success)" label={`찬성 ${agree}명`} />
-                  <Legend color="var(--bear)" label={`반대 ${disagree}명`} />
+                  <Legend color="var(--error)" label={`반대 ${disagree}명`} />
                   <Legend color="var(--text-tertiary)" label={`중립 ${neutral}명`} />
                   {missing > 0 && <Legend color="var(--border-default)" label={`보고 누락 ${missing}명`} />}
                 </div>
@@ -676,10 +690,11 @@ export function AnalysisResult({
                   borderLeft: "3px solid var(--accent, var(--brand))",
                   padding: "12px 14px",
                   borderRadius: "var(--radius-md)",
-                  ...PRE_LINE_STYLE,
+                  whiteSpace: "pre-line",
+                  wordBreak: "keep-all",
                 }}
               >
-                {breakLongText(s.article_report.lede)}
+                {s.article_report.lede}
               </p>
 
               <ArticleBlock heading="오늘 이 종목, 어떤 상황일까요" body={s.article_report.situation_today} />
@@ -700,8 +715,8 @@ export function AnalysisResult({
                   </h4>
                   <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
                     {s.article_report.what_to_watch.map((item, i) => (
-                      <li key={i} style={{ color: "var(--text-secondary)", lineHeight: 1.7, ...PRE_LINE_STYLE }}>
-                        {breakLongText(item)}
+                      <li key={i} style={{ color: "var(--text-secondary)", lineHeight: 1.7, wordBreak: "keep-all" }}>
+                        {item}
                       </li>
                     ))}
                   </ul>
@@ -717,10 +732,11 @@ export function AnalysisResult({
                   paddingTop: 8,
                   borderTop: "1px dashed var(--border-default)",
                   lineHeight: 1.7,
-                  ...PRE_LINE_STYLE,
+                  whiteSpace: "pre-line",
+                  wordBreak: "keep-all",
                 }}
               >
-                {breakLongText(s.article_report.closing)}
+                {s.article_report.closing}
               </p>
             </article>
           </Card>

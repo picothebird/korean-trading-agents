@@ -1,12 +1,10 @@
-from __future__ import annotations
-
 import re
 import secrets
 from datetime import timedelta
 from typing import Any, Literal
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -137,7 +135,7 @@ async def auth_bootstrap_status():
 
 @router.post("/auth/register")
 @limiter.limit(register_rate)
-async def auth_register(req: AuthRegisterRequest, request: Request):
+async def auth_register(request: Request, req: AuthRegisterRequest = Body(...)):
     db = await _ensure_db()
 
     email = _normalize_email(req.email)
@@ -229,7 +227,7 @@ async def auth_register(req: AuthRegisterRequest, request: Request):
 
 @router.post("/auth/login")
 @limiter.limit(login_rate)
-async def auth_login(req: AuthLoginRequest, request: Request):
+async def auth_login(request: Request, req: AuthLoginRequest = Body(...)):
     db = await _ensure_db()
 
     email = _normalize_email(req.email)
@@ -408,7 +406,7 @@ async def master_users(
 
 
 @router.patch("/master/users/{user_id}/role")
-async def master_update_user_role(user_id: str, req: UpdateUserRoleRequest, request: Request):
+async def master_update_user_role(user_id: str, request: Request, req: UpdateUserRoleRequest = Body(...)):
     db = await _ensure_db()
     acting_user = await require_master(request)
 
@@ -443,7 +441,7 @@ async def master_update_user_role(user_id: str, req: UpdateUserRoleRequest, requ
 
 
 @router.patch("/master/users/{user_id}/disabled")
-async def master_update_user_disabled(user_id: str, req: UpdateUserDisabledRequest, request: Request):
+async def master_update_user_disabled(user_id: str, request: Request, req: UpdateUserDisabledRequest = Body(...)):
     db = await _ensure_db()
     acting_user = await require_master(request)
 
@@ -624,7 +622,7 @@ async def master_invite_codes_list(
 
 
 @router.post("/master/invite-codes")
-async def master_invite_codes_create(req: CreateInviteCodeRequest, request: Request):
+async def master_invite_codes_create(request: Request, req: CreateInviteCodeRequest = Body(...)):
     db = await _ensure_db()
     acting_user = await require_master(request)
 

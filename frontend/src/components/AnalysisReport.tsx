@@ -26,7 +26,7 @@ const ANALYST_LABEL: Record<string, { ko: string; what: string }> = {
     what: "최근 뉴스·공시·시장 분위기를 읽어 단기 투자 심리가 우호적인지 부정적인지 판단.",
   },
   macro: {
-    ko: "거시(매크로) 분석",
+    ko: "거시경제 분석",
     what: "금리·환율·코스피 흐름·업종 순환 등 시장 전체 환경이 이 종목에 우호적인지 점검.",
   },
 };
@@ -132,7 +132,12 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
   const debate = s.debate;
   const risk = s.risk as (typeof s.risk & { guru_action_changed?: boolean }) | undefined;
   const confidencePct = Math.round(decision.confidence * 100);
-  const kelly = s.kelly_position_pct ?? s.position_size_pct ?? 0;
+  // 일관성 원칙: 표시되는 '권장 비중'은 항상 entry_strategy와 일치하는 position_size_pct 로 통일.
+  // 원천 Half-Kelly는 둘이 다를 때만 속서 표시로 노출.
+  const positionPct = (s.position_size_pct ?? s.kelly_position_pct ?? 0) as number;
+  const rawKellyPct = (s.kelly_position_pct ?? positionPct) as number;
+  const kellyConstrained = Math.abs(rawKellyPct - positionPct) >= 0.5;
+  const kelly = positionPct;
   const initialCapital = 10_000_000; // 1,000만원 가정 (UI 표시용)
   const positionWon = Math.round((initialCapital * kelly) / 100);
 
@@ -187,10 +192,15 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
             </p>
           </div>
           <div>
-            <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>권장 비중</p>
+            <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>{kellyConstrained ? "권장 비중 (한도)" : "권장 비중"}</p>
             <p style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>
               {kelly.toFixed(1)}%
             </p>
+            {kellyConstrained && (
+              <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginTop: 1 }}>
+                Half-Kelly {rawKellyPct.toFixed(1)}% → 한도
+              </p>
+            )}
           </div>
           <div>
             <p style={{ fontSize: 9, color: "var(--text-tertiary)" }}>예시 투입금</p>
@@ -325,15 +335,15 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
         return (
           <Section
             title={`1-bis. 분석가 합의도 (보고 ${reported} / ${expectedTotal}명)`}
-            hint="기술·기본·심리·매크로 4명의 AI 분석가 중 최종 결정과 같은 방향으로 신호를 낸 비율입니다. 보고가 누락된 분석가가 있으면 함께 표시돼요."
+            hint="기술·기본·심리·거시경제 4명의 AI 분석가 중 최종 결정과 같은 방향으로 신호를 낸 비율입니다. 보고가 누락된 분석가가 있으면 함께 표시돼요."
             index={0}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
               <AgreementDonut agree={agree} disagree={disagree} neutral={neutral} missing={missing} size={72} thickness={9} />
               <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
-                  <Legend color="var(--bull)" label={`찬성 ${agree}명`} />
-                  <Legend color="var(--bear)" label={`반대 ${disagree}명`} />
+                  <Legend color="var(--success)" label={`찬성 ${agree}명`} />
+                  <Legend color="var(--error)" label={`반대 ${disagree}명`} />
                   <Legend color="var(--text-tertiary)" label={`중립 ${neutral}명`} />
                   {missing > 0 && (
                     <Legend color="var(--border-default)" label={`보고 누락 ${missing}명`} />
@@ -385,7 +395,7 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
       {/* 2. L1 — 4명의 분석가가 본 시장 */}
       <Section
         title="2. 분석가 4명이 본 시장 (L1)"
-        hint="기술·기본·심리·매크로 4가지 관점을 가진 AI 분석가가 동시에 같은 종목을 평가하고, 각자 매수/매도/관망 신호를 냅니다."
+        hint="기술·기본·심리·거시경제 4가지 관점을 가진 AI 분석가가 동시에 같은 종목을 평가하고, 각자 매수/매도/관망 신호를 냅니다."
         index={1}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -637,7 +647,7 @@ export function AnalysisReport({ decision }: AnalysisReportProps) {
                   maxWidth={340}
                 >
                   <span style={{ borderBottom: "1px dotted var(--text-tertiary)", cursor: "help" }}>
-                    Kelly 권장 포지션
+                    Half-Kelly 권장 포지션
                   </span>
                 </Tooltip>
               </p>

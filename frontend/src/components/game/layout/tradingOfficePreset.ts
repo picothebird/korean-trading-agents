@@ -114,7 +114,7 @@ const SEATS: Record<AgentRole, LayoutSeat> = {
   technical_analyst:   { col: 1,  row: 6,  label: "기술적 분석" },
   fundamental_analyst: { col: 4,  row: 6,  label: "펀더멘털 분석" },
   sentiment_analyst:   { col: 7,  row: 6,  label: "감성 분석" },
-  macro_analyst:       { col: 10, row: 6,  label: "거시 분석" },
+  macro_analyst:       { col: 10, row: 6,  label: "거시경제 분석" },
   bull_researcher:     { col: 14, row: 6,  label: "강세 리서처" },
   bear_researcher:     { col: 20, row: 6,  label: "약세 리서처" },
   risk_manager:        { col: 3,  row: 10, label: "리스크 매니저" },

@@ -300,6 +300,19 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
+/* ────────────────────────────────────────────────────────────────
+ * 폰트/UI 배율 — 접근성: 시력이 낮은 사용자를 위한 3단계 스케일.
+ * 코드베이스 전반이 px 기반 인라인 스타일이므로, 모든 요소를 비례
+ * 확대하기 위해 root 에 `zoom` 을 적용한다 (Chrome/Safari/Firefox 126+ 호환).
+ * 디폴트(sm) = 1.0 → 변화 없음. 미설정/미지원 브라우저는 sm 동일.
+ * ──────────────────────────────────────────────────────────────── */
+html[data-font-scale="md"] {
+  zoom: 1.12;
+}
+html[data-font-scale="lg"] {
+  zoom: 1.25;
+}
+
 body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);

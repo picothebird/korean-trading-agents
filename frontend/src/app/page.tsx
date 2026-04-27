@@ -642,7 +642,7 @@ function HumanApprovalModal({
             <div style={{ flex: 1, background: "var(--bg-overlay)", borderRadius: "var(--radius-md)", padding: "8px 10px" }}>
               <p style={{ fontSize: 10, color: "var(--text-tertiary)" }}>Kelly 포지션</p>
               <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
-                {decision.agents_summary?.kelly_position_pct ?? decision.agents_summary?.position_size_pct ?? 0}%
+                {(decision.agents_summary?.position_size_pct ?? decision.agents_summary?.kelly_position_pct ?? 0).toFixed?.(1) ?? decision.agents_summary?.position_size_pct ?? decision.agents_summary?.kelly_position_pct ?? 0}%
               </p>
             </div>
           </div>
@@ -2033,7 +2033,13 @@ export default function Home() {
                   {/* 결과 패널 위에 '돌아가기' 컨트롤 — 이력에서 열어본 결과를 닫고 다시 새 분석/이력 화면으로 */}
                   <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: -4 }}>
                     <button
-                      onClick={() => { setDecision(null); setAnalysisError(null); }}
+                      onClick={() => {
+                        // 결과 닫을 때 이전 분석의 thoughts/error 도 함께 초기화
+                        // (남겨두면 EmptyState 가 "분석은 끝났지만 결정을 받지 못함" 오해 표시)
+                        setDecision(null);
+                        setAnalysisError(null);
+                        setThoughts(new Map());
+                      }}
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -2097,8 +2103,17 @@ export default function Home() {
                           {analysisHistoryLoading ? "갱신 중…" : "새로고침"}
                         </button>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {analysisHistory.slice(0, 10).map((item) => {
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                          maxHeight: 204, // 약 3개 항목 + 여백 (스크롤로 더 보기)
+                          overflowY: "auto",
+                          paddingRight: 4,
+                        }}
+                      >
+                        {analysisHistory.slice(0, 30).map((item) => {
                           const action = item.summary?.action ?? "";
                           const conf = item.summary?.confidence;
                           const isDone = item.status === "done";

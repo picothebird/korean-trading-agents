@@ -174,8 +174,8 @@ export function AgreementDonut({
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth={thickness} />
-        {agree > 0 && seg(0, a, "var(--bull)", "agree")}
-        {disagree > 0 && seg(a, d, "var(--bear)", "disagree")}
+        {agree > 0 && seg(0, a, "var(--success)", "agree")}
+        {disagree > 0 && seg(a, d, "var(--error)", "disagree")}
         {neutral > 0 && seg(a + d, n, "var(--text-tertiary)", "neutral")}
         {missing > 0 && (
           <circle

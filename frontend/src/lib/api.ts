@@ -50,6 +50,54 @@ function buildEventSourceUrl(path: string): string {
   return `${BASE_URL}${path}${sep}access_token=${encodeURIComponent(token)}`;
 }
 
+// FastAPI 에러 응답을 사람이 읽을 수 있는 문자열로 변환.
+// 422 검증 에러의 detail은 배열이라 그대로 throw 하면 "[object Object]"가 됨.
+function formatApiError(raw: unknown, fallback: string): string {
+  if (raw == null) return fallback;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw)) {
+    const msgs = raw
+      .map((e) => {
+        if (typeof e === "string") return e;
+        if (e && typeof e === "object") {
+          const obj = e as { loc?: unknown[]; msg?: string };
+          const loc = Array.isArray(obj.loc) ? obj.loc.filter((p) => p !== "body").join(".") : "";
+          const msg = obj.msg ?? "";
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return "";
+      })
+      .filter(Boolean);
+    return msgs.length ? msgs.join("; ") : fallback;
+  }
+  if (typeof raw === "object") {
+    const obj = raw as { detail?: unknown; message?: string };
+    if (obj.detail != null) return formatApiError(obj.detail, fallback);
+    if (obj.message) return obj.message;
+    try {
+      return JSON.stringify(raw);
+    } catch {
+      return fallback;
+    }
+  }
+  return String(raw);
+}
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    return formatApiError(body, fallback);
+  } catch {
+    try {
+      const text = await res.text();
+      if (text) return text;
+    } catch {
+      // ignore
+    }
+    return `${fallback} (HTTP ${res.status})`;
+  }
+}
+
 export async function getHealth() {
   const res = await apiFetch(`${BASE_URL}/health`);
   return res.json();
@@ -57,7 +105,7 @@ export async function getHealth() {
 
 export async function getStock(ticker: string) {
   const res = await apiFetch(`${BASE_URL}/api/stock/${ticker}`);
-  if (!res.ok) throw new Error(`Failed to load stock: ${ticker}`);
+  if (!res.ok) throw new Error(await readApiError(res, `종목 정보를 불러오지 못했습니다 (${ticker})`));
   return res.json();
 }
 
@@ -100,7 +148,7 @@ export async function startAnalysis(ticker: string, sessionId?: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ticker, session_id: sessionId }),
   });
-  if (!res.ok) throw new Error("Failed to start analysis");
+  if (!res.ok) throw new Error(await readApiError(res, "분석을 시작하지 못했습니다"));
   return res.json() as Promise<{ session_id: string; status: string }>;
 }
 
@@ -188,13 +236,13 @@ export async function runBacktest(params: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error("Backtest failed");
+  if (!res.ok) throw new Error(await readApiError(res, "백테스트 실행에 실패했습니다"));
   return res.json() as Promise<import("@/types").BacktestResult>;
 }
 
 export async function getMarketIndices() {
   const res = await apiFetch(`${BASE_URL}/api/market/indices`);
-  if (!res.ok) throw new Error("Failed to load market indices");
+  if (!res.ok) throw new Error(await readApiError(res, "시장 지표를 불러오지 못했습니다"));
   return res.json() as Promise<Record<string, import("@/types").MarketIndex>>;
 }
 
@@ -211,7 +259,7 @@ export async function searchStocks(q: string): Promise<Array<{ code: string; nam
 
 export async function getSettings(): Promise<import("@/types").UserSettings> {
   const res = await apiFetch(`${BASE_URL}/api/settings`);
-  if (!res.ok) throw new Error("Failed to load settings");
+  if (!res.ok) throw new Error(await readApiError(res, "설정을 불러오지 못했습니다"));
   return res.json();
 }
 
@@ -239,7 +287,7 @@ export async function updateSettings(data: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to save settings");
+  if (!res.ok) throw new Error(await readApiError(res, "설정 저장에 실패했습니다"));
 }
 
 export async function startAgentBacktest(params: {
@@ -254,7 +302,7 @@ export async function startAgentBacktest(params: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error("Failed to start AI backtest");
+  if (!res.ok) throw new Error(await readApiError(res, "AI 백테스트를 시작하지 못했습니다"));
   return res.json();
 }
 
@@ -262,7 +310,7 @@ export async function cancelAgentBacktest(sessionId: string): Promise<{ session_
   const res = await apiFetch(`${BASE_URL}/api/backtest/agent/cancel/${sessionId}`, {
     method: "POST",
   });
-  if (!res.ok) throw new Error("Failed to cancel AI backtest");
+  if (!res.ok) throw new Error(await readApiError(res, "AI 백테스트 취소에 실패했습니다"));
   return res.json();
 }
 
@@ -428,8 +476,7 @@ export async function startAutoLoop(
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to start auto loop" }));
-    throw new Error(err.detail ?? "Failed to start auto loop");
+    throw new Error(await readApiError(res, "Failed to start auto loop"));
   }
   return res.json();
 }
@@ -439,8 +486,7 @@ export async function stopAutoLoop(loopId: string): Promise<{ loop_id: string; s
     method: "POST",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to stop auto loop" }));
-    throw new Error(err.detail ?? "Failed to stop auto loop");
+    throw new Error(await readApiError(res, "Failed to stop auto loop"));
   }
   return res.json();
 }
@@ -448,8 +494,7 @@ export async function stopAutoLoop(loopId: string): Promise<{ loop_id: string; s
 export async function getAutoLoopStatus(loopId: string): Promise<import("@/types").AutoLoopStatus> {
   const res = await apiFetch(`${BASE_URL}/api/auto-loop/status/${encodeURIComponent(loopId)}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load auto loop status" }));
-    throw new Error(err.detail ?? "Failed to load auto loop status");
+    throw new Error(await readApiError(res, "Failed to load auto loop status"));
   }
   return res.json();
 }
@@ -457,8 +502,7 @@ export async function getAutoLoopStatus(loopId: string): Promise<import("@/types
 export async function listAutoLoops(): Promise<{ loops: import("@/types").AutoLoopStatus[] }> {
   const res = await apiFetch(`${BASE_URL}/api/auto-loop/list`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load auto loop list" }));
-    throw new Error(err.detail ?? "Failed to load auto loop list");
+    throw new Error(await readApiError(res, "Failed to load auto loop list"));
   }
   return res.json();
 }
@@ -474,8 +518,7 @@ export async function startPortfolioLoop(
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to start portfolio loop" }));
-    throw new Error(err.detail ?? "Failed to start portfolio loop");
+    throw new Error(await readApiError(res, "Failed to start portfolio loop"));
   }
   return res.json();
 }
@@ -485,8 +528,7 @@ export async function stopPortfolioLoop(loopId: string): Promise<{ loop_id: stri
     method: "POST",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to stop portfolio loop" }));
-    throw new Error(err.detail ?? "Failed to stop portfolio loop");
+    throw new Error(await readApiError(res, "Failed to stop portfolio loop"));
   }
   return res.json();
 }
@@ -494,8 +536,7 @@ export async function stopPortfolioLoop(loopId: string): Promise<{ loop_id: stri
 export async function getPortfolioLoopStatus(loopId: string): Promise<import("@/types").PortfolioLoopStatus> {
   const res = await apiFetch(`${BASE_URL}/api/portfolio-loop/status/${encodeURIComponent(loopId)}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load portfolio loop status" }));
-    throw new Error(err.detail ?? "Failed to load portfolio loop status");
+    throw new Error(await readApiError(res, "Failed to load portfolio loop status"));
   }
   return res.json();
 }
@@ -503,8 +544,7 @@ export async function getPortfolioLoopStatus(loopId: string): Promise<import("@/
 export async function listPortfolioLoops(): Promise<{ loops: import("@/types").PortfolioLoopStatus[] }> {
   const res = await apiFetch(`${BASE_URL}/api/portfolio-loop/list`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load portfolio loop list" }));
-    throw new Error(err.detail ?? "Failed to load portfolio loop list");
+    throw new Error(await readApiError(res, "Failed to load portfolio loop list"));
   }
   return res.json();
 }
@@ -514,25 +554,24 @@ export async function scanPortfolioLoop(loopId: string): Promise<import("@/types
     method: "POST",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to scan portfolio loop" }));
-    throw new Error(err.detail ?? "Failed to scan portfolio loop");
+    throw new Error(await readApiError(res, "Failed to scan portfolio loop"));
   }
   return res.json();
 }
 
 // KIS OpenAPI
 
+// fallthrough
 export async function getKisStatus(): Promise<import("@/types").KisStatus> {
   const res = await apiFetch(`${BASE_URL}/api/kis/status`);
-  if (!res.ok) throw new Error("Failed to load KIS status");
+  if (!res.ok) throw new Error(await readApiError(res, "KIS 상태를 불러오지 못했습니다"));
   return res.json();
 }
 
 export async function getKisBalance(): Promise<import("@/types").KisBalance> {
   const res = await apiFetch(`${BASE_URL}/api/kis/balance`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load KIS balance" }));
-    throw new Error(err.detail ?? "Failed to load KIS balance");
+    throw new Error(await readApiError(res, "Failed to load KIS balance"));
   }
   return res.json();
 }
@@ -540,8 +579,7 @@ export async function getKisBalance(): Promise<import("@/types").KisBalance> {
 export async function getKisPrice(ticker: string): Promise<import("@/types").KisPrice> {
   const res = await apiFetch(`${BASE_URL}/api/kis/price/${encodeURIComponent(ticker)}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load KIS price" }));
-    throw new Error(err.detail ?? "Failed to load KIS price");
+    throw new Error(await readApiError(res, "Failed to load KIS price"));
   }
   return res.json();
 }
@@ -555,8 +593,7 @@ export async function placeKisOrder(
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to place order" }));
-    throw new Error(err.detail ?? "Failed to place order");
+    throw new Error(await readApiError(res, "Failed to place order"));
   }
   return res.json();
 }
@@ -570,8 +607,7 @@ export async function requestKisOrderApproval(
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to request order approval" }));
-    throw new Error(err.detail ?? "Failed to request order approval");
+    throw new Error(await readApiError(res, "Failed to request order approval"));
   }
   return res.json();
 }
@@ -581,8 +617,7 @@ export async function getKisOrderApproval(
 ): Promise<import("@/types").KisOrderApproval> {
   const res = await apiFetch(`${BASE_URL}/api/kis/order/approval/${encodeURIComponent(approvalId)}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load approval status" }));
-    throw new Error(err.detail ?? "Failed to load approval status");
+    throw new Error(await readApiError(res, "Failed to load approval status"));
   }
   return res.json();
 }
@@ -594,8 +629,7 @@ export async function approveKisOrderApproval(
     method: "POST",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to approve order" }));
-    throw new Error(err.detail ?? "Failed to approve order");
+    throw new Error(await readApiError(res, "Failed to approve order"));
   }
   return res.json();
 }
@@ -607,8 +641,7 @@ export async function rejectKisOrderApproval(
     method: "POST",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to reject order" }));
-    throw new Error(err.detail ?? "Failed to reject order");
+    throw new Error(await readApiError(res, "Failed to reject order"));
   }
   return res.json();
 }
@@ -616,7 +649,7 @@ export async function rejectKisOrderApproval(
 // User system APIs
 export async function getAuthBootstrapStatus(): Promise<import("@/types").AuthBootstrapStatus> {
   const res = await apiFetch(`${BASE_URL}/api/auth/bootstrap`);
-  if (!res.ok) throw new Error("Failed to load bootstrap status");
+  if (!res.ok) throw new Error(await readApiError(res, "초기 상태 조회에 실패했습니다"));
   return res.json();
 }
 
@@ -629,8 +662,7 @@ export async function registerUser(
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to register" }));
-    throw new Error(err.detail ?? "Failed to register");
+    throw new Error(await readApiError(res, "\uD68C\uC6D0\uAC00\uC785\uC5D0 \uC2E4\uD328\uD588\uC5B4\uC694"));
   }
   return res.json();
 }
@@ -644,8 +676,7 @@ export async function loginUser(
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to login" }));
-    throw new Error(err.detail ?? "Failed to login");
+    throw new Error(await readApiError(res, "\uB85C\uADF8\uC778\uC5D0 \uC2E4\uD328\uD588\uC5B4\uC694"));
   }
   return res.json();
 }
@@ -655,8 +686,7 @@ export async function logoutUser(): Promise<{ ok: boolean }> {
     method: "POST",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to logout" }));
-    throw new Error(err.detail ?? "Failed to logout");
+    throw new Error(await readApiError(res, "Failed to logout"));
   }
   return res.json();
 }
@@ -664,8 +694,7 @@ export async function logoutUser(): Promise<{ ok: boolean }> {
 export async function getMe(): Promise<import("@/types").AuthMeResponse> {
   const res = await apiFetch(`${BASE_URL}/api/auth/me`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Unauthorized" }));
-    throw new Error(err.detail ?? "Unauthorized");
+    throw new Error(await readApiError(res, "Unauthorized"));
   }
   return res.json();
 }
@@ -673,8 +702,7 @@ export async function getMe(): Promise<import("@/types").AuthMeResponse> {
 export async function getMyActivity(limit = 100): Promise<{ items: import("@/types").ActivityLogItem[] }> {
   const res = await apiFetch(`${BASE_URL}/api/users/me/activity?limit=${encodeURIComponent(String(limit))}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load activity" }));
-    throw new Error(err.detail ?? "Failed to load activity");
+    throw new Error(await readApiError(res, "Failed to load activity"));
   }
   return res.json();
 }
@@ -682,8 +710,7 @@ export async function getMyActivity(limit = 100): Promise<{ items: import("@/typ
 export async function masterListInviteCodes(limit = 200): Promise<import("@/types").InviteCodeListResponse> {
   const res = await apiFetch(`${BASE_URL}/api/master/invite-codes?limit=${encodeURIComponent(String(limit))}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load invite codes" }));
-    throw new Error(err.detail ?? "Failed to load invite codes");
+    throw new Error(await readApiError(res, "Failed to load invite codes"));
   }
   return res.json();
 }
@@ -697,8 +724,7 @@ export async function masterCreateInviteCode(
     body: JSON.stringify(payload ?? {}),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to create invite code" }));
-    throw new Error(err.detail ?? "Failed to create invite code");
+    throw new Error(await readApiError(res, "Failed to create invite code"));
   }
   return res.json();
 }
@@ -708,8 +734,7 @@ export async function masterRevokeInviteCode(inviteId: string): Promise<{ ok: bo
     method: "DELETE",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to revoke invite code" }));
-    throw new Error(err.detail ?? "Failed to revoke invite code");
+    throw new Error(await readApiError(res, "Failed to revoke invite code"));
   }
   return res.json();
 }
@@ -717,8 +742,7 @@ export async function masterRevokeInviteCode(inviteId: string): Promise<{ ok: bo
 export async function getMyTrades(limit = 100): Promise<{ items: import("@/types").UserTradeItem[] }> {
   const res = await apiFetch(`${BASE_URL}/api/users/me/trades?limit=${encodeURIComponent(String(limit))}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load trades" }));
-    throw new Error(err.detail ?? "Failed to load trades");
+    throw new Error(await readApiError(res, "Failed to load trades"));
   }
   return res.json();
 }
@@ -726,8 +750,7 @@ export async function getMyTrades(limit = 100): Promise<{ items: import("@/types
 export async function getMasterOverview(): Promise<import("@/types").MasterOverview> {
   const res = await apiFetch(`${BASE_URL}/api/master/overview`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load overview" }));
-    throw new Error(err.detail ?? "Failed to load overview");
+    throw new Error(await readApiError(res, "Failed to load overview"));
   }
   return res.json();
 }
@@ -735,8 +758,7 @@ export async function getMasterOverview(): Promise<import("@/types").MasterOverv
 export async function getMasterUsers(limit = 200): Promise<{ items: import("@/types").AppUser[] }> {
   const res = await apiFetch(`${BASE_URL}/api/master/users?limit=${encodeURIComponent(String(limit))}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load users" }));
-    throw new Error(err.detail ?? "Failed to load users");
+    throw new Error(await readApiError(res, "Failed to load users"));
   }
   return res.json();
 }
@@ -751,8 +773,7 @@ export async function updateMasterUserRole(
     body: JSON.stringify({ role }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to update role" }));
-    throw new Error(err.detail ?? "Failed to update role");
+    throw new Error(await readApiError(res, "Failed to update role"));
   }
   return res.json();
 }
@@ -767,8 +788,7 @@ export async function updateMasterUserDisabled(
     body: JSON.stringify({ disabled }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to update disabled state" }));
-    throw new Error(err.detail ?? "Failed to update disabled state");
+    throw new Error(await readApiError(res, "Failed to update disabled state"));
   }
   return res.json();
 }
@@ -791,8 +811,7 @@ export async function getMasterActivity(
 
   const res = await apiFetch(`${BASE_URL}/api/master/activity?${q.toString()}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load activity" }));
-    throw new Error(err.detail ?? "Failed to load activity");
+    throw new Error(await readApiError(res, "Failed to load activity"));
   }
   return res.json();
 }
@@ -810,8 +829,7 @@ export async function getMasterTrades(
 
   const res = await apiFetch(`${BASE_URL}/api/master/trades?${q.toString()}`);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Failed to load trades" }));
-    throw new Error(err.detail ?? "Failed to load trades");
+    throw new Error(await readApiError(res, "Failed to load trades"));
   }
   return res.json();
 }
@@ -867,8 +885,7 @@ export type OfficeLayoutUpdate = Partial<Omit<OfficeLayoutCreate, "set_active">>
 
 async function _olJson<T>(res: Response, fallback: string): Promise<T> {
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: fallback }));
-    throw new Error(err.detail ?? fallback);
+    throw new Error(await readApiError(res, fallback));
   }
   return res.json() as Promise<T>;
 }

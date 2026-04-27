@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Cloudflare Tunnel — KTA 전용 터널 자동 시작
+  사전 준비 (1회):
+    1) cloudflared tunnel login
+    2) cloudflared tunnel create kta
+    3) ~/.cloudflared/config.yml 생성 (deploy/cloudflared-config.example.yml 참고)
+    4) cloudflared tunnel route dns kta api.example.com
+  설치:
+    cp deploy/com.cloudflare.kta-tunnel.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cloudflare.kta-tunnel.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.cloudflare.kta-tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cloudflared</string>
+    <string>tunnel</string>
+    <string>--config</string>
+    <string>/Users/leesewang/.cloudflared/config.yml</string>
+    <string>run</string>
+    <string>kta</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/leesewang/korean-trading-agents/logs/cloudflared.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/leesewang/korean-trading-agents/logs/cloudflared.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>TZ</key><string>Asia/Seoul</string>
+  </dict>
+</dict>
+</plist>

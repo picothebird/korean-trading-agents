@@ -1,0 +1,24 @@
+# Cloudflare Tunnel 설정 — 실제 파일은 ~/.cloudflared/config.yml 위치
+# UUID 만 교체하면 되도록 ktagent.me 는 미리 채워둡.
+
+tunnel: <REPLACE_WITH_TUNNEL_UUID>
+credentials-file: /Users/leesewang/.cloudflared/<REPLACE_WITH_TUNNEL_UUID>.json
+
+originRequest:
+  connectTimeout: 10s
+  noTLSVerify: false
+  keepAliveTimeout: 600s
+  http2Origin: false
+  disableChunkedEncoding: false
+
+ingress:
+  - hostname: api.ktagent.me
+    service: http://127.0.0.1:8000
+    originRequest:
+      noHappyEyeballs: true
+      connectTimeout: 10s
+      tlsTimeout: 10s
+      tcpKeepAlive: 30s
+      keepAliveConnections: 100
+      keepAliveTimeout: 600s
+  - service: http_status:404

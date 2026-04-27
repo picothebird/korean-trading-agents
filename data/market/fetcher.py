@@ -170,7 +170,7 @@ def get_investor_flows(days: int = 5) -> dict:
 
 
 def get_kr_rates_summary() -> dict:
-    """한국 시장금리·기준금리·매크로 핵심 스냅샷 (BOK ECOS).
+    """한국 시장금리·기준금리·거시경제 핵심 스냅샷 (BOK ECOS).
 
     Returns:
         {
@@ -182,7 +182,7 @@ def get_kr_rates_summary() -> dict:
               "credit_spread_bp": 64.9,
               "kr3yt_20d_change_bp": -8.6,
           },
-          "key_indicators": [  # 100대 통계 중 매크로 핵심
+          "key_indicators": [  # 100대 통계 중 거시경제 핵심
               {"name": "한국은행 기준금리", "value": 2.5, "unit": "%", "as_of": "..."},
               ...
           ]

@@ -11,7 +11,7 @@ import {
   masterCreateInviteCode,
   masterRevokeInviteCode,
 } from "@/lib/api";
-import { Sheet, useTheme, Icon, type ThemeMode, type IconName } from "@/components/ui";
+import { Sheet, useTheme, Icon, type ThemeMode, type FontScale, type IconName } from "@/components/ui";
 import type { InviteCode, UserRole } from "@/types";
 import { usePersonalization, type NotificationCondition } from "@/stores/usePersonalization";
 import { requestNotificationPermission } from "@/lib/notifications";
@@ -287,7 +287,7 @@ interface SettingsPanelProps {
 export function SettingsPanel({ open, onClose, initialTab = "overview", userRole }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [isCompact, setIsCompact] = useState(false);
-  const { mode: themeMode, resolved: themeResolved, setMode: setThemeMode } = useTheme();
+  const { mode: themeMode, resolved: themeResolved, setMode: setThemeMode, fontScale, setFontScale } = useTheme();
   const [form, setForm] = useState<SettingsForm>({
     openai_api_key: "",
     default_llm_model: "gpt-5.5",
@@ -662,6 +662,50 @@ export function SettingsPanel({ open, onClose, initialTab = "overview", userRole
                           <strong style={{ color: "var(--text-primary)" }}>{themeResolved === "dark" ? "다크" : "라이트"}</strong>
                           {themeMode === "system" && <span style={{ color: "var(--text-tertiary)" }}> · 시스템 설정 기반</span>}
                         </span>
+                      </div>
+                    </Section>
+
+                    <Section title="글자 / UI 크기">
+                      <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.55, marginBottom: 12 }}>
+                        텍스트와 UI 요소를 비례 확대합니다. 시력이 낮거나 큰 화면에서 멀리서 보는 환경에 유용해요. 선택은 이 브라우저에 저장됩니다.
+                      </p>
+                      <div role="radiogroup" aria-label="글자 크기" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                        {([
+                          { key: "sm", label: "소", desc: "기본 (100%)", sample: 13 },
+                          { key: "md", label: "중", desc: "조금 크게 (112%)", sample: 15 },
+                          { key: "lg", label: "대", desc: "크게 (125%)", sample: 17 },
+                        ] as Array<{ key: FontScale; label: string; desc: string; sample: number }>).map((opt) => {
+                          const active = fontScale === opt.key;
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              onClick={() => setFontScale(opt.key)}
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "flex-start",
+                                gap: 4,
+                                padding: "12px 14px",
+                                borderRadius: "var(--radius-lg)",
+                                border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                                background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
+                                color: active ? "var(--brand)" : "var(--text-primary)",
+                                cursor: "pointer",
+                                textAlign: "left",
+                                transition: "all 150ms",
+                              }}
+                            >
+                              <span aria-hidden="true" style={{ fontSize: opt.sample, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em" }}>
+                                Aa
+                              </span>
+                              <span style={{ fontSize: 13, fontWeight: 700 }}>{opt.label}</span>
+                              <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 500 }}>{opt.desc}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </Section>
 

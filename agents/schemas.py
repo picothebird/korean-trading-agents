@@ -53,7 +53,7 @@ MacroRecommendation = Literal["INVEST", "CAUTION", "AVOID"]
 
 
 class MacroAnalystOutput(BaseModel):
-    """매크로 분석가 출력."""
+    """거시경제 분석가 출력."""
     model_config = ConfigDict(extra="forbid")
 
     market_condition: MarketCondition
@@ -132,7 +132,7 @@ class ArticleReportOutput(BaseModel):
     situation_today: str = Field(
         description=(
             "오늘 이 종목을 둘러싼 시장/기업 상황을 친근하게 풀어쓴 단락 "
-            "(가격 흐름, 펀더멘털, 뉴스/공시, 매크로). 600~1000자."
+            "(가격 흐름, 펀더멘털, 뉴스/공시, 거시경제). 600~1000자."
         )
     )
     why_this_decision: str = Field(
