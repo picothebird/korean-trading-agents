@@ -174,8 +174,8 @@ export function StockChartPanel({
   }, [ticker, timeframe]);
 
   const latest = data[data.length - 1];
-  const prev = data[data.length - 2];
-  const changePct = latest && prev ? ((latest.close - prev.close) / prev.close) * 100 : 0;
+  const first = data[0];
+  const changePct = latest && first ? ((latest.close - first.close) / first.close) * 100 : 0;
   const isIntraday = resolution === "intraday";
 
   const closeByDate = useMemo(() => {

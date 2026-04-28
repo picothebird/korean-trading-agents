@@ -414,7 +414,30 @@ def get_technical_indicators(ticker: str, days: int = 380, as_of_date: str | Non
     swing_low_20 = low_s.rolling(20).min()
 
     latest = df.iloc[-1]
-    cur_price = _safe_float(latest["Close"])
+    
+    # ── 실시간 현재가/변동률 yfinance 연동 (오늘 장중인 경우) ──
+    realtime_price = None
+    realtime_prev_close = None
+    try:
+        import yfinance as yf
+        for sym in _yfinance_symbol_for(ticker):
+            tk = yf.Ticker(sym)
+            yf_df = tk.history(period="5d", interval="1d", auto_adjust=False)
+            if not yf_df.empty and len(yf_df) >= 2:
+                # 가장 마지막 장봉(오늘/최근종료)은 실시간 반영됨. (yfinance가 KST 분봉이 아니더라도 일봉은 비교적 빠르게 캐치)
+                realtime_price = float(yf_df["Close"].iloc[-1])
+                realtime_prev_close = float(yf_df["Close"].iloc[-2])
+                break
+    except Exception:
+        pass
+    
+    if realtime_price and realtime_prev_close:
+        cur_price = _safe_float(realtime_price)
+        latest_change_pct = (realtime_price - realtime_prev_close) / realtime_prev_close * 100
+    else:
+        cur_price = _safe_float(latest["Close"])
+        latest_change_pct = (latest["Close"] - df.iloc[-2]["Close"]) / df.iloc[-2]["Close"] * 100 if len(df) > 1 else 0.0
+
     atr_val = _safe_float(atr14.iloc[-1]) if not atr14.empty else None
     sigma_val = _safe_float(sigma20.iloc[-1]) if not sigma20.empty else None
     swing_val = _safe_float(swing_low_20.iloc[-1]) if not swing_low_20.empty else None
@@ -444,7 +467,7 @@ def get_technical_indicators(ticker: str, days: int = 380, as_of_date: str | Non
         "has_full_year_history": has_full_year,
         # ── 가격/지표 ──
         "current_price": cur_price,
-        "change_pct": _safe_float((latest["Close"] - df.iloc[-2]["Close"]) / df.iloc[-2]["Close"] * 100) if len(df) > 1 else 0.0,
+        "change_pct": _safe_float(latest_change_pct),
         "volume": int(latest.get("Volume", 0) or 0),
         "rsi_14": _safe_float(rsi.iloc[-1]) if not rsi.empty else None,
         "macd": _safe_float(macd.iloc[-1]) if not macd.empty else None,
