@@ -219,7 +219,7 @@ async def stream_thoughts(session_id: str) -> AsyncGenerator[str, None]:
     queue = get_thought_queue(session_id)
     try:
         while True:
-            thought = await asyncio.wait_for(queue.get(), timeout=60.0)
+            thought = await asyncio.wait_for(queue.get(), timeout=600.0)
             if thought is None:
                 break
             yield thought.to_sse()
