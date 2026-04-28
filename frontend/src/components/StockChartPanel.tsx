@@ -132,16 +132,18 @@ export function StockChartPanel({
 
   useEffect(() => {
     let cancelled = false;
-    const run = async () => {
-      setLoading(true);
-      setError(null);
+    const run = async (isBackground = false) => {
+      if (!isBackground) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const res: StockChartResponse = await getStockChart(ticker, timeframe);
         if (!cancelled) {
           const points = res.points ?? [];
           setData(points);
           setResolution(res.resolution ?? (INTRADAY_TIMEFRAMES.has(timeframe) ? "intraday" : "daily"));
-          if (points.length === 0) {
+          if (points.length === 0 && !isBackground) {
             setError(
               res.warning
                 ? `데이터를 불러오지 못했습니다 (${res.warning}). 잠시 뒤 다시 시도하거나 다른 기간을 선택해 주십시오.`
@@ -150,18 +152,24 @@ export function StockChartPanel({
           }
         }
       } catch (e: unknown) {
-        if (!cancelled) {
+        if (!cancelled && !isBackground) {
           setError(e instanceof Error ? e.message : "차트를 불러오지 못했습니다.");
           setData([]);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !isBackground) setLoading(false);
       }
     };
 
-    void run();
+    // Delay initial fetch slightly
+    const t = setTimeout(() => void run(false), 300);
+    // Background polling every 15s
+    const poller = setInterval(() => void run(true), 15000);
+
     return () => {
       cancelled = true;
+      clearTimeout(t);
+      clearInterval(poller);
     };
   }, [ticker, timeframe]);
 

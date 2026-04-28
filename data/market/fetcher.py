@@ -22,12 +22,24 @@ def _safe_float(val) -> float | None:
         return None
 
 
-@lru_cache(maxsize=128)
-def get_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
-    """KOSPI/KOSDAQ 종목 OHLCV 데이터 (캐시됨)"""
+def _get_cache_bust_key() -> str:
+    """장이 열려있는 시간(9~16시)에는 1분 단위 캐싱, 그 외는 정적 캐싱."""
+    now = datetime.now()
+    if 9 <= now.hour <= 15:
+        return f"{now.hour}:{now.minute}"
+    return "closed"
+
+
+@lru_cache(maxsize=256)
+def _get_ohlcv_cached(ticker: str, start: str, end: str, bust: str) -> pd.DataFrame:
     df = fdr.DataReader(ticker, start, end)
     df.index = pd.to_datetime(df.index)
     return df
+
+
+def get_ohlcv(ticker: str, start: str, end: str) -> pd.DataFrame:
+    """KOSPI/KOSDAQ 종목 일봉 OHLCV 데이터 (장중 1분 캐싱 보장)"""
+    return _get_ohlcv_cached(ticker, start, end, _get_cache_bust_key())
 
 
 def get_market_index(days: int = 90) -> dict:

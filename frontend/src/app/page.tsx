@@ -930,23 +930,39 @@ export default function Home() {
     return () => query.removeEventListener("change", apply);
   }, []);
 
-  // Stock info on ticker change
+  // Stock info on ticker change + background periodic refresh (15s)
   useEffect(() => {
     if (!currentUser) return;
     if (!ticker) return;
+    
+    // Switch ticker: reset screen immediately
     setStockInfo(null);
-    const timer = setTimeout(() => {
+    
+    let isSubscribed = true;
+    const fetchIt = () => {
       getStock(ticker)
         .then((res) => {
+          if (!isSubscribed) return;
           setStockInfo(res.indicators ?? null);
           if (res.info?.name && res.info.name !== "Unknown") setCompanyName(res.info.name);
         })
         .catch(() => {
-          setStockInfo(null);
+          if (!isSubscribed) return;
+          // on error (like network glitch), keep previous stock info to prevent blink
           setCompanyName(ticker);
         });
-    }, 700);
-    return () => clearTimeout(timer);
+    };
+
+    // Delay initial fetch slightly to debounce rapid typing/clicking
+    const timer = setTimeout(fetchIt, 300);
+    // Background polling every 15 seconds to keep price live
+    const poller = setInterval(fetchIt, 15000);
+    
+    return () => {
+      isSubscribed = false;
+      clearTimeout(timer);
+      clearInterval(poller);
+    };
   }, [ticker, currentUser]);
 
   const openSettings = useCallback((tabKey: SettingsTab = "overview") => {
