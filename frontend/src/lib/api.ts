@@ -162,12 +162,25 @@ export function streamAnalysis(
   const es = new EventSource(buildEventSourceUrl(`/api/analyze/stream/${sessionId}`));
   let decisionReceived = false;
   let finalized = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  };
 
   const finalize = () => {
     if (finalized) return;
     finalized = true;
+    clearReconnectTimer();
     onDone();
     es.close();
+  };
+
+  es.onopen = () => {
+    clearReconnectTimer();
   };
 
   es.onmessage = (event) => {
@@ -214,12 +227,18 @@ export function streamAnalysis(
 
   es.onerror = () => {
     if (finalized) return;
-    onError?.("SSE connection lost. Check whether backend is running.");
-    finalize();
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (finalized || es.readyState === EventSource.OPEN) return;
+      onError?.("SSE connection lost. Check whether backend is running.");
+      finalize();
+    }, 30_000);
   };
 
   return () => {
     finalized = true;
+    clearReconnectTimer();
     es.close();
   };
 }
@@ -418,12 +437,25 @@ export function streamAgentBacktest(
 ): () => void {
   const es = new EventSource(buildEventSourceUrl(`/api/backtest/agent/stream/${sessionId}`));
   let finalized = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  };
 
   const finalize = () => {
     if (finalized) return;
     finalized = true;
+    clearReconnectTimer();
     onDone();
     es.close();
+  };
+
+  es.onopen = () => {
+    clearReconnectTimer();
   };
 
   es.onmessage = (event) => {
@@ -455,12 +487,18 @@ export function streamAgentBacktest(
 
   es.onerror = () => {
     if (finalized) return;
-    onError?.("AI backtest SSE connection lost. Please retry.");
-    finalize();
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (finalized || es.readyState === EventSource.OPEN) return;
+      onError?.("AI backtest SSE connection lost. Please retry.");
+      finalize();
+    }, 30_000);
   };
 
   return () => {
     finalized = true;
+    clearReconnectTimer();
     es.close();
   };
 }

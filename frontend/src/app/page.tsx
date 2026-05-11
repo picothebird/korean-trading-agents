@@ -202,6 +202,9 @@ function StockPriceCard({
             >
               <Icon name={isUp ? "trend-up" : "trend-down"} size={12} strokeWidth={2.2} decorative />
               {Math.abs(info.change_pct).toFixed(2)}%
+              <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginLeft: 2 }}>
+                전일 종가 대비
+              </span>
             </p>
           </div>
 
@@ -1612,14 +1615,23 @@ export default function Home() {
                     <p style={{ fontSize: 8, color: "var(--text-tertiary)", marginBottom: 1 }}>{name}</p>
                     <p
                       style={{
+                        display: "inline-flex",
+                        alignItems: "baseline",
+                        gap: 3,
                         fontSize: 10,
                         fontWeight: 700,
                         color: data.change_pct >= 0 ? "var(--bull)" : "var(--bear)",
                         fontVariantNumeric: "tabular-nums",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      {data.change_pct >= 0 ? "+" : ""}
-                      {data.change_pct.toFixed(2)}%
+                      <span>
+                        {data.change_pct >= 0 ? "+" : ""}
+                        {data.change_pct.toFixed(2)}%
+                      </span>
+                      <span style={{ fontSize: 8, color: "var(--text-tertiary)", fontWeight: 600 }}>
+                        전일 종가
+                      </span>
                     </p>
                   </div>
                 ))}

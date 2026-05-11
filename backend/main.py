@@ -65,6 +65,7 @@ from backend.core.order_approvals import (
 )
 from backend.core.runtime_sessions import (
     RUNTIME_SESSION_COLLECTION,
+    SESSION_STATUS_RUNNING,
     SESSION_TYPE_AGENT_BACKTEST,
     SESSION_TYPE_ANALYSIS,
     create_runtime_session,
@@ -689,8 +690,17 @@ async def stream_analysis(session_id: str, request: Request):
         raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
 
     async def event_stream():
+        import json as _json
         # 헬스체크 이벤트
         yield "data: {\"type\": \"connected\", \"session_id\": \"" + session_id + "\"}\n\n"
+
+        if session_meta.get("status") != SESSION_STATUS_RUNNING:
+            if session_meta.get("decision"):
+                yield f"data: {_json.dumps({'type': 'final_decision', **session_meta['decision']})}\n\n"
+            elif session_meta.get("error"):
+                yield f"data: {_json.dumps({'type': 'error', 'message': session_meta['error']})}\n\n"
+            yield "data: {\"type\": \"done\"}\n\n"
+            return
         
         async for chunk in stream_thoughts(session_id):
             yield chunk
@@ -706,15 +716,12 @@ async def stream_analysis(session_id: str, request: Request):
                     break
 
         if session.get("decision"):
-            import json
-            yield f"data: {json.dumps({'type': 'final_decision', **session['decision']})}\n\n"
+            yield f"data: {_json.dumps({'type': 'final_decision', **session['decision']})}\n\n"
         elif session.get("error"):
-            import json
-            yield f"data: {json.dumps({'type': 'error', 'message': session['error']})}\n\n"
+            yield f"data: {_json.dumps({'type': 'error', 'message': session['error']})}\n\n"
         else:
             # 침묵 실패 방지: 프론트가 원인을 알 수 있도록 명시 오류를 보낸다.
-            import json
-            yield f"data: {json.dumps({'type': 'error', 'message': '분석이 종료됐지만 최종 결정 저장을 확인하지 못했습니다. 다시 시도해주세요.'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'error', 'message': '분석이 종료됐지만 최종 결정 저장을 확인하지 못했습니다. 다시 시도해주세요.'})}\n\n"
         
         yield "data: {\"type\": \"done\"}\n\n"
 
@@ -723,6 +730,7 @@ async def stream_analysis(session_id: str, request: Request):
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
@@ -956,6 +964,14 @@ async def stream_agent_backtest(session_id: str, request: Request):
         import json as _json
         yield f"data: {{\"type\": \"connected\", \"session_id\": \"{session_id}\"}}\n\n"
 
+        if session_meta.get("status") != SESSION_STATUS_RUNNING:
+            if session_meta.get("result"):
+                yield f"data: {_json.dumps({'type': 'backtest_result', **session_meta['result']})}\n\n"
+            elif session_meta.get("error"):
+                yield f"data: {_json.dumps({'type': 'error', 'message': session_meta['error']})}\n\n"
+            yield "data: {\"type\": \"done\"}\n\n"
+            return
+
         async for chunk in stream_thoughts(session_id):
             yield chunk
 
@@ -970,7 +986,11 @@ async def stream_agent_backtest(session_id: str, request: Request):
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

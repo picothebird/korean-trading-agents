@@ -101,6 +101,9 @@ function PriceTooltip({
         <span style={{ marginLeft: 6, fontSize: 11 }}>
           {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
         </span>
+        <span style={{ marginLeft: 4, fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600 }}>
+          봉 시가 대비
+        </span>
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 6, rowGap: 1, fontSize: 10, color: "var(--text-secondary)" }}>
         <span style={{ color: "var(--text-tertiary)" }}>시</span><span>{row.open.toLocaleString("ko-KR")}</span>
@@ -228,6 +231,9 @@ export function StockChartPanel({
               <span style={{ marginLeft: 6, fontSize: 11 }}>
                 {changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%
               </span>
+              <span style={{ marginLeft: 5, fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600 }}>
+                표시 구간 시작 대비
+              </span>
             </p>
           )}
         </div>
@@ -280,7 +286,7 @@ export function StockChartPanel({
         borderBottom: "1px solid var(--border-subtle, rgba(15,23,42,0.05))",
       }}>
         {([
-          ["1d", "1D"],
+          ["1d", "24H"],
           ["5d", "5D"],
           ["2w", "2W"],
           ["1m", "1M"],

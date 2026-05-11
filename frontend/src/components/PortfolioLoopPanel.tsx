@@ -633,9 +633,14 @@ export function PortfolioLoopPanel({ ticker, onTradeRecorded }: PortfolioLoopPan
                 <p style={{ fontSize: 10, color: "var(--text-secondary)" }}>
                   {c.name || c.ticker} ({c.ticker})
                 </p>
-                <p style={{ fontSize: 10, color: c.change_pct >= 0 ? "var(--success)" : "var(--error)", fontVariantNumeric: "tabular-nums" }}>
-                  {c.change_pct >= 0 ? "+" : ""}
-                  {c.change_pct.toFixed(2)}%
+                <p style={{ display: "inline-flex", alignItems: "baseline", gap: 3, fontSize: 10, color: c.change_pct >= 0 ? "var(--success)" : "var(--error)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                  <span>
+                    {c.change_pct >= 0 ? "+" : ""}
+                    {c.change_pct.toFixed(2)}%
+                  </span>
+                  <span style={{ fontSize: 8, color: "var(--text-tertiary)", fontWeight: 600 }}>
+                    전일 종가
+                  </span>
                 </p>
                 <p style={{ fontSize: 10, color: "var(--text-primary)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
                   {c.score.toFixed(2)}

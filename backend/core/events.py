@@ -61,6 +61,8 @@ _queue_created_at: dict[str, float] = {}
 # 큐 자동 청소 정책: 1시간 동안 사용되지 않으면 강제 정리 (SSE 연결 누수 방지)
 _QUEUE_MAX_AGE_SEC = 3600.0
 _QUEUE_REAPER_INTERVAL_SEC = 300.0  # 5분마다 검사
+_SSE_HEARTBEAT_INTERVAL_SEC = 15.0
+_SSE_IDLE_TIMEOUT_SEC = 600.0
 
 # MS-B: (session_id, role) → 마지막 emit 시각 (monotonic seconds).
 _last_emit_ts: dict[tuple[str, str], float] = {}
@@ -217,14 +219,25 @@ def _ensure_signal(thought: AgentThought) -> None:
 
 async def stream_thoughts(session_id: str) -> AsyncGenerator[str, None]:
     queue = get_thought_queue(session_id)
+    last_data_at = time.monotonic()
+    should_discard_queue = False
     try:
         while True:
-            thought = await asyncio.wait_for(queue.get(), timeout=600.0)
+            try:
+                thought = await asyncio.wait_for(queue.get(), timeout=_SSE_HEARTBEAT_INTERVAL_SEC)
+            except asyncio.TimeoutError:
+                if time.monotonic() - last_data_at >= _SSE_IDLE_TIMEOUT_SEC:
+                    should_discard_queue = True
+                    yield "data: {\"type\": \"timeout\"}\n\n"
+                    break
+                yield ": keep-alive\n\n"
+                continue
+
             if thought is None:
+                should_discard_queue = True
                 break
+            last_data_at = time.monotonic()
             yield thought.to_sse()
-    except asyncio.TimeoutError:
-        yield "data: {\"type\": \"timeout\"}\n\n"
     finally:
-        _thought_queues.pop(session_id, None)
-        _queue_created_at.pop(session_id, None)
+        if should_discard_queue and _thought_queues.get(session_id) is queue:
+            clear_thought_queue(session_id)
