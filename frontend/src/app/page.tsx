@@ -45,6 +45,7 @@ type SavedStock = { code: string; name: string };
 type BacktestMode = "ma" | "agent";
 
 type Tab = "analysis" | "backtest" | "trading" | "portfolio";
+type MobileView = "home" | "chart" | Tab;
 const SPRING = { ease: [0.16, 1, 0.3, 1] as const, duration: 0.4 };
 
 // ── Utilities ─────────────────────────────────────────────────────
@@ -120,12 +121,17 @@ function StockPriceCard({
   companyName: string;
 }) {
   const open = isKRXOpen();
-  const isUp = (info?.change_pct ?? 0) >= 0;
+  const currentPrice = typeof info?.current_price === "number" && Number.isFinite(info.current_price) ? info.current_price : null;
+  const changePct = typeof info?.change_pct === "number" && Number.isFinite(info.change_pct) ? info.change_pct : null;
+  const volume = typeof info?.volume === "number" && Number.isFinite(info.volume) ? info.volume : null;
+  const high52w = typeof info?.high_52w === "number" && Number.isFinite(info.high_52w) ? info.high_52w : null;
+  const low52w = typeof info?.low_52w === "number" && Number.isFinite(info.low_52w) ? info.low_52w : null;
+  const isUp = (changePct ?? 0) >= 0;
   const priceColor = isUp ? "var(--bull)" : "var(--bear)";
 
   const rangeProgress =
-    info && info.high_52w > info.low_52w
-      ? ((info.current_price - info.low_52w) / (info.high_52w - info.low_52w)) * 100
+    currentPrice != null && high52w != null && low52w != null && high52w > low52w
+      ? ((currentPrice - low52w) / (high52w - low52w)) * 100
       : 50;
 
   return (
@@ -162,11 +168,13 @@ function StockPriceCard({
           <div style={{ textAlign: "right" }}>
             <p style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>거래량</p>
             <p style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
-              {info.volume >= 1_000_000
-                ? `${(info.volume / 1_000_000).toFixed(1)}M`
-                : info.volume >= 1_000
-                ? `${(info.volume / 1_000).toFixed(0)}K`
-                : String(info.volume)}
+              {volume == null
+                ? "--"
+                : volume >= 1_000_000
+                ? `${(volume / 1_000_000).toFixed(1)}M`
+                : volume >= 1_000
+                ? `${(volume / 1_000).toFixed(0)}K`
+                : String(volume)}
             </p>
           </div>
         )}
@@ -186,7 +194,7 @@ function StockPriceCard({
                 letterSpacing: "-0.02em",
               }}
             >
-              &#8361;{formatPrice(info.current_price)}
+              {currentPrice == null ? "가격 확인 중" : <>&#8361;{formatPrice(currentPrice)}</>}
             </p>
             <p
               style={{
@@ -201,7 +209,7 @@ function StockPriceCard({
               }}
             >
               <Icon name={isUp ? "trend-up" : "trend-down"} size={12} strokeWidth={2.2} decorative />
-              {Math.abs(info.change_pct).toFixed(2)}%
+              {changePct == null ? "--" : `${Math.abs(changePct).toFixed(2)}%`}
               <span style={{ fontSize: 9, color: "var(--text-tertiary)", fontWeight: 600, marginLeft: 2 }}>
                 전일 종가 대비
               </span>
@@ -247,7 +255,7 @@ function StockPriceCard({
             )}
 
             {/* 52W Range */}
-            {info.high_52w > 0 && (
+            {high52w != null && low52w != null && high52w > 0 && (
               <div style={{ flex: 2 }}>
                 <Tooltip
                   content="최근 1년(52주) 동안의 최고가와 최저가 구간. 막대 위의 표시는 현재가가 그 구간의 어디에 있는지 알려주어요. 원쪽에 가까우면 1년 중 최고점 근처(차익실실 필요), 왼쪽이면 최저점 근처(반등 기회 가능성)를 뜻합니다."
@@ -257,7 +265,7 @@ function StockPriceCard({
                 </Tooltip>
                 <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <span style={{ fontSize: 8, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
-                    {(info.low_52w / 1000).toFixed(0)}K
+                    {(low52w / 1000).toFixed(0)}K
                   </span>
                   <div style={{ flex: 1, height: 3, background: "var(--bg-overlay)", borderRadius: 99, position: "relative" }}>
                     <div
@@ -284,7 +292,7 @@ function StockPriceCard({
                     />
                   </div>
                   <span style={{ fontSize: 8, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>
-                    {(info.high_52w / 1000).toFixed(0)}K
+                    {(high52w / 1000).toFixed(0)}K
                   </span>
                 </div>
               </div>
@@ -303,7 +311,7 @@ function StockPriceCard({
                   <p style={{ fontSize: 8, color: "var(--text-tertiary)" }}>{label}</p>
                   <InfoTip tip={tip} subtle />
                 </div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: val != null ? (val > info.current_price ? "var(--bear)" : "var(--bull)") : "var(--text-quaternary)", fontVariantNumeric: "tabular-nums" }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: val != null && currentPrice != null ? (val > currentPrice ? "var(--bear)" : "var(--bull)") : "var(--text-quaternary)", fontVariantNumeric: "tabular-nums" }}>
                   {val != null ? `${(val / 1000).toFixed(1)}K` : "-"}
                 </p>
               </div>
@@ -776,6 +784,221 @@ function AnalysisEmptyState({
   );
 }
 
+function MobileShellCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <section
+      style={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: 18,
+        boxShadow: "var(--shadow-sm)",
+        padding: 14,
+        ...style,
+      }}
+    >
+      {children}
+    </section>
+  );
+}
+
+function MobileSectionHeader({
+  title,
+  eyebrow,
+  action,
+}: {
+  title: string;
+  eyebrow?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+      <div style={{ minWidth: 0 }}>
+        {eyebrow && (
+          <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 800, letterSpacing: "0.06em", marginBottom: 2 }}>
+            {eyebrow}
+          </p>
+        )}
+        <h2 style={{ fontSize: 17, lineHeight: 1.25, color: "var(--text-primary)", fontWeight: 850, margin: 0 }}>
+          {title}
+        </h2>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function MobileMetric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "up" | "down" | "neutral" | "brand" }) {
+  const color = tone === "up" ? "var(--bull)" : tone === "down" ? "var(--bear)" : tone === "brand" ? "var(--brand)" : "var(--text-primary)";
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        padding: "8px 10px",
+        borderRadius: 12,
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-subtle)",
+      }}
+    >
+      <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 700, marginBottom: 3 }}>{label}</p>
+      <p style={{ fontSize: 13, color, fontWeight: 850, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function MobileActionButton({
+  icon,
+  label,
+  detail,
+  tone = "brand",
+  onClick,
+}: {
+  icon: React.ComponentProps<typeof Icon>["name"];
+  label: string;
+  detail: string;
+  tone?: "brand" | "up" | "down" | "neutral" | "warning";
+  onClick: () => void;
+}) {
+  const color = tone === "up" ? "var(--bull)" : tone === "down" ? "var(--bear)" : tone === "warning" ? "var(--warning)" : tone === "neutral" ? "var(--text-secondary)" : "var(--brand)";
+  const background = tone === "up" ? "var(--bull-subtle)" : tone === "down" ? "var(--bear-subtle)" : tone === "warning" ? "var(--warning-subtle)" : tone === "neutral" ? "var(--bg-elevated)" : "var(--brand-subtle)";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        minHeight: 84,
+        padding: 12,
+        borderRadius: 16,
+        border: "1px solid var(--border-subtle)",
+        background: "var(--bg-surface)",
+        color: "var(--text-primary)",
+        textAlign: "left",
+        cursor: "pointer",
+        display: "grid",
+        gridTemplateColumns: "34px 1fr",
+        gap: 10,
+        alignItems: "center",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 12,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background,
+          color,
+          flexShrink: 0,
+        }}
+      >
+        <Icon name={icon} size={18} decorative />
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 14, fontWeight: 850, color: "var(--text-primary)", marginBottom: 3 }}>{label}</span>
+        <span style={{ display: "block", fontSize: 11, lineHeight: 1.35, color: "var(--text-tertiary)" }}>{detail}</span>
+      </span>
+    </button>
+  );
+}
+
+function MobileBottomNav({
+  value,
+  activeCount,
+  onChange,
+}: {
+  value: MobileView;
+  activeCount: number;
+  onChange: (next: MobileView) => void;
+}) {
+  const items: Array<{ value: MobileView; label: string; icon: React.ComponentProps<typeof Icon>["name"] }> = [
+    { value: "home", label: "홈", icon: "home" },
+    { value: "chart", label: "차트", icon: "candle" },
+    { value: "analysis", label: "AI", icon: "robot" },
+    { value: "backtest", label: "시뮬", icon: "chart-bar" },
+    { value: "trading", label: "매매", icon: "wallet" },
+    { value: "portfolio", label: "포트", icon: "briefcase" },
+  ];
+  return (
+    <nav
+      aria-label="모바일 주요 기능"
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 90,
+        padding: "7px max(8px, env(safe-area-inset-left)) calc(7px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right))",
+        background: "color-mix(in srgb, var(--bg-surface) 94%, transparent)",
+        borderTop: "1px solid var(--border-subtle)",
+        backdropFilter: "blur(18px)",
+        display: "grid",
+        gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+        gap: 4,
+        maxWidth: 520,
+        margin: "0 auto",
+      }}
+    >
+      {items.map((item) => {
+        const active = item.value === value;
+        return (
+          <button
+            type="button"
+            key={item.value}
+            aria-current={active ? "page" : undefined}
+            onClick={() => onChange(item.value)}
+            style={{
+              height: 52,
+              border: "none",
+              borderRadius: 14,
+              background: active ? "var(--brand-subtle)" : "transparent",
+              color: active ? "var(--brand)" : "var(--text-tertiary)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 3,
+              fontSize: 10,
+              fontWeight: active ? 850 : 700,
+              cursor: "pointer",
+              position: "relative",
+            }}
+          >
+            <Icon name={item.icon} size={18} decorative />
+            <span>{item.label}</span>
+            {item.value === "analysis" && activeCount > 0 && (
+              <span
+                aria-label={`활성 에이전트 ${activeCount}개`}
+                style={{
+                  position: "absolute",
+                  top: 5,
+                  right: "22%",
+                  minWidth: 16,
+                  height: 16,
+                  borderRadius: 99,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "var(--bull)",
+                  color: "var(--text-inverse)",
+                  fontSize: 9,
+                  fontWeight: 850,
+                  padding: "0 4px",
+                }}
+              >
+                {activeCount}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────
 export default function Home() {
   const [tab, setTab] = useState<Tab>("analysis");
@@ -802,6 +1025,8 @@ export default function Home() {
   const [ticker, setTicker] = useState("005930");
   const [companyName, setCompanyName] = useState("삼성전자");
   const [isNarrowLayout, setIsNarrowLayout] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [mobileView, setMobileView] = useState<MobileView>("home");
   const [isRunning, setIsRunning] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [thoughts, setThoughts] = useState<Map<AgentRole, AgentThought>>(new Map());
@@ -922,12 +1147,28 @@ export default function Home() {
     loadIndices();
     const timer = setInterval(loadIndices, 60_000);
     return () => clearInterval(timer);
-  }, [currentUser]);
+  }, [currentUser, scrollRightToTop]);
 
   // Responsive split layout (desktop 50/50, narrow stacked)
   useEffect(() => {
     const query = window.matchMedia("(max-width: 1260px)");
     const apply = () => setIsNarrowLayout(query.matches);
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 760px)");
+    const apply = () => {
+      let forced = false;
+      try {
+        forced = process.env.NODE_ENV !== "production" && window.localStorage.getItem("kta_force_mobile") === "1";
+      } catch {
+        forced = false;
+      }
+      setIsMobileLayout(query.matches || forced);
+    };
     apply();
     query.addEventListener("change", apply);
     return () => query.removeEventListener("change", apply);
@@ -1370,7 +1611,7 @@ export default function Home() {
         }
       }
     } catch { /* ignore */ }
-  }, [currentUser]);
+  }, [currentUser, scrollRightToTop]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1460,6 +1701,14 @@ export default function Home() {
     }
   }, [decision]);
 
+  const handleMobileViewChange = useCallback((next: MobileView) => {
+    setMobileView(next);
+    if (next === "analysis" || next === "backtest" || next === "trading" || next === "portfolio") {
+      handleTabChange(next);
+    }
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }, [handleTabChange]);
+
   // 즉시 청산 요청 이벤트 수신 (AutoLoopPanel/PortfolioLoopPanel에서 디스패치)
   useEffect(() => {
     const onLiquidate = (e: Event) => {
@@ -1515,6 +1764,438 @@ export default function Home() {
   }
 
   // ── Render ────────────────────────────────────────────────────
+  if (isMobileLayout) {
+    const mobileCurrentPrice = typeof stockInfo?.current_price === "number" && Number.isFinite(stockInfo.current_price) ? stockInfo.current_price : null;
+    const mobileChangePct = typeof stockInfo?.change_pct === "number" && Number.isFinite(stockInfo.change_pct) ? stockInfo.change_pct : null;
+    const mobileVolume = typeof stockInfo?.volume === "number" && Number.isFinite(stockInfo.volume) ? stockInfo.volume : null;
+    const priceColor = (mobileChangePct ?? 0) >= 0 ? "var(--bull)" : "var(--bear)";
+    const priceText = mobileCurrentPrice == null ? "가격 확인 중" : `₩${mobileCurrentPrice.toLocaleString("ko-KR")}`;
+    const changeText = mobileChangePct == null ? "--" : `${mobileChangePct >= 0 ? "+" : ""}${mobileChangePct.toFixed(2)}%`;
+    const latestAnalysis = analysisHistory.find((item) => item.status === "done") ?? analysisHistory[0];
+    const renderMobileTop = (
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 80,
+          maxWidth: 520,
+          margin: "0 auto",
+          background: "color-mix(in srgb, var(--bg-canvas) 96%, transparent)",
+          backdropFilter: "blur(18px)",
+          borderBottom: "1px solid var(--border-subtle)",
+          padding: "10px 14px 12px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <BrandMark size={28} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 900, letterSpacing: "0.04em", lineHeight: 1.1 }}>KTA</p>
+              <p style={{ fontSize: 10, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {currentUser.username || currentUser.email}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <MarketStatusBadge compact />
+            <button
+              type="button"
+              onClick={() => openSettings("overview")}
+              aria-label="설정 열기"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-surface)",
+                color: "var(--text-secondary)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon name="settings" size={17} decorative />
+            </button>
+          </div>
+        </div>
+
+        <div data-tour="search" style={{ marginBottom: 10 }}>
+          <TickerSearchInput ticker={ticker} companyName={companyName} onChange={handleTickerSelect} />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 10,
+            alignItems: "end",
+            padding: "12px 13px",
+            borderRadius: 18,
+            border: "1px solid var(--border-subtle)",
+            background: "var(--bg-surface)",
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {companyName || ticker}
+              <span style={{ marginLeft: 6, color: "var(--text-tertiary)", fontWeight: 700 }}>{ticker}</span>
+            </p>
+            <p style={{ marginTop: 5, fontSize: 30, lineHeight: 1, fontWeight: 950, color: priceColor, letterSpacing: 0, fontVariantNumeric: "tabular-nums" }}>
+              {priceText}
+            </p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: 18, fontWeight: 900, color: priceColor, fontVariantNumeric: "tabular-nums" }}>{changeText}</p>
+            <p style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 700, marginTop: 2 }}>전일 종가</p>
+          </div>
+          <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 7, marginTop: 3 }}>
+            <MobileMetric label="거래량" value={mobileVolume == null ? "--" : mobileVolume >= 1_000_000 ? `${(mobileVolume / 1_000_000).toFixed(1)}M` : mobileVolume.toLocaleString("ko-KR")} />
+            <MobileMetric label="RSI" value={stockInfo?.rsi_14 != null ? stockInfo.rsi_14.toFixed(0) : "--"} tone={stockInfo?.rsi_14 != null && stockInfo.rsi_14 >= 70 ? "up" : stockInfo?.rsi_14 != null && stockInfo.rsi_14 <= 30 ? "down" : "neutral"} />
+            <MobileMetric label="20일선" value={stockInfo?.ma20 != null ? `${Math.round(stockInfo.ma20 / 1000)}K` : "--"} tone="brand" />
+          </div>
+        </div>
+      </header>
+    );
+
+    const renderWatchChips = (
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+        {[...favoriteStocks, ...recentStocks, ...POPULAR_TICKERS]
+          .filter((item, index, array) => array.findIndex((other) => other.code === item.code) === index)
+          .slice(0, 14)
+          .map(({ code, name }) => {
+            const active = ticker === code;
+            return (
+              <button
+                type="button"
+                key={code}
+                onClick={() => handleTickerSelect(code, name)}
+                style={{
+                  flex: "0 0 auto",
+                  height: 34,
+                  padding: "0 12px",
+                  borderRadius: 99,
+                  border: `1px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                  background: active ? "var(--brand-subtle)" : "var(--bg-surface)",
+                  color: active ? "var(--brand)" : "var(--text-secondary)",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {name}
+              </button>
+            );
+          })}
+      </div>
+    );
+
+    const mobileAnalysisStatus = isRunning
+      ? `${activeCount}개 에이전트 분석 중`
+      : decision
+      ? `${decision.action} · 신뢰도 ${Math.round(decision.confidence * 100)}%`
+      : latestAnalysis?.summary?.action
+      ? `최근 ${latestAnalysis.summary.action}`
+      : "대기 중";
+
+    const renderHome = (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <section style={{ padding: "2px 0 0" }}>
+          <MobileSectionHeader title="오늘 볼 핵심" eyebrow="SNAPSHOT" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 9 }}>
+            <MobileActionButton icon="robot" label="AI 분석" detail={mobileAnalysisStatus} tone={isRunning ? "warning" : "brand"} onClick={() => { handleMobileViewChange("analysis"); if (!isRunning && !decision) void handleAnalyze(); }} />
+            <MobileActionButton icon="candle" label="차트 확대" detail="가격·MA·RSI·MACD" tone="neutral" onClick={() => handleMobileViewChange("chart")} />
+            <MobileActionButton icon="chart-bar" label="시뮬레이션" detail="전략을 과거 구간 검증" tone="brand" onClick={() => handleMobileViewChange("backtest")} />
+            <MobileActionButton icon="wallet" label="매매 관리" detail="KIS·자동 루프·주문" tone="warning" onClick={() => handleMobileViewChange("trading")} />
+          </div>
+        </section>
+
+        <section style={{ padding: "2px 0 0" }}>
+          <MobileSectionHeader
+            title="차트 미리보기"
+            eyebrow="MARKET"
+            action={(
+              <button type="button" onClick={() => handleMobileViewChange("chart")} style={{ border: "none", background: "transparent", color: "var(--brand)", fontSize: 12, fontWeight: 850 }}>
+                크게 보기
+              </button>
+            )}
+          />
+          <StockChartPanel ticker={ticker} predictionMarkers={chartPredictionMarkers} tradeMarkers={chartTradeMarkers} compact />
+        </section>
+
+        <MobileShellCard>
+          <MobileSectionHeader title="관심 종목" eyebrow="WATCHLIST" />
+          {renderWatchChips}
+        </MobileShellCard>
+
+        <MobileShellCard>
+          <MobileSectionHeader
+            title="최근 판단"
+            eyebrow="AI MEMORY"
+            action={(
+              <button type="button" onClick={refreshAnalysisHistory} disabled={analysisHistoryLoading} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", fontSize: 12, fontWeight: 800 }}>
+                {analysisHistoryLoading ? "갱신 중" : "새로고침"}
+              </button>
+            )}
+          />
+          {latestAnalysis ? (
+            <button
+              type="button"
+              onClick={async () => {
+                if (latestAnalysis.status !== "done") return;
+                const detail = await getAnalysisSession(latestAnalysis.session_id);
+                const loadedDecision = detail?.decision ?? detail?.result?.decision ?? null;
+                if (loadedDecision) setDecision(loadedDecision);
+                handleMobileViewChange("analysis");
+              }}
+              style={{
+                width: "100%",
+                border: "1px solid var(--border-subtle)",
+                background: "var(--bg-elevated)",
+                borderRadius: 14,
+                padding: 12,
+                textAlign: "left",
+              }}
+            >
+              <span style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 14, color: "var(--text-primary)", fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {resolveTickerName(latestAnalysis.ticker, latestAnalysis.ticker_name) || latestAnalysis.ticker}
+                  </span>
+                  <span style={{ display: "block", marginTop: 3, fontSize: 11, color: "var(--text-tertiary)" }}>{formatKstDateTime(latestAnalysis.created_at)}</span>
+                </span>
+                <span style={{ flexShrink: 0, textAlign: "right" }}>
+                  <span style={{ display: "block", fontSize: 15, fontWeight: 900, color: latestAnalysis.summary?.action === "BUY" ? "var(--bull)" : latestAnalysis.summary?.action === "SELL" ? "var(--bear)" : "var(--text-secondary)" }}>
+                    {latestAnalysis.summary?.action ?? latestAnalysis.status}
+                  </span>
+                  {typeof latestAnalysis.summary?.confidence === "number" && (
+                    <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{Math.round(latestAnalysis.summary.confidence * 100)}%</span>
+                  )}
+                </span>
+              </span>
+            </button>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--text-tertiary)", lineHeight: 1.55 }}>아직 저장된 분석이 없습니다. AI 분석을 시작하면 이곳에 최근 판단이 쌓입니다.</p>
+          )}
+        </MobileShellCard>
+      </div>
+    );
+
+    const renderAnalysis = (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <MobileShellCard style={{ position: "sticky", top: 188, zIndex: 20 }}>
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={isRunning}
+            style={{
+              width: "100%",
+              height: 50,
+              borderRadius: 16,
+              border: "none",
+              background: isRunning ? "var(--bg-elevated)" : "var(--brand)",
+              color: isRunning ? "var(--text-tertiary)" : "var(--text-inverse)",
+              fontSize: 15,
+              fontWeight: 900,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            {isRunning ? <Loader size={17} center={false} /> : <Icon name="robot" size={17} decorative />}
+            {isRunning ? "분석 중" : `${companyName || ticker} 분석 시작`}
+          </button>
+          {isRunning && (
+            <button type="button" onClick={handleCancelAnalysis} style={{ marginTop: 8, width: "100%", height: 38, borderRadius: 12, border: "1px solid var(--border-default)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 13, fontWeight: 800 }}>
+              중단
+            </button>
+          )}
+        </MobileShellCard>
+
+        {(isRunning || filteredThoughts.size > 0) && <PipelineProgress thoughts={filteredThoughts} isRunning={isRunning} isDone={!isRunning && !!decision} visibleRoles={analysisVisibleRoles} />}
+        {analysisError && (
+          <MobileShellCard style={{ borderColor: "var(--error-border)", background: "var(--error-subtle)" }}>
+            <p style={{ fontSize: 13, color: "var(--error)", lineHeight: 1.5 }}>{analysisError}</p>
+          </MobileShellCard>
+        )}
+        {decision ? (
+          <AnalysisResult
+            decision={decision}
+            onHumanApproval={decision.agents_summary?.requires_human_approval ? () => setApprovalModal(true) : undefined}
+            onOpenSettings={() => openSettings("guru")}
+            onGoTrading={() => { setKisOrderTicker(decision.ticker); handleMobileViewChange("trading"); }}
+            onGoBacktest={() => handleMobileViewChange("backtest")}
+            onGoAutoLoop={() => { setKisOrderTicker(decision.ticker); handleMobileViewChange("trading"); }}
+          />
+        ) : (
+          <AnalysisEmptyState isRunning={isRunning} activeCount={activeCount} hasThoughts={filteredThoughts.size > 0} hadError={!!analysisError} />
+        )}
+        <MobileShellCard style={{ padding: 10 }}>
+          <MobileSectionHeader title="에이전트 회의실" eyebrow="LIVE ROOM" />
+          <div style={{ height: 360, borderRadius: 14, overflow: "hidden", border: "1px solid var(--border-subtle)", background: "var(--bg-canvas)" }}>
+            <AgentStage thoughts={filteredLogs} decision={decision} visibleRoles={analysisVisibleRoles} totalAgents={analysisVisibleRoles.length} />
+          </div>
+        </MobileShellCard>
+      </div>
+    );
+
+    const renderBacktest = (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {!btResult && (
+          <MobileShellCard>
+            <MobileSectionHeader title="시뮬레이션 설정" eyebrow="BACKTEST" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+              {(["ma", "agent"] as const).map((modeKey) => {
+                const active = btMode === modeKey;
+                return (
+                  <button
+                    key={modeKey}
+                    type="button"
+                    onClick={() => setBtMode(modeKey)}
+                    style={{
+                      minHeight: 74,
+                      padding: 10,
+                      borderRadius: 14,
+                      border: `1.5px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+                      background: active ? "var(--brand-subtle)" : "var(--bg-surface)",
+                      color: active ? "var(--brand)" : "var(--text-primary)",
+                      textAlign: "left",
+                    }}
+                  >
+                    <Icon name={modeKey === "agent" ? "robot" : "chart-bar"} size={17} decorative />
+                    <span style={{ display: "block", marginTop: 6, fontSize: 13, fontWeight: 900 }}>{modeKey === "agent" ? "AI 전략" : "MA 교차"}</span>
+                    <span style={{ display: "block", marginTop: 2, fontSize: 10, lineHeight: 1.35, color: "var(--text-tertiary)" }}>{modeKey === "agent" ? "LLM 판단 포함" : "빠르고 무료"}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 800 }}>시작일</span>
+                <input type="date" value={btStartDate} onChange={(event) => setBtStartDate(event.target.value)} style={{ height: 42, borderRadius: 12, border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13 }} />
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 800 }}>종료일</span>
+                <input type="date" value={btEndDate} onChange={(event) => setBtEndDate(event.target.value)} style={{ height: 42, borderRadius: 12, border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "0 10px", fontSize: 13 }} />
+              </label>
+            </div>
+            <label style={{ display: "grid", gap: 5, marginTop: 9 }}>
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 800 }}>초기 자본</span>
+              <input type="number" min={100000} step={100000} value={btInitialCapital} onChange={(event) => setBtInitialCapital(Number(event.target.value || 0))} style={{ height: 44, borderRadius: 12, border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "0 11px", fontSize: 14 }} />
+            </label>
+            <label style={{ display: "grid", gap: 5, marginTop: 9 }}>
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 800 }}>판단 주기</span>
+              <input type="number" min={1} max={120} value={btDecisionIntervalDays} onChange={(event) => setBtDecisionIntervalDays(Number(event.target.value || 1))} style={{ height: 44, borderRadius: 12, border: "1px solid var(--border-default)", background: "var(--bg-input)", color: "var(--text-primary)", padding: "0 11px", fontSize: 14 }} />
+            </label>
+            <p style={{ marginTop: 10, fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.5 }}>{backtestSummaryText}</p>
+            <button type="button" onClick={handleBacktest} disabled={btLoading} style={{ marginTop: 12, width: "100%", height: 50, borderRadius: 16, border: "none", background: btLoading ? "var(--bg-elevated)" : "var(--brand)", color: btLoading ? "var(--text-tertiary)" : "var(--text-inverse)", fontSize: 15, fontWeight: 900 }}>
+              {btLoading ? "실행 중" : "시뮬레이션 실행"}
+            </button>
+          </MobileShellCard>
+        )}
+        {btLoading && <Loader size={46} label={btMode === "agent" ? "AI가 과거 시점마다 판단하는 중" : "시뮬레이션 실행 중"} />}
+        {btError && <MobileShellCard style={{ borderColor: "var(--error-border)", background: "var(--error-subtle)" }}><p style={{ fontSize: 13, color: "var(--error)", lineHeight: 1.5 }}>{btError}</p></MobileShellCard>}
+        {btResult && <BacktestPanel result={btResult} mode={btMode} decisionIntervalDays={btDecisionIntervalDays} />}
+      </div>
+    );
+
+    const renderMobileContent = (() => {
+      if (mobileView === "chart") {
+        return <StockChartPanel ticker={ticker} predictionMarkers={chartPredictionMarkers} tradeMarkers={chartTradeMarkers} />;
+      }
+      if (mobileView === "analysis") return renderAnalysis;
+      if (mobileView === "backtest") return renderBacktest;
+      if (mobileView === "trading") {
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <KisPanel prefillTicker={kisOrderTicker || ticker} onOpenSettings={(tabKey) => openSettings(tabKey)} />
+            <AutoLoopPanel
+              ticker={ticker}
+              showVisuals
+              onDecision={(autoDecision) => {
+                setDecision(autoDecision);
+                setKisOrderTicker(autoDecision.ticker);
+                setLogs((prev) => [...prev.slice(-99), { agent_id: "auto_loop", role: "portfolio_manager", status: "done", content: `자동 루프 의사결정: ${autoDecision.action} (${(autoDecision.confidence * 100).toFixed(1)}%)`, timestamp: new Date().toISOString() }]);
+              }}
+              onTradeRecorded={(trade) => setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120))}
+            />
+          </div>
+        );
+      }
+      if (mobileView === "portfolio") {
+        return (
+          <PortfolioLoopPanel
+            ticker={ticker}
+            onTradeRecorded={(trade) => {
+              setAutoTradeRecords((prev) => [trade, ...prev].slice(0, 120));
+              setLogs((prev) => [...prev.slice(-99), { agent_id: "portfolio_loop", role: "portfolio_manager", status: "done", content: `포트폴리오 거래: ${trade.ticker} ${trade.side} ${trade.qty}주 (${trade.status})`, timestamp: new Date().toISOString() }]);
+            }}
+          />
+        );
+      }
+      return renderHome;
+    })();
+
+    return (
+      <div style={{ minHeight: "100dvh", background: "var(--bg-canvas)", color: "var(--text-primary)", paddingBottom: "calc(76px + env(safe-area-inset-bottom))" }}>
+        {renderMobileTop}
+        <main style={{ width: "100%", maxWidth: 520, margin: "0 auto", padding: "12px 12px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+          {mobileView !== "home" && (
+            <button
+              type="button"
+              onClick={() => handleMobileViewChange("home")}
+              style={{
+                alignSelf: "flex-start",
+                height: 34,
+                borderRadius: 99,
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-surface)",
+                color: "var(--text-secondary)",
+                padding: "0 12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: 12,
+                fontWeight: 850,
+              }}
+            >
+              <Icon name="arrow-left" size={13} decorative /> 홈
+            </button>
+          )}
+          {renderMobileContent}
+        </main>
+        <MobileBottomNav value={mobileView} activeCount={activeCount} onChange={handleMobileViewChange} />
+
+        <AnimatePresence>
+          {approvalModal && decision && (
+            <HumanApprovalModal
+              decision={decision}
+              onApprove={() => {
+                setApprovalModal(false);
+                setKisOrderTicker(decision.ticker);
+                handleMobileViewChange("trading");
+              }}
+              onReject={() => {
+                setApprovalModal(false);
+                setDecision(null);
+              }}
+              onOpenSettings={() => openSettings("guru")}
+            />
+          )}
+        </AnimatePresence>
+        <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false); void refreshGuruEnabled(); }} initialTab={settingsInitialTab} userRole={currentUser?.role} />
+        <AgentInspector thoughts={filteredLogs} />
+        <AskModal sessionId={activeAnalysisSessionId} onSubmit={async ({ role, question, thoughtTimestamp }) => {
+          if (!activeAnalysisSessionId) return;
+          await askAgent(activeAnalysisSessionId, { role, question, thought_timestamp: thoughtTimestamp });
+        }} />
+        <CommandPalette />
+        <ShortcutsOverlay />
+      </div>
+    );
+  }
+
   return (
     <div
       style={{

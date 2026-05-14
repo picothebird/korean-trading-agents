@@ -354,7 +354,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
             <Tag label="VWAP" value={fmtNum(cur.vwap)} color={COLOR_VWAP} />
           )}
         </ReadoutRow>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <ComposedChart
             data={rows}
             syncId="kta-pro"
@@ -404,7 +404,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
         <ReadoutRow>
           <Tag label="Vol" value={fmtCompact(cur.volume)} />
         </ReadoutRow>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <ComposedChart
             data={rows}
             syncId="kta-pro"
@@ -447,7 +447,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
             />
           )}
         </ReadoutRow>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <ComposedChart
             data={rows}
             syncId="kta-pro"
@@ -486,7 +486,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
             color={cur.macdHist != null && cur.macdHist >= 0 ? COLOR_UP : COLOR_DOWN}
           />
         </ReadoutRow>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <ComposedChart
             data={rows}
             syncId="kta-pro"

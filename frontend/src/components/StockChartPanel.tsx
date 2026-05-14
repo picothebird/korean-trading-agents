@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  ResponsiveContainer,
   LineChart,
   Line,
   XAxis,
@@ -66,6 +65,29 @@ function fmtCompact(v: number | null | undefined): string {
   if (abs >= 1_0000) return `${(v / 1_0000).toFixed(1)}만`;
   if (abs >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
   return Math.round(v).toString();
+}
+
+function MeasuredChartFrame({ height, children }: { height: number; children: (width: number) => ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = (nextWidth: number) => setWidth(Math.max(0, Math.floor(nextWidth)));
+    update(el.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      update(entries[0]?.contentRect.width ?? 0);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} style={{ width: "100%", minWidth: 0, height }}>
+      {width > 0 ? children(width) : null}
+    </div>
+  );
 }
 
 function PriceTooltip({
@@ -207,6 +229,8 @@ export function StockChartPanel({
   return (
     <div
       style={{
+        width: "100%",
+        minWidth: 0,
         background: "var(--bg-surface)",
         borderRadius: "var(--radius-xl)",
         border: "1px solid var(--border-default)",
@@ -362,9 +386,9 @@ export function StockChartPanel({
 
       {!loading && !error && data.length > 0 && !proMode && (
         <>
-          <div style={{ height: compact ? 145 : 200 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 2 }}>
+          <MeasuredChartFrame height={compact ? 145 : 200}>
+            {(chartWidth) => (
+              <LineChart width={chartWidth} height={compact ? 145 : 200} data={data} margin={{ top: 6, right: 6, left: 0, bottom: 2 }}>
                 <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
@@ -402,46 +426,48 @@ export function StockChartPanel({
                   />
                 ))}
               </LineChart>
-            </ResponsiveContainer>
-          </div>
+            )}
+          </MeasuredChartFrame>
 
-          <div style={{ height: compact ? 50 : 64, marginTop: 4 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data} margin={{ top: 0, right: 10, left: 4, bottom: 0 }}>
-                <XAxis dataKey="date" hide />
-                <YAxis
-                  orientation="right"
-                  tick={{ fontSize: 8, fill: "var(--text-tertiary)" }}
-                  tickFormatter={fmtCompact}
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                  tickCount={3}
-                />
-                <Tooltip
-                  cursor={{ fill: "var(--chart-hover-fill)" }}
-                  formatter={(value: unknown) => [fmtCompact(Number(value)), "거래량"]}
-                  labelFormatter={(v) => fmtDate(String(v))}
-                  contentStyle={{
-                    background: "var(--bg-overlay)",
-                    border: "1px solid var(--border-default)",
-                    borderRadius: 8,
-                    color: "var(--text-primary)",
-                    fontSize: 11,
-                    padding: "6px 8px",
-                  }}
-                />
-                <Bar dataKey="volume" radius={[1, 1, 0, 0]} isAnimationActive={false}>
-                  {data.map((p, i) => {
-                    const prev = i > 0 ? data[i - 1].close : p.open;
-                    const up = p.close >= prev;
-                    return (
-                      <Cell key={i} fill={up ? "var(--bull)" : "var(--bear)"} fillOpacity={0.5} />
-                    );
-                  })}
-                </Bar>
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div style={{ marginTop: 4 }}>
+            <MeasuredChartFrame height={compact ? 50 : 64}>
+              {(chartWidth) => (
+                <ComposedChart width={chartWidth} height={compact ? 50 : 64} data={data} margin={{ top: 0, right: 10, left: 4, bottom: 0 }}>
+                  <XAxis dataKey="date" hide />
+                  <YAxis
+                    orientation="right"
+                    tick={{ fontSize: 8, fill: "var(--text-tertiary)" }}
+                    tickFormatter={fmtCompact}
+                    axisLine={false}
+                    tickLine={false}
+                    width={48}
+                    tickCount={3}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "var(--chart-hover-fill)" }}
+                    formatter={(value: unknown) => [fmtCompact(Number(value)), "거래량"]}
+                    labelFormatter={(v) => fmtDate(String(v))}
+                    contentStyle={{
+                      background: "var(--bg-overlay)",
+                      border: "1px solid var(--border-default)",
+                      borderRadius: 8,
+                      color: "var(--text-primary)",
+                      fontSize: 11,
+                      padding: "6px 8px",
+                    }}
+                  />
+                  <Bar dataKey="volume" radius={[1, 1, 0, 0]} isAnimationActive={false}>
+                    {data.map((p, i) => {
+                      const prev = i > 0 ? data[i - 1].close : p.open;
+                      const up = p.close >= prev;
+                      return (
+                        <Cell key={i} fill={up ? "var(--bull)" : "var(--bear)"} fillOpacity={0.5} />
+                      );
+                    })}
+                  </Bar>
+                </ComposedChart>
+              )}
+            </MeasuredChartFrame>
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginTop: 8, fontSize: 11, color: "var(--text-secondary)" }}>
