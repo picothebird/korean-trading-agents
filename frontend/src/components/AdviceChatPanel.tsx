@@ -145,12 +145,22 @@ export function AdviceChatPanel({
   analysisSessionId,
   decision,
   compact = false,
+  initialChatId,
+  titleOverride,
+  subtitleOverride,
+  reuseExisting = true,
+  onChatChange,
 }: {
   ticker: string;
   tickerName?: string | null;
   analysisSessionId?: string | null;
   decision?: TradeDecision | null;
   compact?: boolean;
+  initialChatId?: string | null;
+  titleOverride?: string;
+  subtitleOverride?: string;
+  reuseExisting?: boolean;
+  onChatChange?: (chat: AdviceChat) => void;
 }) {
   const [chat, setChat] = useState<AdviceChat | null>(null);
   const [avgPrice, setAvgPrice] = useState("");
@@ -181,21 +191,34 @@ export function AdviceChatPanel({
     setQuantity("");
     if (!ticker) return;
     setLoading(true);
-    void listAdviceChats({ ticker, limit: 8 })
-      .then(async (items) => {
-        if (cancelled) return;
-        const matched = analysisSessionId
-          ? items.find((item) => item.analysis_session_id === analysisSessionId)
-          : items[0];
-        if (!matched?.chat_id) return;
-        const detail = await getAdviceChat(matched.chat_id);
-        if (cancelled) return;
-        if (detail) {
-          setChat(detail);
-          if (detail.position?.avg_price) setAvgPrice(String(detail.position.avg_price));
-          if (detail.position?.quantity) setQuantity(String(detail.position.quantity));
-        }
-      })
+    const load = async () => {
+      if (initialChatId) {
+        const detail = await getAdviceChat(initialChatId);
+        if (cancelled || !detail) return;
+        setChat(detail);
+        onChatChange?.(detail);
+        if (detail.position?.avg_price) setAvgPrice(formatInputNumber(String(detail.position.avg_price)));
+        if (detail.position?.quantity) setQuantity(formatInputNumber(String(detail.position.quantity)));
+        return;
+      }
+      if (!reuseExisting) return;
+
+      const items = await listAdviceChats({ ticker, limit: 8 });
+      if (cancelled) return;
+      const matched = analysisSessionId
+        ? items.find((item) => item.analysis_session_id === analysisSessionId)
+        : items[0];
+      if (!matched?.chat_id) return;
+      const detail = await getAdviceChat(matched.chat_id);
+      if (cancelled) return;
+      if (detail) {
+        setChat(detail);
+        onChatChange?.(detail);
+        if (detail.position?.avg_price) setAvgPrice(formatInputNumber(String(detail.position.avg_price)));
+        if (detail.position?.quantity) setQuantity(formatInputNumber(String(detail.position.quantity)));
+      }
+    };
+    void load()
       .catch(() => {
         if (!cancelled) setError("이전 상담 기록을 불러오지 못했습니다.");
       })
@@ -205,7 +228,7 @@ export function AdviceChatPanel({
     return () => {
       cancelled = true;
     };
-  }, [ticker, analysisSessionId]);
+  }, [ticker, analysisSessionId, initialChatId, onChatChange, reuseExisting]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -220,8 +243,9 @@ export function AdviceChatPanel({
       position,
     });
     setChat(created);
+    onChatChange?.(created);
     return created;
-  }, [analysisSessionId, chat, position, ticker, tickerName]);
+  }, [analysisSessionId, chat, onChatChange, position, ticker, tickerName]);
 
   const submit = useCallback(async (text?: string) => {
     const question = (text ?? message).trim();
@@ -254,6 +278,7 @@ export function AdviceChatPanel({
             setNotice(event.message);
           } else if (event.type === "completed") {
             setChat(event.chat);
+            onChatChange?.(event.chat);
             setStreamingText("");
           } else if (event.type === "error") {
             setError(event.message);
@@ -272,7 +297,7 @@ export function AdviceChatPanel({
       setStreamStatus("idle");
     } finally {
     }
-  }, [ensureChat, message, position, sending]);
+  }, [ensureChat, message, onChatChange, position, sending]);
 
   const stopStreaming = useCallback(() => {
     stopStreamRef.current?.();
@@ -310,10 +335,10 @@ export function AdviceChatPanel({
             <Icon name="comment" size={14} decorative /> AI 상담
           </p>
           <h3 style={{ margin: "5px 0 0", fontSize: compact ? 17 : 18, lineHeight: 1.25, fontWeight: 900, color: "var(--text-primary)" }}>
-            분석을 이어받아 내 상황으로 물어보기
+            {titleOverride ?? "분석을 이어받아 내 상황으로 물어보기"}
           </h3>
           <p style={{ margin: "6px 0 0", fontSize: 12, lineHeight: 1.6, color: "var(--text-tertiary)" }}>
-            {title} 분석 결과와 보유 정보를 함께 참고합니다. 실제 투자는 본인 책임입니다.
+            {subtitleOverride ?? `${title} 분석 결과와 보유 정보를 함께 참고합니다. 실제 투자는 본인 책임입니다.`}
           </p>
         </div>
         {decision?.action && (

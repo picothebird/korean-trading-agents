@@ -9,6 +9,7 @@ import { AskModal } from "@/components/AskModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutsOverlay } from "@/components/ShortcutsOverlay";
 import { AnalysisResult } from "@/components/AnalysisResult";
+import { AdviceChatPanel } from "@/components/AdviceChatPanel";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { SettingsPanel, type SettingsTab } from "@/components/SettingsPanel";
 import { KisPanel } from "@/components/KisPanel";
@@ -25,6 +26,7 @@ import {
   listAnalysisHistory, getAnalysisSession, type AnalysisHistoryItem,
   getStock, searchStocks, startAgentBacktest, streamAgentBacktest, cancelAgentBacktest,
   listAgentBacktestHistory, getAgentBacktestResult,
+  listAdviceChats, type AdviceChat, type AdviceChatListItem,
   getAccessToken, clearAccessToken, getMe, askAgent, getSettings,
 } from "@/lib/api";
 import { formatKstDateTime, formatKstDate } from "@/lib/kstTime";
@@ -847,64 +849,6 @@ function MobileMetric({ label, value, tone = "neutral" }: { label: string; value
   );
 }
 
-function MobileActionButton({
-  icon,
-  label,
-  detail,
-  tone = "brand",
-  onClick,
-}: {
-  icon: React.ComponentProps<typeof Icon>["name"];
-  label: string;
-  detail: string;
-  tone?: "brand" | "up" | "down" | "neutral" | "warning";
-  onClick: () => void;
-}) {
-  const color = tone === "up" ? "var(--bull)" : tone === "down" ? "var(--bear)" : tone === "warning" ? "var(--warning)" : tone === "neutral" ? "var(--text-secondary)" : "var(--brand)";
-  const background = tone === "up" ? "var(--bull-subtle)" : tone === "down" ? "var(--bear-subtle)" : tone === "warning" ? "var(--warning-subtle)" : tone === "neutral" ? "var(--bg-elevated)" : "var(--brand-subtle)";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        minHeight: 84,
-        padding: 12,
-        borderRadius: 16,
-        border: "1px solid var(--border-subtle)",
-        background: "var(--bg-surface)",
-        color: "var(--text-primary)",
-        textAlign: "left",
-        cursor: "pointer",
-        display: "grid",
-        gridTemplateColumns: "34px 1fr",
-        gap: 10,
-        alignItems: "center",
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 12,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background,
-          color,
-          flexShrink: 0,
-        }}
-      >
-        <Icon name={icon} size={18} decorative />
-      </span>
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: "block", fontSize: 14, fontWeight: 850, color: "var(--text-primary)", marginBottom: 3 }}>{label}</span>
-        <span style={{ display: "block", fontSize: 11, lineHeight: 1.35, color: "var(--text-tertiary)" }}>{detail}</span>
-      </span>
-    </button>
-  );
-}
-
 function MobileBottomNav({
   value,
   activeCount,
@@ -917,7 +861,7 @@ function MobileBottomNav({
   const items: Array<{ value: MobileView; label: string; icon: React.ComponentProps<typeof Icon>["name"] }> = [
     { value: "home", label: "홈", icon: "home" },
     { value: "chart", label: "차트", icon: "candle" },
-    { value: "analysis", label: "AI", icon: "robot" },
+    { value: "analysis", label: "분석", icon: "robot" },
     { value: "backtest", label: "시뮬", icon: "chart-bar" },
     { value: "trading", label: "매매", icon: "wallet" },
     { value: "portfolio", label: "포트", icon: "briefcase" },
@@ -1052,6 +996,9 @@ export default function Home() {
   const [btHistoryLoading, setBtHistoryLoading] = useState(false);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([]);
   const [analysisHistoryLoading, setAnalysisHistoryLoading] = useState(false);
+  const [mobileAdviceChats, setMobileAdviceChats] = useState<AdviceChatListItem[]>([]);
+  const [mobileAdviceLoading, setMobileAdviceLoading] = useState(false);
+  const [mobileHomeChatId, setMobileHomeChatId] = useState<string | null>(null);
   // 진행 중인 분석 세션 ID (복구 + 표시용 + MS-C 후속 질문 라우팅용)
   const [activeAnalysisSessionId, setActiveAnalysisSessionId] = useState<string | null>(null);
   const [resultAnalysisSessionId, setResultAnalysisSessionId] = useState<string | null>(null);
@@ -1461,6 +1408,19 @@ export default function Home() {
     }
   }, [currentUser]);
 
+  const refreshMobileAdviceChats = useCallback(async () => {
+    if (!currentUser) return;
+    setMobileAdviceLoading(true);
+    try {
+      const items = await listAdviceChats({ limit: 12 });
+      setMobileAdviceChats(items);
+    } catch {
+      // ignore
+    } finally {
+      setMobileAdviceLoading(false);
+    }
+  }, [currentUser]);
+
   // 종목코드 → 종목명 조회 맵 (이력/권고 목록용). 자주 사용하는 recent/favorite 리스트 + 이력의 ticker_name(백엔드가 채워주면)을 우선 활용하고,
   // 그래도 모르는 코드는 lazy 로 searchStocks 로 조회해 캐시한다.
   const [tickerNameCache, setTickerNameCache] = useState<Record<string, string>>({});
@@ -1474,14 +1434,17 @@ export default function Home() {
     (code: string, hint?: string | null) => hint || tickerNameMap[code] || "",
     [tickerNameMap],
   );
-  // analysisHistory가 갱신될 때 이름을 모르는 종목만 골라서 동시 조회.
+  // analysis/advice history가 갱신될 때 이름을 모르는 종목만 골라서 동시 조회.
   useEffect(() => {
-    if (!analysisHistory.length) return;
+    if (!analysisHistory.length && !mobileAdviceChats.length) return;
     const need = Array.from(
       new Set(
-        analysisHistory
+        [
+          ...analysisHistory.map((it) => ({ ticker: it.ticker, ticker_name: it.ticker_name })),
+          ...mobileAdviceChats.map((it) => ({ ticker: it.ticker, ticker_name: it.ticker_name })),
+        ]
           .map((it) => it.ticker)
-          .filter((c): c is string => Boolean(c) && !resolveTickerName(c, analysisHistory.find((x) => x.ticker === c)?.ticker_name)),
+          .filter((c): c is string => Boolean(c) && !resolveTickerName(c, analysisHistory.find((x) => x.ticker === c)?.ticker_name || mobileAdviceChats.find((x) => x.ticker === c)?.ticker_name)),
       ),
     );
     if (need.length === 0) return;
@@ -1503,7 +1466,7 @@ export default function Home() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysisHistory]);
+  }, [analysisHistory, mobileAdviceChats]);
 
   useEffect(() => {
     if (tab === "analysis" && currentUser) {
@@ -1514,6 +1477,10 @@ export default function Home() {
   useEffect(() => {
     if (decision) refreshAnalysisHistory();
   }, [decision, refreshAnalysisHistory]);
+
+  useEffect(() => {
+    if (currentUser) refreshMobileAdviceChats();
+  }, [currentUser, refreshMobileAdviceChats]);
 
   // ── 진행 중 작업 자동 복구 ────────────────────────────────
   // 페이지 마운트(또는 로그인 후) 시 localStorage에 저장된 진행 중 세션이 있으면
@@ -1678,6 +1645,22 @@ export default function Home() {
     setCompanyName(name);
     setRecentStocks((prev) => [item, ...prev.filter((s) => s.code !== code)].slice(0, 8));
   }, []);
+
+  const selectedMobileHomeChat = useMemo(
+    () => mobileAdviceChats.find((item) => item.chat_id === mobileHomeChatId) ?? null,
+    [mobileAdviceChats, mobileHomeChatId],
+  );
+
+  const selectMobileHomeChat = useCallback((item: AdviceChatListItem) => {
+    setMobileHomeChatId(item.chat_id);
+    const nextName = resolveTickerName(item.ticker, item.ticker_name) || item.ticker;
+    if (item.ticker && item.ticker !== ticker) handleTickerSelect(item.ticker, nextName);
+  }, [handleTickerSelect, resolveTickerName, ticker]);
+
+  const handleMobileHomeChatChange = useCallback((chat: AdviceChat) => {
+    setMobileHomeChatId(chat.chat_id);
+    void refreshMobileAdviceChats();
+  }, [refreshMobileAdviceChats]);
 
   const isFavorite = favoriteStocks.some((s) => s.code === ticker);
 
@@ -1903,86 +1886,106 @@ export default function Home() {
       : latestAnalysis?.summary?.action
       ? `최근 ${latestAnalysis.summary.action}`
       : "대기 중";
+    const mobileHomeAdviceTicker = selectedMobileHomeChat?.ticker || ticker;
+    const mobileHomeAdviceTickerName = resolveTickerName(mobileHomeAdviceTicker, selectedMobileHomeChat?.ticker_name) || (mobileHomeAdviceTicker === ticker ? companyName : mobileHomeAdviceTicker);
+    const mobileHomeAdviceAnalysisId = selectedMobileHomeChat?.analysis_session_id || resultAnalysisSessionId;
+    const mobileHomeAdviceDecision = selectedMobileHomeChat?.analysis_session_id && selectedMobileHomeChat.analysis_session_id !== resultAnalysisSessionId ? null : decision;
+    const recentAdviceChats = mobileAdviceChats.slice(0, 6);
 
     const renderHome = (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <section style={{ padding: "2px 0 0" }}>
-          <MobileSectionHeader title="오늘 볼 핵심" eyebrow="SNAPSHOT" />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 9 }}>
-            <MobileActionButton icon="robot" label="AI 분석" detail={mobileAnalysisStatus} tone={isRunning ? "warning" : "brand"} onClick={() => { handleMobileViewChange("analysis"); if (!isRunning && !decision) void handleAnalyze(); }} />
-            <MobileActionButton icon="candle" label="차트 확대" detail="가격·MA·RSI·MACD" tone="neutral" onClick={() => handleMobileViewChange("chart")} />
-            <MobileActionButton icon="chart-bar" label="시뮬레이션" detail="전략을 과거 구간 검증" tone="brand" onClick={() => handleMobileViewChange("backtest")} />
-            <MobileActionButton icon="wallet" label="매매 관리" detail="KIS·자동 루프·주문" tone="warning" onClick={() => handleMobileViewChange("trading")} />
-          </div>
-        </section>
-
-        <section style={{ padding: "2px 0 0" }}>
+        <section style={{ display: "grid", gap: 8 }}>
           <MobileSectionHeader
-            title="차트 미리보기"
-            eyebrow="MARKET"
+            title="주식 AI 대화"
+            eyebrow="HOME"
             action={(
-              <button type="button" onClick={() => handleMobileViewChange("chart")} style={{ border: "none", background: "transparent", color: "var(--brand)", fontSize: 12, fontWeight: 850 }}>
-                크게 보기
+              <button type="button" onClick={refreshMobileAdviceChats} disabled={mobileAdviceLoading} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", fontSize: 12, fontWeight: 800 }}>
+                {mobileAdviceLoading ? "동기화 중" : "동기화"}
               </button>
             )}
           />
-          <StockChartPanel ticker={ticker} predictionMarkers={chartPredictionMarkers} tradeMarkers={chartTradeMarkers} compact />
+          <AdviceChatPanel
+            ticker={mobileHomeAdviceTicker}
+            tickerName={mobileHomeAdviceTickerName}
+            analysisSessionId={mobileHomeAdviceAnalysisId}
+            initialChatId={mobileHomeChatId}
+            reuseExisting={Boolean(mobileHomeChatId)}
+            decision={mobileHomeAdviceDecision}
+            compact
+            titleOverride="무엇을 판단할까요?"
+            subtitleOverride={`${mobileHomeAdviceTickerName} 맥락으로 질문합니다. 분석을 실행한 종목은 결과까지 이어받습니다.`}
+            onChatChange={handleMobileHomeChatChange}
+          />
         </section>
 
         <MobileShellCard>
-          <MobileSectionHeader title="관심 종목" eyebrow="WATCHLIST" />
-          {renderWatchChips}
+          <MobileSectionHeader
+            title="이어갈 대화"
+            eyebrow="RECENT CHATS"
+            action={mobileHomeChatId ? (
+              <button type="button" onClick={() => setMobileHomeChatId(null)} style={{ border: "none", background: "transparent", color: "var(--brand)", fontSize: 12, fontWeight: 850 }}>
+                새 대화
+              </button>
+            ) : null}
+          />
+          {recentAdviceChats.length > 0 ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {recentAdviceChats.map((item) => {
+                const active = item.chat_id === mobileHomeChatId;
+                const itemName = resolveTickerName(item.ticker, item.ticker_name) || item.ticker;
+                return (
+                  <button
+                    key={item.chat_id}
+                    type="button"
+                    onClick={() => selectMobileHomeChat(item)}
+                    style={{
+                      width: "100%",
+                      minHeight: 58,
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: 10,
+                      alignItems: "center",
+                      borderRadius: 14,
+                      border: `1px solid ${active ? "var(--brand-border)" : "var(--border-subtle)"}`,
+                      background: active ? "var(--brand-subtle)" : "var(--bg-elevated)",
+                      color: "var(--text-primary)",
+                      padding: "10px 11px",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 900, color: active ? "var(--brand)" : "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {itemName} · {item.ticker}
+                      </span>
+                      <span style={{ display: "block", marginTop: 4, fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {item.last_message || "분석 대화가 시작되었습니다."}
+                      </span>
+                    </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: active ? "var(--brand)" : "var(--text-quaternary)", fontSize: 11, fontWeight: 850 }}>
+                      {item.message_count ?? 0}
+                      <Icon name="chevron-right" size={13} decorative />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--text-tertiary)", lineHeight: 1.55 }}>아직 이어갈 상담이 없습니다. 위 입력창에서 질문을 보내면 종목별 대화가 저장됩니다.</p>
+          )}
         </MobileShellCard>
 
         <MobileShellCard>
-          <MobileSectionHeader
-            title="최근 판단"
-            eyebrow="AI MEMORY"
-            action={(
-              <button type="button" onClick={refreshAnalysisHistory} disabled={analysisHistoryLoading} style={{ border: "none", background: "transparent", color: "var(--text-tertiary)", fontSize: 12, fontWeight: 800 }}>
-                {analysisHistoryLoading ? "갱신 중" : "새로고침"}
-              </button>
-            )}
-          />
-          {latestAnalysis ? (
-            <button
-              type="button"
-              onClick={async () => {
-                if (latestAnalysis.status !== "done") return;
-                const detail = await getAnalysisSession(latestAnalysis.session_id);
-                const loadedDecision = detail?.decision ?? detail?.result?.decision ?? null;
-                if (loadedDecision) { setDecision(loadedDecision); setResultAnalysisSessionId(latestAnalysis.session_id); }
-                handleMobileViewChange("analysis");
-              }}
-              style={{
-                width: "100%",
-                border: "1px solid var(--border-subtle)",
-                background: "var(--bg-elevated)",
-                borderRadius: 14,
-                padding: 12,
-                textAlign: "left",
-              }}
-            >
-              <span style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 14, color: "var(--text-primary)", fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {resolveTickerName(latestAnalysis.ticker, latestAnalysis.ticker_name) || latestAnalysis.ticker}
-                  </span>
-                  <span style={{ display: "block", marginTop: 3, fontSize: 11, color: "var(--text-tertiary)" }}>{formatKstDateTime(latestAnalysis.created_at)}</span>
-                </span>
-                <span style={{ flexShrink: 0, textAlign: "right" }}>
-                  <span style={{ display: "block", fontSize: 15, fontWeight: 900, color: latestAnalysis.summary?.action === "BUY" ? "var(--bull)" : latestAnalysis.summary?.action === "SELL" ? "var(--bear)" : "var(--text-secondary)" }}>
-                    {latestAnalysis.summary?.action ?? latestAnalysis.status}
-                  </span>
-                  {typeof latestAnalysis.summary?.confidence === "number" && (
-                    <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{Math.round(latestAnalysis.summary.confidence * 100)}%</span>
-                  )}
-                </span>
-              </span>
+          <MobileSectionHeader title="대화할 종목" eyebrow="CONTEXT" />
+          {renderWatchChips}
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button type="button" onClick={() => handleMobileViewChange("analysis")} style={{ height: 42, borderRadius: 13, border: "1px solid var(--brand-border)", background: "var(--brand-subtle)", color: "var(--brand)", fontSize: 13, fontWeight: 900 }}>
+              분석 열기
             </button>
-          ) : (
-            <p style={{ fontSize: 13, color: "var(--text-tertiary)", lineHeight: 1.55 }}>아직 저장된 분석이 없습니다. AI 분석을 시작하면 이곳에 최근 판단이 쌓입니다.</p>
-          )}
+            <button type="button" onClick={() => handleMobileViewChange("chart")} style={{ height: 42, borderRadius: 13, border: "1px solid var(--border-default)", background: "var(--bg-surface)", color: "var(--text-secondary)", fontSize: 13, fontWeight: 850 }}>
+              차트 보기
+            </button>
+          </div>
+          <p style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, color: "var(--text-tertiary)" }}>분석 상태: {mobileAnalysisStatus}</p>
         </MobileShellCard>
       </div>
     );
