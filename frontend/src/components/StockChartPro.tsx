@@ -9,7 +9,7 @@
  *    호버 시점 값으로 갱신된다 (TradingView/HTS 패턴).
  *  - 정보 위계: 가격(메인) > 지표(MA/BB) > 보조(거래량/RSI/MACD).
  *  - 우측 가격축 폭 = 56px 고정 → 모든 패널의 좌우 정렬 유지.
- *  - 한국 컨벤션 컬러: 양봉=빨강(#e02a2a), 음봉=파랑(#2563eb).
+ *  - 한국 컨벤션 컬러: 양봉=빨강, 음봉=파랑.
  */
 
 import { useMemo, useState } from "react";
@@ -36,20 +36,21 @@ import {
 } from "@/lib/indicators";
 
 // ── 디자인 토큰 ────────────────────────────────────────────
-const COLOR_UP = "#e02a2a";
-const COLOR_DOWN = "#2563eb";
-const COLOR_GRID = "rgba(15,23,42,0.06)";
+const COLOR_UP = "var(--bull)";
+const COLOR_DOWN = "var(--bear)";
+const COLOR_GRID = "var(--chart-grid)";
 const COLOR_TEXT = "var(--text-tertiary)";
-const COLOR_MA5 = "#f59e0b";
-const COLOR_MA20 = "#0ea5e9";
-const COLOR_MA60 = "#16a34a";
-const COLOR_MA120 = "#a855f7";
-const COLOR_BB = "rgba(99,102,241,0.55)";
-const COLOR_BB_FILL = "rgba(99,102,241,0.06)";
-const COLOR_VWAP = "#ef4444";
-const COLOR_RSI = "#7c3aed";
-const COLOR_MACD = "#0ea5e9";
-const COLOR_MACD_SIGNAL = "#f59e0b";
+const COLOR_GRID_STRONG = "var(--chart-grid-strong)";
+const COLOR_MA5 = "var(--chart-ma5)";
+const COLOR_MA20 = "var(--chart-ma20)";
+const COLOR_MA60 = "var(--chart-ma60)";
+const COLOR_MA120 = "var(--chart-ma120)";
+const COLOR_BB = "var(--chart-band-line)";
+const COLOR_BB_FILL = "var(--chart-band-fill)";
+const COLOR_VWAP = "var(--chart-vwap)";
+const COLOR_RSI = "var(--chart-rsi)";
+const COLOR_MACD = "var(--chart-macd)";
+const COLOR_MACD_SIGNAL = "var(--chart-macd-signal)";
 
 const AXIS_W = 56;
 
@@ -157,9 +158,9 @@ function Tag({ label, value, color }: { label: string; value: string; color?: st
         padding: "1px 5px",
         fontSize: 10,
         fontWeight: 600,
-        background: "rgba(255,255,255,0.7)",
+        background: "var(--chart-readout-bg)",
         backdropFilter: "blur(2px)",
-        border: "1px solid var(--border-subtle, rgba(15,23,42,0.05))",
+        border: "1px solid var(--chart-readout-border)",
         borderRadius: 4,
         whiteSpace: "nowrap",
         lineHeight: 1.4,
@@ -399,7 +400,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
       </div>
 
       {/* 거래량 패널 */}
-      <div style={{ position: "relative", height: volH, borderTop: "1px solid var(--border-subtle, rgba(15,23,42,0.05))" }}>
+      <div style={{ position: "relative", height: volH, borderTop: "1px solid var(--border-subtle)" }}>
         <ReadoutRow>
           <Tag label="Vol" value={fmtCompact(cur.volume)} />
         </ReadoutRow>
@@ -435,7 +436,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
       </div>
 
       {/* RSI 패널 */}
-      <div style={{ position: "relative", height: rsiH, borderTop: "1px solid var(--border-subtle, rgba(15,23,42,0.05))" }}>
+      <div style={{ position: "relative", height: rsiH, borderTop: "1px solid var(--border-subtle)" }}>
         <ReadoutRow>
           <Tag label="RSI(14)" value={cur.rsi == null ? "—" : cur.rsi.toFixed(2)} color={COLOR_RSI} />
           {cur.rsi != null && (
@@ -475,7 +476,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
       </div>
 
       {/* MACD 패널 */}
-      <div style={{ position: "relative", height: macdH, borderTop: "1px solid var(--border-subtle, rgba(15,23,42,0.05))" }}>
+      <div style={{ position: "relative", height: macdH, borderTop: "1px solid var(--border-subtle)" }}>
         <ReadoutRow>
           <Tag label="MACD" value={cur.macd == null ? "—" : cur.macd.toFixed(2)} color={COLOR_MACD} />
           <Tag label="Signal" value={cur.macdSignal == null ? "—" : cur.macdSignal.toFixed(2)} color={COLOR_MACD_SIGNAL} />
@@ -503,7 +504,7 @@ export function StockChartPro({ data, resolution, height = 460, fmtDate }: Stock
               width={AXIS_W}
               tickCount={3}
             />
-            <ReferenceLine y={0} stroke="var(--border-default)" strokeWidth={0.8} />
+            <ReferenceLine y={0} stroke={COLOR_GRID_STRONG} strokeWidth={0.8} />
             <Bar dataKey="macdHist" isAnimationActive={false}>
               {rows.map((r, i) => (
                 <Cell

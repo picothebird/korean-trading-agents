@@ -82,6 +82,7 @@ function PriceTooltip({
   if (!row) return null;
   const pct = ((row.close - row.open) / row.open) * 100;
   const isUp = row.close >= row.open;
+  const priceColor = isUp ? "var(--bull)" : "var(--bear)";
 
   return (
     <div
@@ -96,7 +97,7 @@ function PriceTooltip({
       }}
     >
       <p style={{ fontSize: 10, color: "var(--text-tertiary)", marginBottom: 6, fontWeight: 600 }}>{label}</p>
-      <p style={{ fontSize: 13, fontWeight: 700, color: isUp ? "#e02a2a" : "#2563eb", marginBottom: 4 }}>
+      <p style={{ fontSize: 13, fontWeight: 700, color: priceColor, marginBottom: 4 }}>
         {row.close.toLocaleString("ko-KR")}원
         <span style={{ marginLeft: 6, fontSize: 11 }}>
           {pct >= 0 ? "+" : ""}{pct.toFixed(2)}%
@@ -107,11 +108,11 @@ function PriceTooltip({
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 6, rowGap: 1, fontSize: 10, color: "var(--text-secondary)" }}>
         <span style={{ color: "var(--text-tertiary)" }}>시</span><span>{row.open.toLocaleString("ko-KR")}</span>
-        <span style={{ color: "var(--text-tertiary)" }}>고</span><span style={{ color: "#e02a2a" }}>{row.high.toLocaleString("ko-KR")}</span>
-        <span style={{ color: "var(--text-tertiary)" }}>저</span><span style={{ color: "#2563eb" }}>{row.low.toLocaleString("ko-KR")}</span>
+        <span style={{ color: "var(--text-tertiary)" }}>고</span><span style={{ color: "var(--bull)" }}>{row.high.toLocaleString("ko-KR")}</span>
+        <span style={{ color: "var(--text-tertiary)" }}>저</span><span style={{ color: "var(--bear)" }}>{row.low.toLocaleString("ko-KR")}</span>
         <span style={{ color: "var(--text-tertiary)" }}>거래량</span><span>{row.volume.toLocaleString("ko-KR")}</span>
-        {row.ma20 != null && (<><span style={{ color: "#0ea5e9" }}>MA20</span><span>{Math.round(row.ma20).toLocaleString("ko-KR")}</span></>)}
-        {row.ma60 != null && (<><span style={{ color: "#a855f7" }}>MA60</span><span>{Math.round(row.ma60).toLocaleString("ko-KR")}</span></>)}
+        {row.ma20 != null && (<><span style={{ color: "var(--chart-ma20)" }}>MA20</span><span>{Math.round(row.ma20).toLocaleString("ko-KR")}</span></>)}
+        {row.ma60 != null && (<><span style={{ color: "var(--chart-ma60)" }}>MA60</span><span>{Math.round(row.ma60).toLocaleString("ko-KR")}</span></>)}
       </div>
     </div>
   );
@@ -242,7 +243,7 @@ export function StockChartPanel({
         <div style={{
           display: "inline-flex",
           padding: 2,
-          background: "var(--bg-muted, rgba(15,23,42,0.04))",
+          background: "var(--bg-muted)",
           border: "1px solid var(--border-default)",
           borderRadius: 99,
           flexShrink: 0,
@@ -283,7 +284,7 @@ export function StockChartPanel({
         flexWrap: "wrap",
         marginBottom: 8,
         paddingBottom: 6,
-        borderBottom: "1px solid var(--border-subtle, rgba(15,23,42,0.05))",
+        borderBottom: "1px solid var(--border-subtle)",
       }}>
         {([
           ["1d", "24H"],
@@ -364,7 +365,7 @@ export function StockChartPanel({
           <div style={{ height: compact ? 145 : 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 2 }}>
-                <CartesianGrid stroke="rgba(15,23,42,0.06)" strokeDasharray="3 3" />
+                <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
                   tickFormatter={fmtDate}
@@ -383,11 +384,11 @@ export function StockChartPanel({
                   width={48}
                   domain={["dataMin", "dataMax"]}
                 />
-                <Tooltip content={<PriceTooltip />} cursor={{ stroke: "var(--text-tertiary)", strokeDasharray: "2 2" }} />
+                <Tooltip content={<PriceTooltip />} cursor={{ stroke: "var(--chart-cursor)", strokeDasharray: "2 2" }} />
                 <Line type="monotone" dataKey="close" stroke="var(--text-primary)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="ma20" stroke="#0ea5e9" strokeWidth={1.3} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="ma20" stroke="var(--chart-ma20)" strokeWidth={1.3} dot={false} isAnimationActive={false} />
                 {detailedMode && (
-                  <Line type="monotone" dataKey="ma60" stroke="#a855f7" strokeWidth={1.1} dot={false} strokeDasharray="4 3" isAnimationActive={false} />
+                  <Line type="monotone" dataKey="ma60" stroke="var(--chart-ma60)" strokeWidth={1.1} dot={false} strokeDasharray="4 3" isAnimationActive={false} />
                 )}
                 {mergedMarkers.map((m) => (
                   <ReferenceDot
@@ -418,13 +419,14 @@ export function StockChartPanel({
                   tickCount={3}
                 />
                 <Tooltip
-                  cursor={{ fill: "rgba(15,23,42,0.04)" }}
+                  cursor={{ fill: "var(--chart-hover-fill)" }}
                   formatter={(value: unknown) => [fmtCompact(Number(value)), "거래량"]}
                   labelFormatter={(v) => fmtDate(String(v))}
                   contentStyle={{
                     background: "var(--bg-overlay)",
                     border: "1px solid var(--border-default)",
                     borderRadius: 8,
+                    color: "var(--text-primary)",
                     fontSize: 11,
                     padding: "6px 8px",
                   }}
@@ -434,7 +436,7 @@ export function StockChartPanel({
                     const prev = i > 0 ? data[i - 1].close : p.open;
                     const up = p.close >= prev;
                     return (
-                      <Cell key={i} fill={up ? "#e02a2a" : "#2563eb"} fillOpacity={0.5} />
+                      <Cell key={i} fill={up ? "var(--bull)" : "var(--bear)"} fillOpacity={0.5} />
                     );
                   })}
                 </Bar>
@@ -444,8 +446,8 @@ export function StockChartPanel({
 
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginTop: 8, fontSize: 11, color: "var(--text-secondary)" }}>
             <LegendSwatch color="var(--text-primary)" label={isIntraday ? "가격" : "종가"} kind="line" />
-            <LegendSwatch color="var(--brand)" label={isIntraday ? "MA20 (20봉 평균)" : "20일 평균"} kind="line" />
-            {detailedMode && <LegendSwatch color="var(--text-tertiary)" label={isIntraday ? "MA60 (60봉 평균)" : "60일 평균"} kind="dashed" />}
+            <LegendSwatch color="var(--chart-ma20)" label={isIntraday ? "MA20 (20봉 평균)" : "20일 평균"} kind="line" />
+            {detailedMode && <LegendSwatch color="var(--chart-ma60)" label={isIntraday ? "MA60 (60봉 평균)" : "60일 평균"} kind="dashed" />}
             <LegendSwatch color="var(--bull)" label="예측·체결" kind="dot" />
             <button
               type="button"

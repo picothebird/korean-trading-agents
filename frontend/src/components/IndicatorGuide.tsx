@@ -8,24 +8,24 @@
  * 톤 가이드 (서비스 공통):
  *  - 공식 보고서 톤. "~입니다 / ~합니다" 종결.
  *  - 정의 → 계산식 → 해석 3단. 비유·과장·메타 코멘트 금지.
- *  - 강조 색은 차트 팔레트와 동일하게 사용 (상승=빨강 #e02a2a, 하락=파랑 #2563eb).
+ *  - 강조 색은 차트 팔레트와 동일하게 사용 (상승/하락은 전역 시장 토큰 사용).
  */
 
 import { Icon } from "@/components/ui";
 import type { CSSProperties, ReactNode } from "react";
 
 const C = {
-  up: "#e02a2a",
-  down: "#2563eb",
-  ma5: "#f59e0b",
-  ma20: "#0ea5e9",
-  ma60: "#16a34a",
-  ma120: "#a855f7",
-  bb: "#6366f1",
-  vwap: "#ef4444",
-  rsi: "#7c3aed",
-  macd: "#0ea5e9",
-  macdSignal: "#f59e0b",
+  up: "var(--bull)",
+  down: "var(--bear)",
+  ma5: "var(--chart-ma5)",
+  ma20: "var(--chart-ma20)",
+  ma60: "var(--chart-ma60)",
+  ma120: "var(--chart-ma120)",
+  bb: "var(--chart-band-line)",
+  vwap: "var(--chart-vwap)",
+  rsi: "var(--chart-rsi)",
+  macd: "var(--chart-macd)",
+  macdSignal: "var(--chart-macd-signal)",
   text: "var(--text-primary)",
   sub: "var(--text-secondary)",
   tert: "var(--text-tertiary)",
@@ -60,8 +60,8 @@ function Swatch({ color, kind }: { color: string; kind: SwatchKind }) {
           width: 22,
           height: 10,
           borderRadius: 3,
-          background: `${color}22`,
-          border: `1px solid ${color}66`,
+          background: "var(--chart-band-fill)",
+          border: `1px solid ${color}`,
         }}
       />
     );
@@ -92,7 +92,7 @@ function Swatch({ color, kind }: { color: string; kind: SwatchKind }) {
 
 function Row({ item }: { item: GuideItem }) {
   return (
-    <li style={{ listStyle: "none", padding: "10px 0", borderTop: "1px dashed var(--border-subtle, rgba(15,23,42,0.06))" }}>
+    <li style={{ listStyle: "none", padding: "10px 0", borderTop: "1px dashed var(--border-subtle)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
         <Swatch color={item.color} kind={item.kind} />
         <b style={{ fontSize: 12, color: item.color, letterSpacing: "-0.01em" }}>{item.label}</b>
@@ -286,7 +286,7 @@ export function IndicatorGuide({
       style={{
         marginTop: 10,
         paddingTop: 8,
-        borderTop: "1px solid var(--border-subtle, rgba(15,23,42,0.06))",
+        borderTop: "1px solid var(--border-subtle)",
         ...style,
       }}
       open={defaultOpen}

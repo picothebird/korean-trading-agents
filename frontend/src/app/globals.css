@@ -53,6 +53,24 @@
   --hold-subtle: #F1F5F9;
   --hold-border: #E2E8F0;
 
+  /* ── Chart palette (theme-aware Recharts/SVG tokens) ── */
+  --chart-grid:          rgba(15, 23, 42, 0.07);
+  --chart-grid-strong:   rgba(15, 23, 42, 0.14);
+  --chart-cursor:        rgba(71, 85, 105, 0.38);
+  --chart-hover-fill:    rgba(15, 23, 42, 0.05);
+  --chart-readout-bg:    rgba(255, 255, 255, 0.86);
+  --chart-readout-border:rgba(15, 23, 42, 0.08);
+  --chart-band-line:     rgba(99, 102, 241, 0.58);
+  --chart-band-fill:     rgba(99, 102, 241, 0.07);
+  --chart-ma5:           #D97706;
+  --chart-ma20:          #0284C7;
+  --chart-ma60:          #16A34A;
+  --chart-ma120:         #8B5CF6;
+  --chart-vwap:          #DC2626;
+  --chart-rsi:           #7C3AED;
+  --chart-macd:          #0284C7;
+  --chart-macd-signal:   #D97706;
+
   /* ── Brand (Indigo) ──
      ⚠ 빨강/파랑은 시장 신호(--bull/--bear) 전용. 일반 UI는 인디고 톤을 사용해
      사용자가 "이 파랑이 차트 하락 신호인가, 일반 UI인가" 헷갈리지 않게 함. */
@@ -218,6 +236,24 @@
   --hold:        #8B95A1;
   --hold-subtle: rgba(139, 149, 161, 0.12);
   --hold-border: rgba(139, 149, 161, 0.22);
+
+  /* ── Chart palette (dark-tuned contrast) ── */
+  --chart-grid:          rgba(255, 255, 255, 0.08);
+  --chart-grid-strong:   rgba(255, 255, 255, 0.16);
+  --chart-cursor:        rgba(182, 188, 199, 0.55);
+  --chart-hover-fill:    rgba(255, 255, 255, 0.06);
+  --chart-readout-bg:    rgba(20, 23, 28, 0.88);
+  --chart-readout-border:rgba(255, 255, 255, 0.10);
+  --chart-band-line:     rgba(165, 180, 252, 0.68);
+  --chart-band-fill:     rgba(129, 140, 248, 0.12);
+  --chart-ma5:           #FBBF24;
+  --chart-ma20:          #38BDF8;
+  --chart-ma60:          #4ADE80;
+  --chart-ma120:         #C084FC;
+  --chart-vwap:          #FB7185;
+  --chart-rsi:           #A78BFA;
+  --chart-macd:          #38BDF8;
+  --chart-macd-signal:   #FBBF24;
 
   /* ── Brand (Indigo — 시장 컬러와 분리) ── */
   --brand:        #818CF8;   /* indigo-400 */
