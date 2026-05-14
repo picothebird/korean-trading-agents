@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { TradeDecision } from "@/types";
 import {
   createAdviceChat,
   getAdviceChat,
   listAdviceChats,
-  sendAdviceChatMessage,
+  streamAdviceChatMessage,
   type AdviceChat,
+  type AdviceChatMessage,
   type AdvicePosition,
 } from "@/lib/api";
 import { Icon, Loader } from "@/components/ui";
@@ -36,7 +38,82 @@ function actionColor(action?: string | null): string {
   return "var(--text-secondary)";
 }
 
-function MessageBubble({ role, content }: { role: string; content: string }) {
+function renderInline(text: string) {
+  const nodes: ReactNode[] = [];
+  const pattern = /\*\*([^*]+)\*\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+    nodes.push(<strong key={`${match.index}-${match[1]}`} style={{ fontWeight: 900 }}>{match[1]}</strong>);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
+}
+
+function RichMessageText({ content }: { content: string }) {
+  const lines = content.replace(/\r/g, "").split("\n");
+  const blocks: React.ReactNode[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    if (/^[-•]\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^[-•]\s+/.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(/^[-•]\s+/, ""));
+        index += 1;
+      }
+      blocks.push(
+        <ul key={`ul-${index}`} style={{ margin: "4px 0", paddingLeft: 18, display: "grid", gap: 3 }}>
+          {items.map((item, itemIndex) => <li key={`${itemIndex}-${item}`}>{renderInline(item)}</li>)}
+        </ul>,
+      );
+      continue;
+    }
+
+    if (/^\d+[.)]\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\d+[.)]\s+/.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(/^\d+[.)]\s+/, ""));
+        index += 1;
+      }
+      blocks.push(
+        <ol key={`ol-${index}`} style={{ margin: "4px 0", paddingLeft: 18, display: "grid", gap: 3 }}>
+          {items.map((item, itemIndex) => <li key={`${itemIndex}-${item}`}>{renderInline(item)}</li>)}
+        </ol>,
+      );
+      continue;
+    }
+
+    const paragraph: string[] = [line];
+    index += 1;
+    while (
+      index < lines.length
+      && lines[index].trim()
+      && !/^[-•]\s+/.test(lines[index].trim())
+      && !/^\d+[.)]\s+/.test(lines[index].trim())
+    ) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+    blocks.push(
+      <p key={`p-${index}`} style={{ margin: 0 }}>
+        {renderInline(paragraph.join("\n"))}
+      </p>,
+    );
+  }
+
+  return <div style={{ display: "grid", gap: 7 }}>{blocks}</div>;
+}
+
+function MessageBubble({ role, content, live = false }: { role: string; content: string; live?: boolean }) {
   const isUser = role === "user";
   return (
     <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start" }}>
@@ -50,11 +127,13 @@ function MessageBubble({ role, content }: { role: string; content: string }) {
           padding: "10px 12px",
           fontSize: 13,
           lineHeight: 1.65,
-          whiteSpace: "pre-line",
+          whiteSpace: "pre-wrap",
           wordBreak: "keep-all",
+          overflowWrap: "anywhere",
         }}
       >
-        {content}
+        <RichMessageText content={content} />
+        {live && <span aria-hidden style={{ display: "inline-block", width: 7, height: 14, marginLeft: 2, borderRadius: 4, background: "var(--brand)", verticalAlign: "-2px", animation: "pulse 1s ease-in-out infinite" }} />}
       </div>
     </div>
   );
@@ -79,8 +158,12 @@ export function AdviceChatPanel({
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
+  const [streamStatus, setStreamStatus] = useState<"idle" | "connecting" | "thinking" | "writing">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stopStreamRef = useRef<(() => void) | null>(null);
 
   const position = useMemo<AdvicePosition>(() => ({
     avg_price: toNumberOrNull(avgPrice),
@@ -91,6 +174,9 @@ export function AdviceChatPanel({
     let cancelled = false;
     setChat(null);
     setError(null);
+    setNotice(null);
+    setStreamingText("");
+    setStreamStatus("idle");
     setAvgPrice("");
     setQuantity("");
     if (!ticker) return;
@@ -123,7 +209,7 @@ export function AdviceChatPanel({
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [chat?.messages.length, sending]);
+  }, [chat?.messages.length, sending, streamingText]);
 
   const ensureChat = useCallback(async (): Promise<AdviceChat> => {
     if (chat) return chat;
@@ -142,20 +228,69 @@ export function AdviceChatPanel({
     if (!question || sending) return;
     setSending(true);
     setError(null);
+    setNotice(null);
+    setStreamingText("");
+    setStreamStatus("connecting");
     try {
       const base = await ensureChat();
+      const optimisticMessage: AdviceChatMessage = {
+        id: `local-${Date.now()}`,
+        role: "user",
+        content: question,
+        created_at: new Date().toISOString(),
+        metadata: { optimistic: true },
+      };
+      setChat((current) => current
+        ? { ...current, messages: [...current.messages, optimisticMessage], message_count: current.message_count + 1 }
+        : current);
       setMessage("");
-      const next = await sendAdviceChatMessage(base.chat_id, { message: question, position });
-      setChat(next);
+      setStreamStatus("thinking");
+      stopStreamRef.current = streamAdviceChatMessage(base.chat_id, { message: question, position }, {
+        onEvent: (event) => {
+          if (event.type === "delta") {
+            setStreamStatus("writing");
+            setStreamingText((prev) => prev + event.delta);
+          } else if (event.type === "state_reset") {
+            setNotice(event.message);
+          } else if (event.type === "completed") {
+            setChat(event.chat);
+            setStreamingText("");
+          } else if (event.type === "error") {
+            setError(event.message);
+          }
+        },
+        onError: (msg) => setError(msg),
+        onDone: () => {
+          stopStreamRef.current = null;
+          setSending(false);
+          setStreamStatus("idle");
+        },
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "상담 답변 생성에 실패했습니다.");
-    } finally {
       setSending(false);
+      setStreamStatus("idle");
+    } finally {
     }
   }, [ensureChat, message, position, sending]);
 
+  const stopStreaming = useCallback(() => {
+    stopStreamRef.current?.();
+    stopStreamRef.current = null;
+    setSending(false);
+    setStreamStatus("idle");
+  }, []);
+
   const confidence = typeof decision?.confidence === "number" ? Math.round(decision.confidence * 100) : null;
   const title = tickerName ? `${tickerName} (${ticker})` : ticker;
+  const hasPosition = position.avg_price != null || position.quantity != null;
+  const streamLabel = streamStatus === "connecting"
+    ? "상담 연결 중"
+    : streamStatus === "thinking"
+      ? "분석 맥락 정리 중"
+      : streamStatus === "writing"
+        ? "실시간 작성 중"
+        : "";
 
   return (
     <section
@@ -190,13 +325,29 @@ export function AdviceChatPanel({
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+      {(streamLabel || hasPosition) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {hasPosition && (
+            <span style={{ minHeight: 26, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 99, border: "1px solid var(--border-subtle)", background: "var(--bg-elevated)", color: "var(--text-secondary)", padding: "0 9px", fontSize: 11, fontWeight: 800 }}>
+              <Icon name="wallet" size={13} decorative /> 보유 정보 반영
+            </span>
+          )}
+          {streamLabel && (
+            <span style={{ minHeight: 26, display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 99, border: "1px solid var(--brand-border)", background: "var(--brand-subtle)", color: "var(--brand)", padding: "0 9px", fontSize: 11, fontWeight: 900 }}>
+              <Loader size={13} /> {streamLabel}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 11, color: "var(--text-tertiary)", fontWeight: 800 }}>
           내 평단 입력(선택)
           <input
             value={avgPrice}
             onChange={(e) => setAvgPrice(e.target.value)}
             onBlur={() => setAvgPrice((v) => formatInputNumber(v))}
+            disabled={sending}
             inputMode="numeric"
             placeholder="예: 72,000"
             style={{
@@ -217,6 +368,7 @@ export function AdviceChatPanel({
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             onBlur={() => setQuantity((v) => formatInputNumber(v))}
+            disabled={sending}
             inputMode="numeric"
             placeholder="예: 10"
             style={{
@@ -259,6 +411,8 @@ export function AdviceChatPanel({
       </div>
 
       <div
+        role="log"
+        aria-live="polite"
         style={{
           minHeight: 180,
           maxHeight: compact ? 360 : 440,
@@ -285,9 +439,16 @@ export function AdviceChatPanel({
             아직 상담이 시작되지 않았습니다. 아래에 궁금한 점을 입력하면 분석 결과를 이어받아 답합니다.
           </div>
         )}
-        {sending && <MessageBubble role="assistant" content="질문을 분석 결과와 보유 상황에 맞춰 정리하고 있습니다…" />}
+        {sending && !streamingText && <MessageBubble role="assistant" content="질문을 분석 결과와 보유 상황에 맞춰 정리하고 있습니다…" live />}
+        {streamingText && <MessageBubble role="assistant" content={streamingText} live={sending} />}
         <div ref={scrollRef} />
       </div>
+
+      {notice && (
+        <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--text-tertiary)", fontSize: 12, lineHeight: 1.5 }}>
+          <Icon name="info" size={14} decorative /> {notice}
+        </div>
+      )}
 
       {error && (
         <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--bear)", fontSize: 12, lineHeight: 1.5 }}>
@@ -305,8 +466,15 @@ export function AdviceChatPanel({
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
           placeholder="예: 제 평단 기준으로 지금은 버티는 게 나을까요, 줄이는 게 나을까요?"
           rows={compact ? 2 : 3}
+          disabled={sending}
           style={{
             resize: "vertical",
             minHeight: compact ? 52 : 70,
@@ -321,23 +489,24 @@ export function AdviceChatPanel({
           }}
         />
         <button
-          type="submit"
-          disabled={sending || !message.trim()}
+          type={sending ? "button" : "submit"}
+          onClick={sending ? stopStreaming : undefined}
+          disabled={!sending && !message.trim()}
           style={{
             width: 48,
             height: 48,
             borderRadius: 14,
             border: "1px solid var(--brand-border)",
-            background: message.trim() ? "var(--brand)" : "var(--bg-muted)",
-            color: message.trim() ? "white" : "var(--text-quaternary)",
+            background: sending ? "var(--bg-elevated)" : message.trim() ? "var(--brand)" : "var(--bg-muted)",
+            color: sending ? "var(--bear)" : message.trim() ? "white" : "var(--text-quaternary)",
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: sending ? "wait" : message.trim() ? "pointer" : "not-allowed",
+            cursor: sending ? "pointer" : message.trim() ? "pointer" : "not-allowed",
           }}
-          aria-label="상담 질문 보내기"
+          aria-label={sending ? "상담 응답 중단" : "상담 질문 보내기"}
         >
-          {sending ? <Loader size={17} /> : <Icon name="arrow-right" size={18} decorative />}
+          {sending ? <Icon name="stop" size={17} decorative /> : <Icon name="arrow-right" size={18} decorative />}
         </button>
       </form>
     </section>

@@ -77,7 +77,7 @@ from backend.core.runtime_sessions import (
     mark_runtime_session_error,
     serialize_runtime_session,
 )
-from backend.core.llm import create_response
+from backend.core.llm import create_response, stream_response
 from backend.core.user_access import install_user_activity_middleware, record_trade, require_user
 from backend.core.user_runtime_settings import (
     build_public_settings,
@@ -441,6 +441,7 @@ def _serialize_advice_chat(row: dict[str, Any], *, message_limit: int | None = N
     out["messages"] = [_json_safe(m) for m in messages]
     out["context"] = _json_safe(out.get("context") or {})
     out["position"] = _json_safe(out.get("position") or {})
+    out["last_response_id"] = out.get("last_response_id") or None
     return out
 
 
@@ -1029,6 +1030,7 @@ async def create_advice_chat(req: AdviceChatCreateRequest, request: Request):
             }
         ],
         "message_count": 1,
+        "last_response_id": None,
         "created_at": now,
         "updated_at": now,
         "last_message_at": now,
@@ -1105,7 +1107,12 @@ async def send_advice_chat_message(chat_id: str, req: AdviceChatMessageRequest, 
 
     try:
         with runtime_profile_context(dict(runtime_profile)):
-            answer = await create_response(prompt_system, prompt_user, fast=False)
+            answer = await create_response(
+                prompt_system,
+                prompt_user,
+                fast=False,
+                previous_response_id=str(row.get("last_response_id") or "") or None,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -1141,6 +1148,134 @@ async def send_advice_chat_message(chat_id: str, req: AdviceChatMessageRequest, 
         return_document=ReturnDocument.AFTER,
     )
     return _serialize_advice_chat(updated or row)
+
+
+@app.post("/api/advice-chats/{chat_id}/messages/stream")
+@limiter.limit(analysis_rate)
+async def stream_advice_chat_message(chat_id: str, req: AdviceChatMessageRequest, request: Request):
+    """상담 답변을 OpenAI Responses 스트림으로 생성하고, 완료 시 대화 내역에 저장한다."""
+    user, runtime_profile = await _load_user_runtime_profile(request)
+    db = _require_mongo_db()
+    row = await db[_ADVICE_CHAT_COLLECTION].find_one({"chat_id": chat_id})
+    if not row:
+        raise HTTPException(status_code=404, detail="상담 채팅을 찾지 못했습니다")
+    if not _user_is_master(user) and str(row.get("owner_user_id", "")) != _user_id_str(user):
+        raise HTTPException(status_code=403, detail="해당 상담 채팅 접근 권한이 없습니다")
+
+    position = _position_payload(req.position) if req.position is not None else (row.get("position") or {})
+    context = await _build_advice_context(
+        db=db,
+        user=user,
+        ticker=str(row.get("ticker") or ""),
+        ticker_name=str(row.get("ticker_name") or ""),
+        analysis_session_id=row.get("analysis_session_id"),
+        position=position,
+    )
+    prompt_system, prompt_user = _build_advice_prompt({**row, "position": position}, req.message, context)
+    now = _utc_now()
+    user_message = {
+        "id": str(uuid4()),
+        "role": "user",
+        "content": req.message,
+        "created_at": now,
+        "metadata": {"position": position},
+    }
+    await db[_ADVICE_CHAT_COLLECTION].update_one(
+        {"chat_id": chat_id},
+        {
+            "$set": {
+                "position": position,
+                "context": context,
+                "updated_at": now,
+                "last_message_at": now,
+            },
+            "$push": {"messages": user_message},
+            "$inc": {"message_count": 1},
+        },
+    )
+
+    def sse(payload: dict[str, Any]) -> str:
+        return f"data: {json.dumps(_json_safe(payload), ensure_ascii=False)}\n\n"
+
+    async def event_stream():
+        answer_parts: list[str] = []
+        response_id = ""
+        previous_response_id = str(row.get("last_response_id") or "") or None
+        yielded_any_delta = False
+        yield sse({"type": "connected", "chat_id": chat_id, "user_message": user_message})
+
+        async def forward_openai_stream(prev_id: str | None):
+            nonlocal response_id, yielded_any_delta
+            with runtime_profile_context(dict(runtime_profile)):
+                async for event in stream_response(prompt_system, prompt_user, fast=False, previous_response_id=prev_id):
+                    if event.get("type") == "delta":
+                        delta = str(event.get("delta") or "")
+                        answer_parts.append(delta)
+                        yielded_any_delta = True
+                        yield sse({"type": "delta", "delta": delta})
+                    elif event.get("type") == "completed":
+                        response_id = str(event.get("response_id") or "")
+                    elif event.get("type") == "error":
+                        raise RuntimeError(str(event.get("message") or "상담 답변 생성 중 오류가 발생했습니다."))
+
+        try:
+            try:
+                async for chunk in forward_openai_stream(previous_response_id):
+                    yield chunk
+            except Exception:
+                if not previous_response_id or yielded_any_delta:
+                    raise
+                yield sse({"type": "state_reset", "message": "이전 응답 체인을 이어받지 못해 저장된 대화 기록 기준으로 다시 연결합니다."})
+                async for chunk in forward_openai_stream(None):
+                    yield chunk
+        except ValueError as exc:
+            yield sse({"type": "error", "message": str(exc)})
+            yield sse({"type": "done"})
+            return
+        except Exception as exc:
+            yield sse({"type": "error", "message": f"상담 답변 생성 실패: {exc}"})
+            yield sse({"type": "done"})
+            return
+
+        answer = "".join(answer_parts).strip() or "답변을 생성하지 못했습니다. 질문을 조금 더 구체적으로 다시 보내주세요."
+        finished_at = _utc_now()
+        assistant_message = {
+            "id": str(uuid4()),
+            "role": "assistant",
+            "content": answer,
+            "created_at": finished_at,
+            "metadata": {
+                "analysis_session_id": row.get("analysis_session_id"),
+                "ticker": row.get("ticker"),
+                "response_id": response_id or None,
+                "previous_response_id": previous_response_id,
+            },
+        }
+        updated = await db[_ADVICE_CHAT_COLLECTION].find_one_and_update(
+            {"chat_id": chat_id},
+            {
+                "$set": {
+                    "updated_at": finished_at,
+                    "last_message_at": finished_at,
+                    "last_response_id": response_id or previous_response_id,
+                },
+                "$push": {"messages": assistant_message},
+                "$inc": {"message_count": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        yield sse({"type": "completed", "message": assistant_message, "chat": _serialize_advice_chat(updated or row)})
+        yield sse({"type": "done"})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── MS-C: 사용자 → 에이전트 후속 질문 ────────────────────────────

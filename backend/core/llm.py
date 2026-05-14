@@ -8,7 +8,8 @@ OpenAI Responses API 클라이언트 (단일 모델 통합).
 참고: https://developers.openai.com/api/reference/resources/responses/methods/create
 """
 import json
-from typing import TypeVar, cast
+from collections.abc import AsyncIterator
+from typing import Any, TypeVar, cast
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -64,6 +65,7 @@ async def create_response(
     system: str,
     user: str,
     fast: bool = False,
+    previous_response_id: str | None = None,
 ) -> str:
     """
     OpenAI Responses API (POST /v1/responses) 로 텍스트 생성.
@@ -90,11 +92,67 @@ async def create_response(
         "instructions": system,
         "input": user,
     }
+    if previous_response_id:
+        kwargs["previous_response_id"] = previous_response_id
     if not fast and _supports_reasoning(model):
         kwargs["reasoning"] = {"effort": reasoning_effort}
 
     response = await client.responses.create(**kwargs)
     return response.output_text
+
+
+async def stream_response(
+    system: str,
+    user: str,
+    fast: bool = False,
+    previous_response_id: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """OpenAI Responses API 스트리밍 텍스트 델타를 표준 dict 이벤트로 반환한다."""
+    api_key = str(get_runtime_setting("openai_api_key", "", use_global_when_unset=True) or "").strip()
+    client = _get_client(api_key)
+
+    raw_model = (
+        get_runtime_setting("default_llm_model", settings.default_llm_model, use_global_when_unset=True)
+        or settings.default_llm_model
+    )
+    model = _normalize_model(raw_model) or _normalize_model(settings.default_llm_model) or "gpt-5.5"
+
+    reasoning_effort = str(
+        get_runtime_setting("reasoning_effort", settings.reasoning_effort, use_global_when_unset=True)
+        or settings.reasoning_effort
+    ).lower()
+    if reasoning_effort not in {"high", "medium", "low"}:
+        reasoning_effort = "high"
+
+    kwargs: dict = {
+        "model": model,
+        "instructions": system,
+        "input": user,
+        "stream": True,
+    }
+    if previous_response_id:
+        kwargs["previous_response_id"] = previous_response_id
+    if not fast and _supports_reasoning(model):
+        kwargs["reasoning"] = {"effort": reasoning_effort}
+
+    stream = await client.responses.create(**kwargs)
+    async for event in stream:
+        event_type = str(getattr(event, "type", "") or "")
+        if event_type == "response.output_text.delta":
+            delta = str(getattr(event, "delta", "") or "")
+            if delta:
+                yield {"type": "delta", "delta": delta}
+        elif event_type == "response.completed":
+            response = getattr(event, "response", None)
+            yield {
+                "type": "completed",
+                "response_id": str(getattr(response, "id", "") or ""),
+                "output_text": str(getattr(response, "output_text", "") or ""),
+            }
+        elif event_type in {"response.failed", "error"}:
+            error = getattr(event, "error", None)
+            message = getattr(error, "message", None) if error is not None else None
+            yield {"type": "error", "message": str(message or "상담 답변 생성 중 오류가 발생했습니다.")}
 
 
 T = TypeVar("T", bound=BaseModel)

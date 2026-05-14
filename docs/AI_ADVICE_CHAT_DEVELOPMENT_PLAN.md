@@ -67,6 +67,7 @@ Fields:
 - `position`: optional average price and quantity
 - `context`: snapshot captured at chat creation
 - `messages`: embedded chat turns, capped in responses
+- `last_response_id`: latest OpenAI Responses API id for `previous_response_id` continuation
 - `created_at`, `updated_at`, `last_message_at`
 - `message_count`
 
@@ -94,6 +95,11 @@ Indexes:
   - Appends a user question, builds a grounded prompt, calls the configured LLM, appends the assistant answer, and returns the updated chat.
   - Optionally updates position before answering.
 
+- `POST /api/advice-chats/{chat_id}/messages/stream`
+   - Streams `response.output_text.delta` chunks from the OpenAI Responses API to the browser through server-sent events.
+   - Stores the final assistant message and response id when generation completes.
+   - Uses `previous_response_id` when available so the model continues the same response chain instead of treating every turn as a fresh one-off request.
+
 ### Prompt Contract
 
 The assistant receives:
@@ -112,6 +118,7 @@ The response should:
 - use scenario framing and risk boundaries
 - avoid guaranteed returns or definitive buy/sell orders
 - ask for missing information when necessary
+- prefer clean conversational structure over raw markdown; the frontend still renders common markdown marks such as bold, bullets, and numbered lists as real UI.
 
 ## Frontend Architecture
 
@@ -123,6 +130,7 @@ Add typed functions:
 - `listAdviceChats`
 - `getAdviceChat`
 - `sendAdviceChatMessage`
+- `streamAdviceChatMessage`
 
 ### Types
 
@@ -142,6 +150,9 @@ Add `AdviceChatPanel`:
 - freeform question input
 - loading/error states
 - contextual chips for starter questions
+- streaming assistant bubble with writing state
+- stop/cancel control for long generations
+- markdown-aware message rendering so `**bold**` and list syntax do not leak as raw text
 
 Props:
 
@@ -177,6 +188,8 @@ Props:
    - input position
    - send a question
    - verify assistant response appears
+   - verify partial assistant text streams before completion
+   - verify markdown-like output renders without raw `**` markers
    - verify mobile AI tab remains usable
 
 ## Future Enhancements

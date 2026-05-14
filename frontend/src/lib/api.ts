@@ -432,7 +432,16 @@ export interface AdviceChat {
   created_at: string | null;
   updated_at: string | null;
   last_message_at?: string | null;
+  last_response_id?: string | null;
 }
+
+export type AdviceStreamEvent =
+  | { type: "connected"; chat_id: string; user_message?: AdviceChatMessage }
+  | { type: "delta"; delta: string }
+  | { type: "state_reset"; message: string }
+  | { type: "completed"; message: AdviceChatMessage; chat: AdviceChat }
+  | { type: "error"; message: string }
+  | { type: "done" };
 
 export interface AdviceChatListItem {
   chat_id: string;
@@ -489,6 +498,85 @@ export async function sendAdviceChatMessage(
   }, 90_000);
   if (!res.ok) throw new Error(await readApiError(res, "상담 답변을 생성하지 못했습니다"));
   return (await res.json()) as AdviceChat;
+}
+
+export function streamAdviceChatMessage(
+  chatId: string,
+  payload: { message: string; position?: AdvicePosition | null },
+  handlers: {
+    onEvent?: (event: AdviceStreamEvent) => void;
+    onError?: (message: string) => void;
+    onDone?: () => void;
+  },
+): () => void {
+  const controller = new AbortController();
+  const headers = withAuthHeaders({ "Content-Type": "application/json" });
+  let finished = false;
+
+  const emit = (event: AdviceStreamEvent) => {
+    handlers.onEvent?.(event);
+    if (event.type === "error") handlers.onError?.(event.message);
+    if (event.type === "done") {
+      finished = true;
+      handlers.onDone?.();
+    }
+  };
+
+  const parseBlock = (block: string) => {
+    const data = block
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!data) return;
+    try {
+      emit(JSON.parse(data) as AdviceStreamEvent);
+    } catch {
+      handlers.onError?.("상담 스트림을 해석하지 못했습니다.");
+    }
+  };
+
+  void (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/advice-chats/${encodeURIComponent(chatId)}/messages/stream`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(await readApiError(res, "상담 답변을 생성하지 못했습니다"));
+      if (!res.body) throw new Error("상담 스트림을 열지 못했습니다.");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let splitAt = buffer.indexOf("\n\n");
+        while (splitAt >= 0) {
+          const block = buffer.slice(0, splitAt);
+          buffer = buffer.slice(splitAt + 2);
+          parseBlock(block);
+          splitAt = buffer.indexOf("\n\n");
+        }
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) parseBlock(buffer);
+      if (!finished) emit({ type: "done" });
+    } catch (e) {
+      if (controller.signal.aborted) {
+        handlers.onError?.("응답 생성을 중단했습니다.");
+        handlers.onDone?.();
+        return;
+      }
+      handlers.onError?.(e instanceof Error ? e.message : "상담 답변 생성에 실패했습니다.");
+      handlers.onDone?.();
+    }
+  })();
+
+  return () => controller.abort();
 }
 
 /**
