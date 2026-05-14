@@ -27,7 +27,7 @@ function withAuthHeaders(init?: HeadersInit): Headers {
   return headers;
 }
 
-async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+async function apiFetch(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 12_000): Promise<Response> {
   const headers = withAuthHeaders(init?.headers);
   // 기본 타임아웃 12초 — 백엔드 응답 지연 시 무한 대기 방지.
   // 호출자가 signal을 직접 전달했으면 그대로 사용.
@@ -35,7 +35,7 @@ async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<R
     return fetch(input, { ...init, headers });
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, { ...init, headers, signal: controller.signal });
   } finally {
@@ -404,6 +404,91 @@ export async function getAnalysisSession(sessionId: string): Promise<AnalysisSes
   const res = await apiFetch(`${BASE_URL}/api/analyze/result/${sessionId}`);
   if (!res.ok) return null;
   return (await res.json()) as AnalysisSessionDetail;
+}
+
+// ── 분석 후속 상담 채팅 ────────────────────────────────────────
+export interface AdvicePosition {
+  avg_price?: number | null;
+  quantity?: number | null;
+}
+
+export interface AdviceChatMessage {
+  id: string;
+  role: "user" | "assistant" | string;
+  content: string;
+  created_at: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdviceChat {
+  chat_id: string;
+  ticker: string;
+  ticker_name?: string | null;
+  analysis_session_id?: string | null;
+  position?: AdvicePosition | null;
+  context?: Record<string, unknown>;
+  messages: AdviceChatMessage[];
+  message_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+  last_message_at?: string | null;
+}
+
+export interface AdviceChatListItem {
+  chat_id: string;
+  ticker: string;
+  ticker_name?: string | null;
+  analysis_session_id?: string | null;
+  position?: AdvicePosition | null;
+  message_count?: number;
+  created_at: string | null;
+  updated_at: string | null;
+  last_message?: string | null;
+}
+
+export async function createAdviceChat(payload: {
+  ticker: string;
+  ticker_name?: string | null;
+  analysis_session_id?: string | null;
+  position?: AdvicePosition | null;
+}): Promise<AdviceChat> {
+  const res = await apiFetch(`${BASE_URL}/api/advice-chats`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readApiError(res, "상담 채팅을 시작하지 못했습니다"));
+  return (await res.json()) as AdviceChat;
+}
+
+export async function listAdviceChats(params: { ticker?: string; limit?: number } = {}): Promise<AdviceChatListItem[]> {
+  const query = new URLSearchParams();
+  if (params.ticker) query.set("ticker", params.ticker);
+  if (params.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const res = await apiFetch(`${BASE_URL}/api/advice-chats${suffix}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data?.items) ? (data.items as AdviceChatListItem[]) : [];
+}
+
+export async function getAdviceChat(chatId: string): Promise<AdviceChat | null> {
+  const res = await apiFetch(`${BASE_URL}/api/advice-chats/${encodeURIComponent(chatId)}`);
+  if (!res.ok) return null;
+  return (await res.json()) as AdviceChat;
+}
+
+export async function sendAdviceChatMessage(
+  chatId: string,
+  payload: { message: string; position?: AdvicePosition | null },
+): Promise<AdviceChat> {
+  const res = await apiFetch(`${BASE_URL}/api/advice-chats/${encodeURIComponent(chatId)}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }, 90_000);
+  if (!res.ok) throw new Error(await readApiError(res, "상담 답변을 생성하지 못했습니다"));
+  return (await res.json()) as AdviceChat;
 }
 
 /**

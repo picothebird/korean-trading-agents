@@ -306,6 +306,10 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         name="ttl_runtime_sessions_purge_after",
     )
 
+    await db.advice_chats.create_index([("chat_id", ASCENDING)], unique=True, name="uq_advice_chats_chat_id")
+    await db.advice_chats.create_index([("owner_user_id", ASCENDING), ("updated_at", DESCENDING)], name="idx_advice_chats_owner_time")
+    await db.advice_chats.create_index([("owner_user_id", ASCENDING), ("ticker", ASCENDING), ("updated_at", DESCENDING)], name="idx_advice_chats_owner_ticker_time")
+
     # ── 자동/포트폴리오 루프 영속화 (Critical C1) ──────────────
     await db.trading_loops.create_index(
         [("loop_id", ASCENDING)], unique=True, name="uq_trading_loops_loop_id"

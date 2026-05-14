@@ -1054,6 +1054,7 @@ export default function Home() {
   const [analysisHistoryLoading, setAnalysisHistoryLoading] = useState(false);
   // 진행 중인 분석 세션 ID (복구 + 표시용 + MS-C 후속 질문 라우팅용)
   const [activeAnalysisSessionId, setActiveAnalysisSessionId] = useState<string | null>(null);
+  const [resultAnalysisSessionId, setResultAnalysisSessionId] = useState<string | null>(null);
   const btCleanupRef = useRef<(() => void) | null>(null);
   const analysisCleanupRef = useRef<(() => void) | null>(null);
   // 우측 작업 영역 스크롤 컨테이너 — 이력에서 항목 진입 시 최상단으로 리셋
@@ -1253,12 +1254,14 @@ export default function Home() {
     setIsRunning(true);
     setAnalysisError(null);
     setDecision(null);
+    setResultAnalysisSessionId(null);
     setThoughts(new Map());
     setActiveAgents(new Set());
     setLogs([]);
     try {
       const { session_id } = await startAnalysis(ticker);
       setActiveAnalysisSessionId(session_id);
+      setResultAnalysisSessionId(session_id);
       try { localStorage.setItem("kta_active_analysis_session_v1", JSON.stringify({ id: session_id, ticker, ts: Date.now() })); } catch {}
       const cleanup = streamAnalysis(
         session_id,
@@ -1274,6 +1277,7 @@ export default function Home() {
         },
         (dec) => {
           setDecision(dec);
+          setResultAnalysisSessionId(session_id);
           if (dec.agents_summary?.requires_human_approval) setApprovalModal(true);
         },
         () => {
@@ -1535,6 +1539,7 @@ export default function Home() {
               // 진행 중이면 SSE 재연결
               setIsRunning(true);
               setActiveAnalysisSessionId(saved.id);
+              setResultAnalysisSessionId(saved.id);
               const cleanup = streamAnalysis(
                 saved.id,
                 (thought) => {
@@ -1547,7 +1552,7 @@ export default function Home() {
                   });
                   setLogs((prev) => [...prev.slice(-99), thought]);
                 },
-                (dec) => { setDecision(dec); },
+                (dec) => { setDecision(dec); setResultAnalysisSessionId(saved.id); },
                 () => {
                   setIsRunning(false);
                   setActiveAgents(new Set());
@@ -1557,9 +1562,10 @@ export default function Home() {
                 (errMsg) => { setAnalysisError(errMsg); }
               );
               analysisCleanupRef.current = cleanup;
-            } else if (detail.status === "done" && detail.result?.decision) {
+            } else if (detail.status === "done" && (detail.decision || detail.result?.decision)) {
               // 끝난 상태면 결과만 복원
-              setDecision(detail.result.decision);
+              setDecision((detail.decision ?? detail.result?.decision) ?? null);
+              setResultAnalysisSessionId(saved.id);
               scrollRightToTop();
               localStorage.removeItem("kta_active_analysis_session_v1");
             } else {
@@ -1945,7 +1951,7 @@ export default function Home() {
                 if (latestAnalysis.status !== "done") return;
                 const detail = await getAnalysisSession(latestAnalysis.session_id);
                 const loadedDecision = detail?.decision ?? detail?.result?.decision ?? null;
-                if (loadedDecision) setDecision(loadedDecision);
+                if (loadedDecision) { setDecision(loadedDecision); setResultAnalysisSessionId(latestAnalysis.session_id); }
                 handleMobileViewChange("analysis");
               }}
               style={{
@@ -2022,6 +2028,8 @@ export default function Home() {
         {decision ? (
           <AnalysisResult
             decision={decision}
+            analysisSessionId={resultAnalysisSessionId}
+            tickerName={resolveTickerName(decision.ticker, companyName)}
             onHumanApproval={decision.agents_summary?.requires_human_approval ? () => setApprovalModal(true) : undefined}
             onOpenSettings={() => openSettings("guru")}
             onGoTrading={() => { setKisOrderTicker(decision.ticker); handleMobileViewChange("trading"); }}
@@ -2179,6 +2187,7 @@ export default function Home() {
               onReject={() => {
                 setApprovalModal(false);
                 setDecision(null);
+                setResultAnalysisSessionId(null);
               }}
               onOpenSettings={() => openSettings("guru")}
             />
@@ -2746,6 +2755,7 @@ export default function Home() {
                         // 결과 닫을 때 이전 분석의 thoughts/error 도 함께 초기화
                         // (남겨두면 EmptyState 가 "분석은 끝났지만 결정을 받지 못함" 오해 표시)
                         setDecision(null);
+                        setResultAnalysisSessionId(null);
                         setAnalysisError(null);
                         setThoughts(new Map());
                       }}
@@ -2771,6 +2781,8 @@ export default function Home() {
                   </div>
                   <AnalysisResult
                     decision={decision}
+                    analysisSessionId={resultAnalysisSessionId}
+                    tickerName={resolveTickerName(decision.ticker, companyName)}
                     onHumanApproval={
                       decision.agents_summary?.requires_human_approval
                         ? () => setApprovalModal(true)
@@ -2838,6 +2850,7 @@ export default function Home() {
                                 const dec = detail?.decision ?? detail?.result?.decision ?? null;
                                 if (dec) {
                                   setDecision(dec);
+                                  setResultAnalysisSessionId(item.session_id);
                                   setAnalysisError(null);
                                   scrollRightToTop();
                                 } else {
@@ -3826,6 +3839,7 @@ export default function Home() {
             onReject={() => {
               setApprovalModal(false);
               setDecision(null);
+              setResultAnalysisSessionId(null);
             }}
             onOpenSettings={() => openSettings("guru")}
           />

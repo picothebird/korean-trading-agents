@@ -8,6 +8,8 @@ import asyncio
 import sys
 import os
 import math
+import json
+from datetime import datetime, timezone
 
 # 프로젝트 루트를 sys.path에 추가
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,6 +37,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Any, Literal, Optional
 
 from bson import ObjectId
+from pymongo import ReturnDocument
 
 # Rate limiting (slowapi)
 from slowapi import _rate_limit_exceeded_handler
@@ -74,6 +77,7 @@ from backend.core.runtime_sessions import (
     mark_runtime_session_error,
     serialize_runtime_session,
 )
+from backend.core.llm import create_response
 from backend.core.user_access import install_user_activity_middleware, record_trade, require_user
 from backend.core.user_runtime_settings import (
     build_public_settings,
@@ -213,6 +217,36 @@ class AnalysisRequest(BaseModel):
     @classmethod
     def _v_ticker(cls, v: str) -> str:
         return _normalize_ticker(v)
+
+
+class AdvicePosition(BaseModel):
+    avg_price: float | None = Field(default=None, ge=0, le=10_000_000)
+    quantity: int | None = Field(default=None, ge=0, le=100_000_000)
+
+
+class AdviceChatCreateRequest(BaseModel):
+    ticker: str
+    ticker_name: str | None = Field(default=None, max_length=80)
+    analysis_session_id: str | None = Field(default=None, max_length=120)
+    position: AdvicePosition | None = None
+
+    @field_validator("ticker")
+    @classmethod
+    def _v_ticker(cls, v: str) -> str:
+        return _normalize_ticker(v)
+
+
+class AdviceChatMessageRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    position: AdvicePosition | None = None
+
+    @field_validator("message")
+    @classmethod
+    def _v_message(cls, v: str) -> str:
+        text = str(v or "").strip()
+        if not text:
+            raise ValueError("질문 내용이 비어 있습니다")
+        return text
 
 
 class BacktestRequest(BaseModel):
@@ -364,6 +398,212 @@ class PortfolioLoopStartRequest(BaseModel):
 _KIS_APPROVAL_TTL_MIN = 15
 _KIS_APPROVAL_MAX_KEEP_HOURS = 24
 _RUNTIME_SESSION_MAX_KEEP_HOURS = 24
+_ADVICE_CHAT_COLLECTION = "advice_chats"
+_ADVICE_CHAT_HISTORY_LIMIT = 30
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utc_iso(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return None
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, datetime):
+        return _utc_iso(value)
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _serialize_advice_chat(row: dict[str, Any], *, message_limit: int | None = None) -> dict[str, Any]:
+    out = dict(row)
+    if isinstance(out.get("_id"), ObjectId):
+        out["_id"] = str(out["_id"])
+    if isinstance(out.get("owner_user_id"), ObjectId):
+        out["owner_user_id"] = str(out["owner_user_id"])
+    for key in ("created_at", "updated_at", "last_message_at"):
+        out[key] = _utc_iso(out.get(key))
+    messages = out.get("messages") if isinstance(out.get("messages"), list) else []
+    if message_limit is not None:
+        messages = messages[-max(0, int(message_limit)):]
+    out["messages"] = [_json_safe(m) for m in messages]
+    out["context"] = _json_safe(out.get("context") or {})
+    out["position"] = _json_safe(out.get("position") or {})
+    return out
+
+
+def _position_payload(position: AdvicePosition | None) -> dict[str, Any]:
+    if position is None:
+        return {"avg_price": None, "quantity": None}
+    avg_price = position.avg_price if position.avg_price and position.avg_price > 0 else None
+    quantity = position.quantity if position.quantity and position.quantity > 0 else None
+    return {"avg_price": avg_price, "quantity": quantity}
+
+
+def _compact_decision(decision: Any) -> dict[str, Any]:
+    if not isinstance(decision, dict):
+        return {}
+    summary = decision.get("agents_summary") if isinstance(decision.get("agents_summary"), dict) else {}
+    return _json_safe({
+        "action": decision.get("action"),
+        "ticker": decision.get("ticker"),
+        "confidence": decision.get("confidence"),
+        "reasoning": decision.get("reasoning"),
+        "entry_strategy": decision.get("entry_strategy") or summary.get("entry_strategy"),
+        "exit_strategy": decision.get("exit_strategy") or summary.get("exit_strategy"),
+        "risk_level": summary.get("risk_level") or (summary.get("risk") or {}).get("risk_level"),
+        "position_size_pct": summary.get("position_size_pct"),
+        "stop_loss_pct": summary.get("stop_loss_pct") or (summary.get("risk") or {}).get("stop_loss_pct"),
+        "analyst_signals": summary.get("analyst_signals"),
+        "article_report": summary.get("article_report"),
+    })
+
+
+def _current_price_from_snapshot(stock_snapshot: dict[str, Any]) -> float | None:
+    for key in ("current_price", "close", "last_price"):
+        try:
+            value = stock_snapshot.get("technical", {}).get(key) if key != "last_price" else stock_snapshot.get(key)
+            if value is None:
+                value = stock_snapshot.get(key)
+            price = float(value)
+            if math.isfinite(price) and price > 0:
+                return price
+        except Exception:
+            continue
+    return None
+
+
+def _position_summary(position: dict[str, Any], stock_snapshot: dict[str, Any]) -> dict[str, Any]:
+    avg_price = position.get("avg_price")
+    quantity = position.get("quantity")
+    try:
+        avg = float(avg_price) if avg_price is not None else None
+        qty = int(quantity) if quantity is not None else None
+    except Exception:
+        avg = None
+        qty = None
+    current_price = _current_price_from_snapshot(stock_snapshot)
+    if not avg or not qty or not current_price:
+        return {"available": False, "current_price": current_price}
+    cost = avg * qty
+    market_value = current_price * qty
+    pnl = market_value - cost
+    pnl_pct = (pnl / cost * 100) if cost else None
+    return _json_safe({
+        "available": True,
+        "avg_price": avg,
+        "quantity": qty,
+        "current_price": current_price,
+        "cost_basis": cost,
+        "market_value": market_value,
+        "unrealized_pnl": pnl,
+        "unrealized_pnl_pct": pnl_pct,
+    })
+
+
+async def _build_advice_context(
+    *,
+    db,
+    user: dict,
+    ticker: str,
+    ticker_name: str | None,
+    analysis_session_id: str | None,
+    position: dict[str, Any],
+) -> dict[str, Any]:
+    stock_basic: dict[str, Any] = {}
+    technical: dict[str, Any] = {}
+    try:
+        stock_basic = get_stock_info(ticker)
+    except Exception as exc:
+        stock_basic = {"ticker": ticker, "error": str(exc)}
+    try:
+        technical = get_technical_indicators(ticker)
+    except Exception as exc:
+        technical = {"error": str(exc)}
+
+    analysis: dict[str, Any] = {}
+    if analysis_session_id:
+        session = await get_runtime_session(db, analysis_session_id, SESSION_TYPE_ANALYSIS)
+        if not session:
+            raise HTTPException(status_code=404, detail="연결할 분석 세션을 찾지 못했습니다")
+        if not _has_runtime_session_access(session, user):
+            raise HTTPException(status_code=403, detail="해당 분석 세션 접근 권한이 없습니다")
+        decision = session.get("decision")
+        if not isinstance(decision, dict):
+            result = session.get("result") if isinstance(session.get("result"), dict) else {}
+            decision = result.get("decision") if isinstance(result, dict) else None
+        analysis = {
+            "session_id": analysis_session_id,
+            "status": session.get("status"),
+            "created_at": _utc_iso(session.get("created_at")),
+            "updated_at": _utc_iso(session.get("updated_at")),
+            "decision": _compact_decision(decision),
+            "error": session.get("error"),
+        }
+
+    stock_snapshot = {
+        "basic": stock_basic,
+        "technical": technical,
+        "display_name": ticker_name or stock_basic.get("name") or ticker,
+    }
+    return _json_safe({
+        "ticker": ticker,
+        "ticker_name": ticker_name or stock_basic.get("name") or "",
+        "stock": stock_snapshot,
+        "analysis": analysis,
+        "position_summary": _position_summary(position, stock_snapshot),
+        "captured_at": _utc_iso(_utc_now()),
+    })
+
+
+def _build_advice_prompt(chat: dict[str, Any], question: str, context: dict[str, Any]) -> tuple[str, str]:
+    messages = chat.get("messages") if isinstance(chat.get("messages"), list) else []
+    history = [
+        {"role": m.get("role"), "content": str(m.get("content", ""))[:1800]}
+        for m in messages[-_ADVICE_CHAT_HISTORY_LIMIT:]
+        if m.get("role") in {"user", "assistant"}
+    ]
+    system = """
+당신은 KTA의 한국 주식 상담 AI입니다. 기존 멀티 에이전트 분석, 현재 종목 데이터, 사용자의 선택적 보유 정보를 바탕으로 후속 질문에 답합니다.
+
+규칙:
+- 한국어로 답합니다.
+- 수익을 보장하거나 단정적 매수/매도 명령을 내리지 않습니다.
+- 개인화된 상황 판단은 시나리오, 리스크, 확인할 지표, 행동 기준으로 제시합니다.
+- 사용자의 평단/수량이 있으면 손익과 리스크 기준을 그 상황에 맞춰 설명합니다.
+- 데이터가 비어 있거나 오래되었을 수 있으면 불확실성을 명확히 말합니다.
+- 주문 실행이나 계좌 조작은 하지 않으며, 실제 투자는 사용자 책임임을 짧게 상기시킵니다.
+- 답변은 장황한 보고서가 아니라 상담 대화처럼 명료하게 작성합니다.
+""".strip()
+    user_prompt = json.dumps(
+        {
+            "context": context,
+            "position": chat.get("position") or {},
+            "recent_messages": history,
+            "question": question,
+            "desired_answer_shape": [
+                "한 줄 결론",
+                "현재 사용자 상황 기준 해석",
+                "볼 지표/가격 기준",
+                "리스크와 다음 질문 제안",
+            ],
+        },
+        ensure_ascii=False,
+        default=str,
+    )
+    return system, user_prompt
 
 
 def _validate_kis_order_request(side: str, qty: int, order_type: str) -> None:
@@ -747,6 +987,160 @@ async def get_result(session_id: str, request: Request):
     if not _has_runtime_session_access(session, user):
         raise HTTPException(status_code=403, detail="해당 세션 접근 권한이 없습니다")
     return serialize_runtime_session(session)
+
+
+@app.post("/api/advice-chats")
+@limiter.limit(analysis_rate)
+async def create_advice_chat(req: AdviceChatCreateRequest, request: Request):
+    """분석 결과와 현재 종목을 이어받는 사용자별 상담 채팅을 생성한다."""
+    user, _runtime_profile = await _load_user_runtime_profile(request)
+    db = _require_mongo_db()
+    now = _utc_now()
+    position = _position_payload(req.position)
+    context = await _build_advice_context(
+        db=db,
+        user=user,
+        ticker=req.ticker,
+        ticker_name=req.ticker_name,
+        analysis_session_id=req.analysis_session_id,
+        position=position,
+    )
+    chat_id = str(uuid4())
+    intro = (
+        "분석 결과와 현재 종목 데이터를 이어받았습니다. "
+        "평단과 보유 수량을 입력하면 손익 기준으로도 같이 살펴볼 수 있어요. "
+        "궁금한 점을 자유롭게 물어보세요."
+    )
+    doc = {
+        "chat_id": chat_id,
+        "owner_user_id": _to_object_id_safe(_user_id_str(user)),
+        "ticker": req.ticker,
+        "ticker_name": req.ticker_name or context.get("ticker_name") or "",
+        "analysis_session_id": req.analysis_session_id,
+        "position": position,
+        "context": context,
+        "messages": [
+            {
+                "id": str(uuid4()),
+                "role": "assistant",
+                "content": intro,
+                "created_at": now,
+                "metadata": {"kind": "intro"},
+            }
+        ],
+        "message_count": 1,
+        "created_at": now,
+        "updated_at": now,
+        "last_message_at": now,
+    }
+    await db[_ADVICE_CHAT_COLLECTION].insert_one(doc)
+    return _serialize_advice_chat(doc)
+
+
+@app.get("/api/advice-chats")
+async def list_advice_chats(request: Request, ticker: str | None = None, limit: int = 20):
+    """현재 사용자의 상담 채팅 목록을 최신순으로 반환한다."""
+    user = await require_user(request)
+    db = _require_mongo_db()
+    owner_id = _to_object_id_safe(_user_id_str(user))
+    if owner_id is None:
+        return {"items": []}
+    query: dict[str, Any] = {"owner_user_id": owner_id}
+    if ticker:
+        query["ticker"] = _normalize_ticker(ticker)
+    safe_limit = max(1, min(int(limit or 20), 100))
+    cursor = db[_ADVICE_CHAT_COLLECTION].find(query).sort("updated_at", -1).limit(safe_limit)
+    items: list[dict[str, Any]] = []
+    async for row in cursor:
+        item = _serialize_advice_chat(row, message_limit=1)
+        items.append({
+            "chat_id": item.get("chat_id"),
+            "ticker": item.get("ticker"),
+            "ticker_name": item.get("ticker_name"),
+            "analysis_session_id": item.get("analysis_session_id"),
+            "position": item.get("position"),
+            "message_count": item.get("message_count"),
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("updated_at"),
+            "last_message": (item.get("messages") or [{}])[-1].get("content") if item.get("messages") else "",
+        })
+    return {"items": items}
+
+
+@app.get("/api/advice-chats/{chat_id}")
+async def get_advice_chat(chat_id: str, request: Request):
+    """상담 채팅 상세를 반환한다."""
+    user = await require_user(request)
+    db = _require_mongo_db()
+    row = await db[_ADVICE_CHAT_COLLECTION].find_one({"chat_id": chat_id})
+    if not row:
+        raise HTTPException(status_code=404, detail="상담 채팅을 찾지 못했습니다")
+    if not _user_is_master(user) and str(row.get("owner_user_id", "")) != _user_id_str(user):
+        raise HTTPException(status_code=403, detail="해당 상담 채팅 접근 권한이 없습니다")
+    return _serialize_advice_chat(row)
+
+
+@app.post("/api/advice-chats/{chat_id}/messages")
+@limiter.limit(analysis_rate)
+async def send_advice_chat_message(chat_id: str, req: AdviceChatMessageRequest, request: Request):
+    """사용자 질문을 분석/보유 context에 접지해 LLM 상담 답변을 생성한다."""
+    user, runtime_profile = await _load_user_runtime_profile(request)
+    db = _require_mongo_db()
+    row = await db[_ADVICE_CHAT_COLLECTION].find_one({"chat_id": chat_id})
+    if not row:
+        raise HTTPException(status_code=404, detail="상담 채팅을 찾지 못했습니다")
+    if not _user_is_master(user) and str(row.get("owner_user_id", "")) != _user_id_str(user):
+        raise HTTPException(status_code=403, detail="해당 상담 채팅 접근 권한이 없습니다")
+
+    position = _position_payload(req.position) if req.position is not None else (row.get("position") or {})
+    context = await _build_advice_context(
+        db=db,
+        user=user,
+        ticker=str(row.get("ticker") or ""),
+        ticker_name=str(row.get("ticker_name") or ""),
+        analysis_session_id=row.get("analysis_session_id"),
+        position=position,
+    )
+    prompt_system, prompt_user = _build_advice_prompt({**row, "position": position}, req.message, context)
+
+    try:
+        with runtime_profile_context(dict(runtime_profile)):
+            answer = await create_response(prompt_system, prompt_user, fast=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"상담 답변 생성 실패: {exc}")
+
+    now = _utc_now()
+    user_message = {
+        "id": str(uuid4()),
+        "role": "user",
+        "content": req.message,
+        "created_at": now,
+        "metadata": {"position": position},
+    }
+    assistant_message = {
+        "id": str(uuid4()),
+        "role": "assistant",
+        "content": answer.strip() or "답변을 생성하지 못했습니다. 질문을 조금 더 구체적으로 다시 보내주세요.",
+        "created_at": now,
+        "metadata": {"analysis_session_id": row.get("analysis_session_id"), "ticker": row.get("ticker")},
+    }
+    updated = await db[_ADVICE_CHAT_COLLECTION].find_one_and_update(
+        {"chat_id": chat_id},
+        {
+            "$set": {
+                "position": position,
+                "context": context,
+                "updated_at": now,
+                "last_message_at": now,
+            },
+            "$push": {"messages": {"$each": [user_message, assistant_message]}},
+            "$inc": {"message_count": 2},
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    return _serialize_advice_chat(updated or row)
 
 
 # ── MS-C: 사용자 → 에이전트 후속 질문 ────────────────────────────

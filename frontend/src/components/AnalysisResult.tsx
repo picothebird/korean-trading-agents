@@ -15,6 +15,7 @@ import type { TradeDecision } from "@/types";
 import { Tooltip, Icon } from "@/components/ui";
 import { AgreementDonut, ConfidenceGauge } from "@/components/viz/Primitives";
 import { breakLongText, PRE_LINE_STYLE } from "@/lib/text";
+import { AdviceChatPanel } from "@/components/AdviceChatPanel";
 
 const ACTION_CFG = {
   BUY: { label: "매수", color: "var(--bull)", bg: "var(--bull-subtle)", border: "var(--bull-border)", hex: "#F04452" },
@@ -48,6 +49,8 @@ const INITIAL_CAPITAL = 10_000_000; // 1,000만원 가정 (예시 표시용)
 
 interface AnalysisResultProps {
   decision: TradeDecision;
+  analysisSessionId?: string | null;
+  tickerName?: string | null;
   onHumanApproval?: () => void;
   onOpenSettings?: () => void;
   onGoTrading?: () => void;
@@ -168,6 +171,8 @@ function CardTitle({ children, hint }: { children: React.ReactNode; hint?: strin
 
 export function AnalysisResult({
   decision,
+  analysisSessionId,
+  tickerName,
   onHumanApproval,
   onOpenSettings,
   onGoTrading,
@@ -191,7 +196,6 @@ export function AnalysisResult({
   const guruEnabled = Boolean(guru?.enabled);
   const debate = s.debate;
   const details = s.analyst_details ?? {};
-  const signals = s.analyst_signals;
 
   // GURU 30일 누적 통계
   const [guruStats, setGuruStats] = useState<{ total: number; changed: number; defensive: number }>({
@@ -439,7 +443,7 @@ export function AnalysisResult({
                 <li>리스크 매니저의 위험 등급에 따라 감산</li>
               </ol>
               <p style={{ marginTop: 8, fontSize: 12, color: "var(--text-tertiary)" }}>
-                ※ 신뢰도가 높아도 "수익 보장"은 아닙니다. AI 합의 + 데이터 품질의 척도예요.
+                ※ 신뢰도가 높아도 &quot;수익 보장&quot;은 아닙니다. AI 합의 + 데이터 품질의 척도예요.
               </p>
             </div>
           </details>
@@ -599,6 +603,13 @@ export function AnalysisResult({
             </div>
           )}
         </Card>
+
+        <AdviceChatPanel
+          ticker={decision.ticker}
+          tickerName={tickerName}
+          analysisSessionId={analysisSessionId}
+          decision={decision}
+        />
 
         {/* ─────────────────────────── [4] 합의도 & 반대 의견 ─────────────────────────── */}
         {(reported > 0 || missing > 0) && (
